@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package singularitree.v1;
+
+import "domain.proto";
+
+option go_package = "github.com/SingulariTree/go-core/gen/go/singularitree/v1;singularitreev1";
+
+// Service Auth — GitHub OAuth prototype (scalable, security deferred)
+// Flow: Angular -> Electron (StartGitHubOAuth -> auth_url) -> shell.openExternal -> loopback callback -> ExchangeCode -> token in-memory
+// Demo: GetGitHubUser + ListGitHubRepos via token held in Go TokenStore or Electron memory (prototype).
+service Auth {
+  rpc GetAuthStatus(GetAuthStatusRequest) returns (GetAuthStatusResponse);
+  rpc StartGitHubOAuth(StartGitHubOAuthRequest) returns (StartGitHubOAuthResponse);
+  rpc ExchangeCode(ExchangeCodeRequest) returns (ExchangeCodeResponse);
+  rpc GetGitHubUser(GetGitHubUserRequest) returns (GitHubUser);
+  rpc ListGitHubRepos(ListGitHubReposRequest) returns (ListGitHubReposResponse);
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+}
+
+message GetAuthStatusRequest {}
+message GetAuthStatusResponse {
+  bool authenticated = 1;
+  string login = 2; // empty if not authenticated
+}
+
+message StartGitHubOAuthRequest {
+  string state = 1; // optional client-generated state; server generates if empty
+}
+message StartGitHubOAuthResponse {
+  string auth_url = 1;
+  string state = 2;
+}
+
+message ExchangeCodeRequest {
+  string code = 1;
+  string state = 2;
+}
+message ExchangeCodeResponse {
+  string access_token = 1; // returned for prototype visibility; prod will not return token
+  GitHubUser user = 2;
+}
+
+message GetGitHubUserRequest {}
+message GitHubUser {
+  int64 id = 1;
+  string login = 2;
+  string name = 3;
+  string avatar_url = 4;
+  string email = 5;
+  string html_url = 6;
+}
+
+message ListGitHubReposRequest {
+  uint32 per_page = 1; // default 30
+  uint32 page = 2;
+}
+message ListGitHubReposResponse {
+  repeated GitHubRepo repos = 1;
+}
+
+message GitHubRepo {
+  int64 id = 1;
+  string name = 2;
+  string full_name = 3;
+  bool private = 4;
+  string html_url = 5;
+  string description = 6;
+  string language = 7;
+  int32 stargazers_count = 8;
+  string updated_at = 9;
+}
+
+message LogoutRequest {}
+message LogoutResponse {}

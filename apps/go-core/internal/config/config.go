@@ -14,16 +14,27 @@ type Config struct {
 	DbPath   string
 	Token    string
 	LogLevel string
+	// GitHub OAuth prototype (env GITHUB_*)
+	GithubClientID     string
+	GithubClientSecret string
+	GithubRedirectPort string // e.g. "53682"
+	GithubRedirectPath string // e.g. "/callback"
+	GithubScopes       string // e.g. "read:user repo"
 }
 
 // Load returns Config with defaults and env overrides.
 func Load() Config {
 	cfg := Config{
-		GrpcAddr: getEnv("SINGULARITREE_GRPC_ADDR", "127.0.0.1:0"),
-		HttpAddr: getEnv("SINGULARITREE_HTTP_ADDR", "127.0.0.1:0"),
-		DbPath:   getEnv("SINGULARITREE_DB_PATH", defaultDbPath()),
-		Token:    os.Getenv("SINGULARITREE_TOKEN"),
-		LogLevel: getEnv("SINGULARITREE_LOG_LEVEL", "info"),
+		GrpcAddr:           getEnv("SINGULARITREE_GRPC_ADDR", "127.0.0.1:0"),
+		HttpAddr:           getEnv("SINGULARITREE_HTTP_ADDR", "127.0.0.1:0"),
+		DbPath:             getEnv("SINGULARITREE_DB_PATH", defaultDbPath()),
+		Token:              os.Getenv("SINGULARITREE_TOKEN"),
+		LogLevel:           getEnv("SINGULARITREE_LOG_LEVEL", "info"),
+		GithubClientID:     os.Getenv("GITHUB_CLIENT_ID"),
+		GithubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
+		GithubRedirectPort: getEnv("GITHUB_REDIRECT_PORT", "53682"),
+		GithubRedirectPath: getEnv("GITHUB_REDIRECT_PATH", "/callback"),
+		GithubScopes:       getEnv("GITHUB_SCOPES", "read:user repo"),
 	}
 	return cfg
 }
