@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package singularitree.v1;
+
+option go_package = "github.com/SingulariTree/go-core/gen/go/singularitree/v1;singularitreev1";
+
+// AppError envelope — code maps to domain error constants (domain-model.md §5, ipc-strategy.md §3)
+message AppError {
+  string code = 1;
+  string message = 2;
+  map<string, string> details = 3;
+}
+
+// Canonical error codes (enum for documentation; wire uses AppError.code string)
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  REPO_NOT_FOUND = 1;
+  NOT_A_GIT_REPO = 2;
+  COMMIT_NOT_FOUND = 3;
+  INVALID_OID = 4;
+  BRANCH_NOT_FOUND = 5;
+  BRANCH_EXISTS = 6;
+  DETACHED_HEAD = 7;
+  IPC_UNAVAILABLE = 8;
+  GO_CORE_UNAVAILABLE = 9;
+  QUEUE_FULL = 10;
+  STAGE_FAILED = 11;
+  COMMIT_FAILED = 12;
+  CHECKOUT_FAILED = 13;
+  FETCH_FAILED = 14;
+  PUSH_FAILED = 15;
+  DIFF_FAILED = 16;
+  WATCH_FAILED = 17;
+  UNAUTHENTICATED = 18;
+}

@@ -1,0 +1,35 @@
+{
+  "name": "@singularitree/angular",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SingulariTree Angular 21 renderer — zoneless, standalone, signals",
+  "type": "module",
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve",
+    "build": "ng build",
+    "watch": "ng build --watch --configuration development",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@angular/cdk": "^21.2.6",
+    "@angular/common": "^21.2.8",
+    "@angular/compiler": "^21.2.8",
+    "@angular/core": "^21.2.8",
+    "@angular/forms": "^21.2.8",
+    "@angular/material": "^21.2.6",
+    "@angular/platform-browser": "^21.2.8",
+    "@angular/router": "^21.2.8",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0"
+  },
+  "devDependencies": {
+    "@angular/build": "^21.2.7",
+    "@angular/cli": "^21.2.7",
+    "@angular/compiler-cli": "^21.2.8",
+    "typescript": "~5.9.3",
+    "vitest": "^4.0.16",
+    "@types/node": "^22.10.2"
+  }
+}

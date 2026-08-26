@@ -1,0 +1,32 @@
+/* SingulariTree global styles — Tailwind placeholder + base */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global resets and design tokens — dark shell */
+:root {
+  --st-color-bg: #1e1e2e;
+  --st-color-surface: #252536;
+  --st-color-border: #2f2f44;
+  --st-color-text: #d6d6de;
+  --st-color-accent: #0a84ff;
+  --left-w: 260px;
+  --right-w: 320px;
+  --header-h: 48px;
+  --toolbar-h: 44px;
+  --bottom-h: 260px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  background: var(--st-color-bg);
+  color: var(--st-color-text);
+  overflow: hidden;
+}

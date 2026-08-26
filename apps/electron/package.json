@@ -1,0 +1,26 @@
+{
+  "name": "@singularitree/electron",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SingulariTree Electron shell — window lifecycle, IPC gateway, supervisor",
+  "main": "dist/main/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "npm run build && cross-env MOCK_GO_CORE=1 ELECTRON_START_URL=http://localhost:4200 electron .",
+    "start:dev": "npm run build && cross-env MOCK_GO_CORE=1 ELECTRON_START_URL=http://localhost:4200 electron .",
+    "start:prod": "npm run build && electron .",
+    "start:wait": "wait-on http://localhost:4200 && npm run start:dev",
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json --watch"
+  },
+  "dependencies": {
+    "electron": "^32.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "cross-env": "^10.1.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "~5.9.3",
+    "wait-on": "^9.1.0"
+  }
+}

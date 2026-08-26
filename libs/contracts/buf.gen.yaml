@@ -1,0 +1,17 @@
+version: v2
+managed:
+  enabled: true
+  disable:
+    - buf.build/googleapis
+plugins:
+  - remote: buf.build/protocolbuffers/go
+    out: gen/go
+    opt: paths=source_relative
+  - remote: buf.build/grpc/go
+    out: gen/go
+    opt: paths=source_relative
+  - remote: buf.build/community/stephenh-ts-proto
+    out: gen/ts
+    opt: esModuleInterop=true,outputServices=generic-definitions,useExactTypes=false
+# Generation not run in scaffold; placeholders kept as .gitkeep.
+# Run: buf generate --template buf.gen.yaml

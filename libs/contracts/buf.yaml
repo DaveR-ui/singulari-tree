@@ -1,0 +1,12 @@
+version: v2
+name: buf.build/singularitree/contracts
+# Also aliased as gitclient.v1 for compatibility (see proto package comments).
+lint:
+  use:
+    - STANDARD
+  except:
+    - PACKAGE_DIRECTORY_MATCH
+    - PACKAGE_VERSION_SUFFIX
+breaking:
+  use:
+    - FILE

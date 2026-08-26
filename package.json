@@ -1,0 +1,29 @@
+{
+  "name": "singularitree",
+  "private": true,
+  "version": "0.1.0",
+  "description": "SingulariTree monorepo — Angular + Electron + Go core + ui-kit + contracts",
+  "workspaces": [
+    "apps/angular",
+    "apps/electron",
+    "libs/contracts",
+    "libs/ui-kit"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "concurrently --kill-others --names \"angular,electron\" \"npm run start --workspace=@singularitree/angular\" \"npm run start:wait --workspace=@singularitree/electron\"",
+    "start:electron-only": "npm run start:dev --workspace=@singularitree/electron",
+    "build": "npm run build --workspaces --if-present",
+    "gen:contracts": "npm run gen --workspace=@singularitree/contracts"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "wait-on": "^9.1.0"
+  },
+  "allowScripts": {
+    "electron@32.3.3": true,
+    "esbuild@0.28.1": true
+  }
+}

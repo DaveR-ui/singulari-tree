@@ -1,0 +1,30 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "delivery",
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "reserved": 10000
+  },
+  "references": {
+    "docs-context": {
+      "path": "docs/context",
+      "description": "Strategic project context (architecture, rules, business logic, permission system, naming). Read on demand to understand the codebase or domain rules."
+    },
+    "docs-protocols": {
+      "path": "docs/protocols",
+      "description": "Project-specific protocols and templates (e.g. api-endpoint-factory). Read on demand when a task matches a known recipe."
+    },
+    "opencode-protocols": {
+      "path": ".opencode/protocols",
+      "description": "Agent protocols (prompt-pipeline, agent-installer, broad-investigation-template). Read on demand for convention reference."
+    }
+  },
+  "permission": {
+    "question": "ask"
+  },
+  "instructions": [
+    "docs/project.md",
+    ".opencode/protocols/prompt-pipeline.md"
+  ]
+}
