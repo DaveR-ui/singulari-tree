@@ -14,22 +14,17 @@ export type {
   Repository,
   FileStatus,
   Diff,
+  Lane,
+  RefLabel,
 } from '@contracts/domain';
 
-// Angular-only view type. The contract has no `Lane` message: ADR-008 computes real
-// lanes in Go (Phase 1), so the renderer keeps a local, presentation-only shape.
-export interface Lane {
-  index: number;
-  color: string;
-  continues: boolean;
-}
+import type { Commit, Lane, RefLabel } from '@contracts/domain';
 
-// View model — joins Commit + computed lane + branches pointing at it (presentation only).
-import type { Commit } from '@contracts/domain';
-
+// Angular-only view model: a commit joined with its Go-computed lane (ADR-008)
+// and the ref decorations pointing at it. Presentation-only, no extra state.
 export interface CommitRow {
   commit: Commit;
   lane: Lane;
-  branches: string[];
+  refs: RefLabel[];
   isHead: boolean;
 }

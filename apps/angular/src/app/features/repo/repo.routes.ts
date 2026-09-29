@@ -1,10 +1,10 @@
 import { Routes } from '@angular/router';
-import { RepoService } from './repo.service';
+import { GraphStore } from './graph/graph.store';
 
 export const REPO_ROUTES: Routes = [
   {
     path: '',
-    providers: [RepoService],
+    providers: [GraphStore],
     loadComponent: () => import('./page/repo-page').then((m) => m.RepoPage),
   },
 ];

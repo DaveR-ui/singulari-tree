@@ -9,8 +9,8 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "ng test --no-watch",
+    "test:watch": "ng test"
   },
   "dependencies": {
     "@angular/cdk": "^21.2.6",
@@ -30,6 +30,7 @@
     "@angular/compiler-cli": "^21.2.8",
     "typescript": "~5.9.3",
     "vitest": "^4.0.16",
-    "@types/node": "^22.10.2"
+    "@types/node": "^22.10.2",
+    "jsdom": "^30.1.1"
   }
 }
