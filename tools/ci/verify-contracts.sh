@@ -13,28 +13,11 @@ buf lint
 
 if git -C "$ROOT" rev-parse --verify main >/dev/null 2>&1; then
   echo "Running buf breaking against main..."
-  BREAK_LOG="$(mktemp)"
-  BREAK_STATUS=0
-  if ! buf breaking --against "$ROOT/.git#branch=main" >"$BREAK_LOG" 2>&1; then
-    # TODO(phase-1): drop the baseline-compile tolerance once main carries
-    # compiling protos. The pre-Phase-0 baseline on main has unresolved proto
-    # imports and cannot be compiled by buf, so breaking detection is impossible
-    # against it. Report the real breaking violations, but tolerate a baseline
-    # that simply won't build.
-    if grep -qiE 'imported file does not exist|cannot find|expected message type' "$BREAK_LOG"; then
-      echo "WARN: baseline (main) protos do not compile — breaking check skipped" >&2
-      cat "$BREAK_LOG" >&2 || true
-    else
-      echo "Breaking changes detected!" >&2
-      cat "$BREAK_LOG" >&2 || true
-      BREAK_STATUS=1
-    fi
-  fi
-  # Remove the log on every path (including the breaking failure) before exiting.
-  rm -f "$BREAK_LOG"
-  if [ "$BREAK_STATUS" -ne 0 ]; then
-    exit 1
-  fi
+  # The proto module lives in libs/contracts (buf.yaml `modules[].path: proto`),
+  # so the git reference must point at that subdirectory. Without `subdir=` buf
+  # would compile the ref *root* as a module and emit spurious "imported file
+  # does not exist" errors instead of comparing the module.
+  buf breaking --against "$ROOT/.git#branch=main,subdir=libs/contracts"
 else
   echo "No main branch — skipping breaking check"
 fi
