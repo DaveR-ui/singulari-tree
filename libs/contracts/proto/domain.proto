@@ -25,6 +25,12 @@ message RefName {
   string raw = 1;
 }
 
+// Value object: ref decoration attached to a commit (graph labels).
+message RefLabel {
+  string name = 1; // short label, e.g. "main", "origin/main", "v1.0.0"
+  string kind = 2; // "head" | "branch" | "remote" | "tag"
+}
+
 // Entity: commit (immutable, DAG)
 message Commit {
   Oid oid = 1;
@@ -34,6 +40,14 @@ message Commit {
   string message = 5;
   Oid tree_oid = 6;
   string committed_at = 7; // RFC3339
+  repeated RefLabel refs = 8; // ref decorations pointing at this commit (may be empty)
+}
+
+// Value object: lane assignment for one commit row (computed in Go, ADR-008).
+message Lane {
+  int32 index = 1;     // lane/column index
+  int32 color = 2;     // palette slot (renderer maps to a CSS color)
+  bool continues = 3;  // lane continues past this row
 }
 
 // Entity: branch (local or remote)

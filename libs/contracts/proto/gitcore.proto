@@ -56,6 +56,9 @@ message GetCommitsRequest {
 message GetCommitsResponse {
   repeated Commit commits = 1;
   uint32 total = 2;
+  // Parallel-array contract: lanes is index-aligned with commits, i.e.
+  // lanes[i] is the lane assignment for commits[i]; both arrays share length.
+  repeated Lane lanes = 3; // parallel to `commits`: lanes[i] belongs to commits[i]
 }
 message StreamCommitsRequest {
   string repo_id = 1;

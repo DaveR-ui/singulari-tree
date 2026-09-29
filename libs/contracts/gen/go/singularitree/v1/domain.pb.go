@@ -180,6 +180,59 @@ func (x *RefName) GetRaw() string {
 	return ""
 }
 
+// Value object: ref decoration attached to a commit (graph labels).
+type RefLabel struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"` // short label, e.g. "main", "origin/main", "v1.0.0"
+	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"` // "head" | "branch" | "remote" | "tag"
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RefLabel) Reset() {
+	*x = RefLabel{}
+	mi := &file_domain_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RefLabel) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RefLabel) ProtoMessage() {}
+
+func (x *RefLabel) ProtoReflect() protoreflect.Message {
+	mi := &file_domain_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RefLabel.ProtoReflect.Descriptor instead.
+func (*RefLabel) Descriptor() ([]byte, []int) {
+	return file_domain_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *RefLabel) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *RefLabel) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
 // Entity: commit (immutable, DAG)
 type Commit struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -190,13 +243,14 @@ type Commit struct {
 	Message       string                 `protobuf:"bytes,5,opt,name=message,proto3" json:"message,omitempty"`
 	TreeOid       *Oid                   `protobuf:"bytes,6,opt,name=tree_oid,json=treeOid,proto3" json:"tree_oid,omitempty"`
 	CommittedAt   string                 `protobuf:"bytes,7,opt,name=committed_at,json=committedAt,proto3" json:"committed_at,omitempty"` // RFC3339
+	Refs          []*RefLabel            `protobuf:"bytes,8,rep,name=refs,proto3" json:"refs,omitempty"`                                  // ref decorations pointing at this commit (may be empty)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Commit) Reset() {
 	*x = Commit{}
-	mi := &file_domain_proto_msgTypes[3]
+	mi := &file_domain_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -208,7 +262,7 @@ func (x *Commit) String() string {
 func (*Commit) ProtoMessage() {}
 
 func (x *Commit) ProtoReflect() protoreflect.Message {
-	mi := &file_domain_proto_msgTypes[3]
+	mi := &file_domain_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -221,7 +275,7 @@ func (x *Commit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Commit.ProtoReflect.Descriptor instead.
 func (*Commit) Descriptor() ([]byte, []int) {
-	return file_domain_proto_rawDescGZIP(), []int{3}
+	return file_domain_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Commit) GetOid() *Oid {
@@ -273,6 +327,74 @@ func (x *Commit) GetCommittedAt() string {
 	return ""
 }
 
+func (x *Commit) GetRefs() []*RefLabel {
+	if x != nil {
+		return x.Refs
+	}
+	return nil
+}
+
+// Value object: lane assignment for one commit row (computed in Go, ADR-008).
+type Lane struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Index         int32                  `protobuf:"varint,1,opt,name=index,proto3" json:"index,omitempty"`         // lane/column index
+	Color         int32                  `protobuf:"varint,2,opt,name=color,proto3" json:"color,omitempty"`         // palette slot (renderer maps to a CSS color)
+	Continues     bool                   `protobuf:"varint,3,opt,name=continues,proto3" json:"continues,omitempty"` // lane continues past this row
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Lane) Reset() {
+	*x = Lane{}
+	mi := &file_domain_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Lane) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Lane) ProtoMessage() {}
+
+func (x *Lane) ProtoReflect() protoreflect.Message {
+	mi := &file_domain_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Lane.ProtoReflect.Descriptor instead.
+func (*Lane) Descriptor() ([]byte, []int) {
+	return file_domain_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *Lane) GetIndex() int32 {
+	if x != nil {
+		return x.Index
+	}
+	return 0
+}
+
+func (x *Lane) GetColor() int32 {
+	if x != nil {
+		return x.Color
+	}
+	return 0
+}
+
+func (x *Lane) GetContinues() bool {
+	if x != nil {
+		return x.Continues
+	}
+	return false
+}
+
 // Entity: branch (local or remote)
 type Branch struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -288,7 +410,7 @@ type Branch struct {
 
 func (x *Branch) Reset() {
 	*x = Branch{}
-	mi := &file_domain_proto_msgTypes[4]
+	mi := &file_domain_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -300,7 +422,7 @@ func (x *Branch) String() string {
 func (*Branch) ProtoMessage() {}
 
 func (x *Branch) ProtoReflect() protoreflect.Message {
-	mi := &file_domain_proto_msgTypes[4]
+	mi := &file_domain_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -313,7 +435,7 @@ func (x *Branch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Branch.ProtoReflect.Descriptor instead.
 func (*Branch) Descriptor() ([]byte, []int) {
-	return file_domain_proto_rawDescGZIP(), []int{4}
+	return file_domain_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Branch) GetName() string {
@@ -370,7 +492,7 @@ type Remote struct {
 
 func (x *Remote) Reset() {
 	*x = Remote{}
-	mi := &file_domain_proto_msgTypes[5]
+	mi := &file_domain_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -382,7 +504,7 @@ func (x *Remote) String() string {
 func (*Remote) ProtoMessage() {}
 
 func (x *Remote) ProtoReflect() protoreflect.Message {
-	mi := &file_domain_proto_msgTypes[5]
+	mi := &file_domain_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -395,7 +517,7 @@ func (x *Remote) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Remote.ProtoReflect.Descriptor instead.
 func (*Remote) Descriptor() ([]byte, []int) {
-	return file_domain_proto_rawDescGZIP(), []int{5}
+	return file_domain_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Remote) GetName() string {
@@ -434,7 +556,7 @@ type Tag struct {
 
 func (x *Tag) Reset() {
 	*x = Tag{}
-	mi := &file_domain_proto_msgTypes[6]
+	mi := &file_domain_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -446,7 +568,7 @@ func (x *Tag) String() string {
 func (*Tag) ProtoMessage() {}
 
 func (x *Tag) ProtoReflect() protoreflect.Message {
-	mi := &file_domain_proto_msgTypes[6]
+	mi := &file_domain_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -459,7 +581,7 @@ func (x *Tag) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Tag.ProtoReflect.Descriptor instead.
 func (*Tag) Descriptor() ([]byte, []int) {
-	return file_domain_proto_rawDescGZIP(), []int{6}
+	return file_domain_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *Tag) GetName() string {
@@ -517,7 +639,7 @@ type Stash struct {
 
 func (x *Stash) Reset() {
 	*x = Stash{}
-	mi := &file_domain_proto_msgTypes[7]
+	mi := &file_domain_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -529,7 +651,7 @@ func (x *Stash) String() string {
 func (*Stash) ProtoMessage() {}
 
 func (x *Stash) ProtoReflect() protoreflect.Message {
-	mi := &file_domain_proto_msgTypes[7]
+	mi := &file_domain_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -542,7 +664,7 @@ func (x *Stash) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Stash.ProtoReflect.Descriptor instead.
 func (*Stash) Descriptor() ([]byte, []int) {
-	return file_domain_proto_rawDescGZIP(), []int{7}
+	return file_domain_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Stash) GetIndex() int32 {
@@ -586,7 +708,7 @@ type Worktree struct {
 
 func (x *Worktree) Reset() {
 	*x = Worktree{}
-	mi := &file_domain_proto_msgTypes[8]
+	mi := &file_domain_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -598,7 +720,7 @@ func (x *Worktree) String() string {
 func (*Worktree) ProtoMessage() {}
 
 func (x *Worktree) ProtoReflect() protoreflect.Message {
-	mi := &file_domain_proto_msgTypes[8]
+	mi := &file_domain_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -611,7 +733,7 @@ func (x *Worktree) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Worktree.ProtoReflect.Descriptor instead.
 func (*Worktree) Descriptor() ([]byte, []int) {
-	return file_domain_proto_rawDescGZIP(), []int{8}
+	return file_domain_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *Worktree) GetFsPath() string {
@@ -657,7 +779,7 @@ type Repository struct {
 
 func (x *Repository) Reset() {
 	*x = Repository{}
-	mi := &file_domain_proto_msgTypes[9]
+	mi := &file_domain_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -669,7 +791,7 @@ func (x *Repository) String() string {
 func (*Repository) ProtoMessage() {}
 
 func (x *Repository) ProtoReflect() protoreflect.Message {
-	mi := &file_domain_proto_msgTypes[9]
+	mi := &file_domain_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -682,7 +804,7 @@ func (x *Repository) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Repository.ProtoReflect.Descriptor instead.
 func (*Repository) Descriptor() ([]byte, []int) {
-	return file_domain_proto_rawDescGZIP(), []int{9}
+	return file_domain_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Repository) GetId() string {
@@ -739,7 +861,7 @@ type DiffLine struct {
 
 func (x *DiffLine) Reset() {
 	*x = DiffLine{}
-	mi := &file_domain_proto_msgTypes[10]
+	mi := &file_domain_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -751,7 +873,7 @@ func (x *DiffLine) String() string {
 func (*DiffLine) ProtoMessage() {}
 
 func (x *DiffLine) ProtoReflect() protoreflect.Message {
-	mi := &file_domain_proto_msgTypes[10]
+	mi := &file_domain_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -764,7 +886,7 @@ func (x *DiffLine) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiffLine.ProtoReflect.Descriptor instead.
 func (*DiffLine) Descriptor() ([]byte, []int) {
-	return file_domain_proto_rawDescGZIP(), []int{10}
+	return file_domain_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *DiffLine) GetKind() string {
@@ -801,7 +923,7 @@ type Hunk struct {
 
 func (x *Hunk) Reset() {
 	*x = Hunk{}
-	mi := &file_domain_proto_msgTypes[11]
+	mi := &file_domain_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -813,7 +935,7 @@ func (x *Hunk) String() string {
 func (*Hunk) ProtoMessage() {}
 
 func (x *Hunk) ProtoReflect() protoreflect.Message {
-	mi := &file_domain_proto_msgTypes[11]
+	mi := &file_domain_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -826,7 +948,7 @@ func (x *Hunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Hunk.ProtoReflect.Descriptor instead.
 func (*Hunk) Descriptor() ([]byte, []int) {
-	return file_domain_proto_rawDescGZIP(), []int{11}
+	return file_domain_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *Hunk) GetFromStart() int32 {
@@ -879,7 +1001,7 @@ type Diff struct {
 
 func (x *Diff) Reset() {
 	*x = Diff{}
-	mi := &file_domain_proto_msgTypes[12]
+	mi := &file_domain_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -891,7 +1013,7 @@ func (x *Diff) String() string {
 func (*Diff) ProtoMessage() {}
 
 func (x *Diff) ProtoReflect() protoreflect.Message {
-	mi := &file_domain_proto_msgTypes[12]
+	mi := &file_domain_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -904,7 +1026,7 @@ func (x *Diff) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Diff.ProtoReflect.Descriptor instead.
 func (*Diff) Descriptor() ([]byte, []int) {
-	return file_domain_proto_rawDescGZIP(), []int{12}
+	return file_domain_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *Diff) GetFrom() *Oid {
@@ -970,7 +1092,7 @@ type FileStatus struct {
 
 func (x *FileStatus) Reset() {
 	*x = FileStatus{}
-	mi := &file_domain_proto_msgTypes[13]
+	mi := &file_domain_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -982,7 +1104,7 @@ func (x *FileStatus) String() string {
 func (*FileStatus) ProtoMessage() {}
 
 func (x *FileStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_domain_proto_msgTypes[13]
+	mi := &file_domain_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -995,7 +1117,7 @@ func (x *FileStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileStatus.ProtoReflect.Descriptor instead.
 func (*FileStatus) Descriptor() ([]byte, []int) {
-	return file_domain_proto_rawDescGZIP(), []int{13}
+	return file_domain_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *FileStatus) GetPath() string {
@@ -1046,7 +1168,10 @@ const file_domain_proto_rawDesc = "" +
 	"\x05email\x18\x02 \x01(\tR\x05email\x12\x12\n" +
 	"\x04when\x18\x03 \x01(\tR\x04when\"\x1b\n" +
 	"\aRefName\x12\x10\n" +
-	"\x03raw\x18\x01 \x01(\tR\x03raw\"\xc1\x02\n" +
+	"\x03raw\x18\x01 \x01(\tR\x03raw\"2\n" +
+	"\bRefLabel\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\"\xf1\x02\n" +
 	"\x06Commit\x12'\n" +
 	"\x03oid\x18\x01 \x01(\v2\x15.singularitree.v1.OidR\x03oid\x12/\n" +
 	"\aparents\x18\x02 \x03(\v2\x15.singularitree.v1.OidR\aparents\x123\n" +
@@ -1054,7 +1179,12 @@ const file_domain_proto_rawDesc = "" +
 	"\tcommitter\x18\x04 \x01(\v2\x1b.singularitree.v1.SignatureR\tcommitter\x12\x18\n" +
 	"\amessage\x18\x05 \x01(\tR\amessage\x120\n" +
 	"\btree_oid\x18\x06 \x01(\v2\x15.singularitree.v1.OidR\atreeOid\x12!\n" +
-	"\fcommitted_at\x18\a \x01(\tR\vcommittedAt\"\xb8\x01\n" +
+	"\fcommitted_at\x18\a \x01(\tR\vcommittedAt\x12.\n" +
+	"\x04refs\x18\b \x03(\v2\x1a.singularitree.v1.RefLabelR\x04refs\"P\n" +
+	"\x04Lane\x12\x14\n" +
+	"\x05index\x18\x01 \x01(\x05R\x05index\x12\x14\n" +
+	"\x05color\x18\x02 \x01(\x05R\x05color\x12\x1c\n" +
+	"\tcontinues\x18\x03 \x01(\bR\tcontinues\"\xb8\x01\n" +
 	"\x06Branch\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x19\n" +
 	"\bref_name\x18\x02 \x01(\tR\arefName\x12'\n" +
@@ -1137,22 +1267,24 @@ func file_domain_proto_rawDescGZIP() []byte {
 	return file_domain_proto_rawDescData
 }
 
-var file_domain_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_domain_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_domain_proto_goTypes = []any{
 	(*Oid)(nil),        // 0: singularitree.v1.Oid
 	(*Signature)(nil),  // 1: singularitree.v1.Signature
 	(*RefName)(nil),    // 2: singularitree.v1.RefName
-	(*Commit)(nil),     // 3: singularitree.v1.Commit
-	(*Branch)(nil),     // 4: singularitree.v1.Branch
-	(*Remote)(nil),     // 5: singularitree.v1.Remote
-	(*Tag)(nil),        // 6: singularitree.v1.Tag
-	(*Stash)(nil),      // 7: singularitree.v1.Stash
-	(*Worktree)(nil),   // 8: singularitree.v1.Worktree
-	(*Repository)(nil), // 9: singularitree.v1.Repository
-	(*DiffLine)(nil),   // 10: singularitree.v1.DiffLine
-	(*Hunk)(nil),       // 11: singularitree.v1.Hunk
-	(*Diff)(nil),       // 12: singularitree.v1.Diff
-	(*FileStatus)(nil), // 13: singularitree.v1.FileStatus
+	(*RefLabel)(nil),   // 3: singularitree.v1.RefLabel
+	(*Commit)(nil),     // 4: singularitree.v1.Commit
+	(*Lane)(nil),       // 5: singularitree.v1.Lane
+	(*Branch)(nil),     // 6: singularitree.v1.Branch
+	(*Remote)(nil),     // 7: singularitree.v1.Remote
+	(*Tag)(nil),        // 8: singularitree.v1.Tag
+	(*Stash)(nil),      // 9: singularitree.v1.Stash
+	(*Worktree)(nil),   // 10: singularitree.v1.Worktree
+	(*Repository)(nil), // 11: singularitree.v1.Repository
+	(*DiffLine)(nil),   // 12: singularitree.v1.DiffLine
+	(*Hunk)(nil),       // 13: singularitree.v1.Hunk
+	(*Diff)(nil),       // 14: singularitree.v1.Diff
+	(*FileStatus)(nil), // 15: singularitree.v1.FileStatus
 }
 var file_domain_proto_depIdxs = []int32{
 	0,  // 0: singularitree.v1.Commit.oid:type_name -> singularitree.v1.Oid
@@ -1160,20 +1292,21 @@ var file_domain_proto_depIdxs = []int32{
 	1,  // 2: singularitree.v1.Commit.author:type_name -> singularitree.v1.Signature
 	1,  // 3: singularitree.v1.Commit.committer:type_name -> singularitree.v1.Signature
 	0,  // 4: singularitree.v1.Commit.tree_oid:type_name -> singularitree.v1.Oid
-	0,  // 5: singularitree.v1.Branch.tip:type_name -> singularitree.v1.Oid
-	0,  // 6: singularitree.v1.Tag.target:type_name -> singularitree.v1.Oid
-	1,  // 7: singularitree.v1.Tag.tagger:type_name -> singularitree.v1.Signature
-	0,  // 8: singularitree.v1.Stash.oid:type_name -> singularitree.v1.Oid
-	0,  // 9: singularitree.v1.Worktree.head:type_name -> singularitree.v1.Oid
-	10, // 10: singularitree.v1.Hunk.lines:type_name -> singularitree.v1.DiffLine
-	0,  // 11: singularitree.v1.Diff.from:type_name -> singularitree.v1.Oid
-	0,  // 12: singularitree.v1.Diff.to:type_name -> singularitree.v1.Oid
-	11, // 13: singularitree.v1.Diff.hunks:type_name -> singularitree.v1.Hunk
-	14, // [14:14] is the sub-list for method output_type
-	14, // [14:14] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	3,  // 5: singularitree.v1.Commit.refs:type_name -> singularitree.v1.RefLabel
+	0,  // 6: singularitree.v1.Branch.tip:type_name -> singularitree.v1.Oid
+	0,  // 7: singularitree.v1.Tag.target:type_name -> singularitree.v1.Oid
+	1,  // 8: singularitree.v1.Tag.tagger:type_name -> singularitree.v1.Signature
+	0,  // 9: singularitree.v1.Stash.oid:type_name -> singularitree.v1.Oid
+	0,  // 10: singularitree.v1.Worktree.head:type_name -> singularitree.v1.Oid
+	12, // 11: singularitree.v1.Hunk.lines:type_name -> singularitree.v1.DiffLine
+	0,  // 12: singularitree.v1.Diff.from:type_name -> singularitree.v1.Oid
+	0,  // 13: singularitree.v1.Diff.to:type_name -> singularitree.v1.Oid
+	13, // 14: singularitree.v1.Diff.hunks:type_name -> singularitree.v1.Hunk
+	15, // [15:15] is the sub-list for method output_type
+	15, // [15:15] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_domain_proto_init() }
@@ -1187,7 +1320,7 @@ func file_domain_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_domain_proto_rawDesc), len(file_domain_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   14,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

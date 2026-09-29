@@ -29,6 +29,14 @@ export interface RefName {
   raw: string;
 }
 
+/** Value object: ref decoration attached to a commit (graph labels). */
+export interface RefLabel {
+  /** short label, e.g. "main", "origin/main", "v1.0.0" */
+  name: string;
+  /** "head" | "branch" | "remote" | "tag" */
+  kind: string;
+}
+
 /** Entity: commit (immutable, DAG) */
 export interface Commit {
   oid: Oid | undefined;
@@ -41,6 +49,18 @@ export interface Commit {
     | undefined;
   /** RFC3339 */
   committedAt: string;
+  /** ref decorations pointing at this commit (may be empty) */
+  refs: RefLabel[];
+}
+
+/** Value object: lane assignment for one commit row (computed in Go, ADR-008). */
+export interface Lane {
+  /** lane/column index */
+  index: number;
+  /** palette slot (renderer maps to a CSS color) */
+  color: number;
+  /** lane continues past this row */
+  continues: boolean;
 }
 
 /** Entity: branch (local or remote) */

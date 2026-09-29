@@ -5,7 +5,7 @@
 // source: gitcore.proto
 
 /* eslint-disable */
-import type { Branch, Commit, FileStatus, Remote, Repository, Signature, Stash, Tag, Worktree } from "./domain";
+import type { Branch, Commit, FileStatus, Lane, Remote, Repository, Signature, Stash, Tag, Worktree } from "./domain";
 
 export const protobufPackage = "singularitree.v1";
 
@@ -45,6 +45,11 @@ export interface GetCommitsRequest {
 export interface GetCommitsResponse {
   commits: Commit[];
   total: number;
+  /**
+   * Parallel-array contract: lanes is index-aligned with commits, i.e.
+   * lanes[i] is the lane assignment for commits[i]; both arrays share length.
+   */
+  lanes: Lane[];
 }
 
 export interface StreamCommitsRequest {

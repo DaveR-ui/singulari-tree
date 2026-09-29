@@ -349,9 +349,12 @@ func (x *GetCommitsRequest) GetLimit() uint32 {
 }
 
 type GetCommitsResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Commits       []*Commit              `protobuf:"bytes,1,rep,name=commits,proto3" json:"commits,omitempty"`
-	Total         uint32                 `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Commits []*Commit              `protobuf:"bytes,1,rep,name=commits,proto3" json:"commits,omitempty"`
+	Total   uint32                 `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	// Parallel-array contract: lanes is index-aligned with commits, i.e.
+	// lanes[i] is the lane assignment for commits[i]; both arrays share length.
+	Lanes         []*Lane `protobuf:"bytes,3,rep,name=lanes,proto3" json:"lanes,omitempty"` // parallel to `commits`: lanes[i] belongs to commits[i]
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -398,6 +401,13 @@ func (x *GetCommitsResponse) GetTotal() uint32 {
 		return x.Total
 	}
 	return 0
+}
+
+func (x *GetCommitsResponse) GetLanes() []*Lane {
+	if x != nil {
+		return x.Lanes
+	}
+	return nil
 }
 
 type StreamCommitsRequest struct {
@@ -1719,10 +1729,11 @@ const file_gitcore_proto_rawDesc = "" +
 	"\x11GetCommitsRequest\x12\x17\n" +
 	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x16\n" +
 	"\x06offset\x18\x02 \x01(\rR\x06offset\x12\x14\n" +
-	"\x05limit\x18\x03 \x01(\rR\x05limit\"^\n" +
+	"\x05limit\x18\x03 \x01(\rR\x05limit\"\x8c\x01\n" +
 	"\x12GetCommitsResponse\x122\n" +
 	"\acommits\x18\x01 \x03(\v2\x18.singularitree.v1.CommitR\acommits\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\rR\x05total\"]\n" +
+	"\x05total\x18\x02 \x01(\rR\x05total\x12,\n" +
+	"\x05lanes\x18\x03 \x03(\v2\x16.singularitree.v1.LaneR\x05lanes\"]\n" +
 	"\x14StreamCommitsRequest\x12\x17\n" +
 	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x16\n" +
 	"\x06offset\x18\x02 \x01(\rR\x06offset\x12\x14\n" +
@@ -1867,72 +1878,74 @@ var file_gitcore_proto_goTypes = []any{
 	(*FsChangedEvent)(nil),           // 34: singularitree.v1.FsChangedEvent
 	(*Repository)(nil),               // 35: singularitree.v1.Repository
 	(*Commit)(nil),                   // 36: singularitree.v1.Commit
-	(*Branch)(nil),                   // 37: singularitree.v1.Branch
-	(*Remote)(nil),                   // 38: singularitree.v1.Remote
-	(*Tag)(nil),                      // 39: singularitree.v1.Tag
-	(*Stash)(nil),                    // 40: singularitree.v1.Stash
-	(*Worktree)(nil),                 // 41: singularitree.v1.Worktree
-	(*FileStatus)(nil),               // 42: singularitree.v1.FileStatus
-	(*Signature)(nil),                // 43: singularitree.v1.Signature
-	(*Diff)(nil),                     // 44: singularitree.v1.Diff
+	(*Lane)(nil),                     // 37: singularitree.v1.Lane
+	(*Branch)(nil),                   // 38: singularitree.v1.Branch
+	(*Remote)(nil),                   // 39: singularitree.v1.Remote
+	(*Tag)(nil),                      // 40: singularitree.v1.Tag
+	(*Stash)(nil),                    // 41: singularitree.v1.Stash
+	(*Worktree)(nil),                 // 42: singularitree.v1.Worktree
+	(*FileStatus)(nil),               // 43: singularitree.v1.FileStatus
+	(*Signature)(nil),                // 44: singularitree.v1.Signature
+	(*Diff)(nil),                     // 45: singularitree.v1.Diff
 }
 var file_gitcore_proto_depIdxs = []int32{
 	35, // 0: singularitree.v1.ListRepositoriesResponse.repositories:type_name -> singularitree.v1.Repository
 	36, // 1: singularitree.v1.GetCommitsResponse.commits:type_name -> singularitree.v1.Commit
-	37, // 2: singularitree.v1.GetBranchesResponse.branches:type_name -> singularitree.v1.Branch
-	38, // 3: singularitree.v1.GetRemotesResponse.remotes:type_name -> singularitree.v1.Remote
-	39, // 4: singularitree.v1.GetTagsResponse.tags:type_name -> singularitree.v1.Tag
-	40, // 5: singularitree.v1.GetStashesResponse.stashes:type_name -> singularitree.v1.Stash
-	41, // 6: singularitree.v1.GetWorktreesResponse.worktrees:type_name -> singularitree.v1.Worktree
-	42, // 7: singularitree.v1.GetStatusResponse.files:type_name -> singularitree.v1.FileStatus
-	43, // 8: singularitree.v1.CommitRequest.author:type_name -> singularitree.v1.Signature
-	0,  // 9: singularitree.v1.GitCore.Ping:input_type -> singularitree.v1.PingRequest
-	2,  // 10: singularitree.v1.GitCore.OpenRepository:input_type -> singularitree.v1.OpenRepositoryRequest
-	3,  // 11: singularitree.v1.GitCore.GetRepository:input_type -> singularitree.v1.GetRepositoryRequest
-	4,  // 12: singularitree.v1.GitCore.ListRepositories:input_type -> singularitree.v1.ListRepositoriesRequest
-	6,  // 13: singularitree.v1.GitCore.GetCommits:input_type -> singularitree.v1.GetCommitsRequest
-	8,  // 14: singularitree.v1.GitCore.StreamCommits:input_type -> singularitree.v1.StreamCommitsRequest
-	9,  // 15: singularitree.v1.GitCore.GetBranches:input_type -> singularitree.v1.GetBranchesRequest
-	11, // 16: singularitree.v1.GitCore.GetRemotes:input_type -> singularitree.v1.GetRemotesRequest
-	13, // 17: singularitree.v1.GitCore.GetTags:input_type -> singularitree.v1.GetTagsRequest
-	15, // 18: singularitree.v1.GitCore.GetStashes:input_type -> singularitree.v1.GetStashesRequest
-	17, // 19: singularitree.v1.GitCore.GetWorktrees:input_type -> singularitree.v1.GetWorktreesRequest
-	19, // 20: singularitree.v1.GitCore.GetStatus:input_type -> singularitree.v1.GetStatusRequest
-	21, // 21: singularitree.v1.GitCore.GetDiff:input_type -> singularitree.v1.GetDiffRequest
-	22, // 22: singularitree.v1.GitCore.Stage:input_type -> singularitree.v1.StageRequest
-	24, // 23: singularitree.v1.GitCore.Unstage:input_type -> singularitree.v1.UnstageRequest
-	26, // 24: singularitree.v1.GitCore.Commit:input_type -> singularitree.v1.CommitRequest
-	27, // 25: singularitree.v1.GitCore.Checkout:input_type -> singularitree.v1.CheckoutRequest
-	29, // 26: singularitree.v1.GitCore.Fetch:input_type -> singularitree.v1.FetchRequest
-	30, // 27: singularitree.v1.GitCore.Push:input_type -> singularitree.v1.PushRequest
-	31, // 28: singularitree.v1.GitCore.Pull:input_type -> singularitree.v1.PullRequest
-	33, // 29: singularitree.v1.GitCore.Watch:input_type -> singularitree.v1.WatchRequest
-	1,  // 30: singularitree.v1.GitCore.Ping:output_type -> singularitree.v1.PingResponse
-	35, // 31: singularitree.v1.GitCore.OpenRepository:output_type -> singularitree.v1.Repository
-	35, // 32: singularitree.v1.GitCore.GetRepository:output_type -> singularitree.v1.Repository
-	5,  // 33: singularitree.v1.GitCore.ListRepositories:output_type -> singularitree.v1.ListRepositoriesResponse
-	7,  // 34: singularitree.v1.GitCore.GetCommits:output_type -> singularitree.v1.GetCommitsResponse
-	36, // 35: singularitree.v1.GitCore.StreamCommits:output_type -> singularitree.v1.Commit
-	10, // 36: singularitree.v1.GitCore.GetBranches:output_type -> singularitree.v1.GetBranchesResponse
-	12, // 37: singularitree.v1.GitCore.GetRemotes:output_type -> singularitree.v1.GetRemotesResponse
-	14, // 38: singularitree.v1.GitCore.GetTags:output_type -> singularitree.v1.GetTagsResponse
-	16, // 39: singularitree.v1.GitCore.GetStashes:output_type -> singularitree.v1.GetStashesResponse
-	18, // 40: singularitree.v1.GitCore.GetWorktrees:output_type -> singularitree.v1.GetWorktreesResponse
-	20, // 41: singularitree.v1.GitCore.GetStatus:output_type -> singularitree.v1.GetStatusResponse
-	44, // 42: singularitree.v1.GitCore.GetDiff:output_type -> singularitree.v1.Diff
-	23, // 43: singularitree.v1.GitCore.Stage:output_type -> singularitree.v1.StageResponse
-	25, // 44: singularitree.v1.GitCore.Unstage:output_type -> singularitree.v1.UnstageResponse
-	36, // 45: singularitree.v1.GitCore.Commit:output_type -> singularitree.v1.Commit
-	28, // 46: singularitree.v1.GitCore.Checkout:output_type -> singularitree.v1.CheckoutResponse
-	32, // 47: singularitree.v1.GitCore.Fetch:output_type -> singularitree.v1.Progress
-	32, // 48: singularitree.v1.GitCore.Push:output_type -> singularitree.v1.Progress
-	32, // 49: singularitree.v1.GitCore.Pull:output_type -> singularitree.v1.Progress
-	34, // 50: singularitree.v1.GitCore.Watch:output_type -> singularitree.v1.FsChangedEvent
-	30, // [30:51] is the sub-list for method output_type
-	9,  // [9:30] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	37, // 2: singularitree.v1.GetCommitsResponse.lanes:type_name -> singularitree.v1.Lane
+	38, // 3: singularitree.v1.GetBranchesResponse.branches:type_name -> singularitree.v1.Branch
+	39, // 4: singularitree.v1.GetRemotesResponse.remotes:type_name -> singularitree.v1.Remote
+	40, // 5: singularitree.v1.GetTagsResponse.tags:type_name -> singularitree.v1.Tag
+	41, // 6: singularitree.v1.GetStashesResponse.stashes:type_name -> singularitree.v1.Stash
+	42, // 7: singularitree.v1.GetWorktreesResponse.worktrees:type_name -> singularitree.v1.Worktree
+	43, // 8: singularitree.v1.GetStatusResponse.files:type_name -> singularitree.v1.FileStatus
+	44, // 9: singularitree.v1.CommitRequest.author:type_name -> singularitree.v1.Signature
+	0,  // 10: singularitree.v1.GitCore.Ping:input_type -> singularitree.v1.PingRequest
+	2,  // 11: singularitree.v1.GitCore.OpenRepository:input_type -> singularitree.v1.OpenRepositoryRequest
+	3,  // 12: singularitree.v1.GitCore.GetRepository:input_type -> singularitree.v1.GetRepositoryRequest
+	4,  // 13: singularitree.v1.GitCore.ListRepositories:input_type -> singularitree.v1.ListRepositoriesRequest
+	6,  // 14: singularitree.v1.GitCore.GetCommits:input_type -> singularitree.v1.GetCommitsRequest
+	8,  // 15: singularitree.v1.GitCore.StreamCommits:input_type -> singularitree.v1.StreamCommitsRequest
+	9,  // 16: singularitree.v1.GitCore.GetBranches:input_type -> singularitree.v1.GetBranchesRequest
+	11, // 17: singularitree.v1.GitCore.GetRemotes:input_type -> singularitree.v1.GetRemotesRequest
+	13, // 18: singularitree.v1.GitCore.GetTags:input_type -> singularitree.v1.GetTagsRequest
+	15, // 19: singularitree.v1.GitCore.GetStashes:input_type -> singularitree.v1.GetStashesRequest
+	17, // 20: singularitree.v1.GitCore.GetWorktrees:input_type -> singularitree.v1.GetWorktreesRequest
+	19, // 21: singularitree.v1.GitCore.GetStatus:input_type -> singularitree.v1.GetStatusRequest
+	21, // 22: singularitree.v1.GitCore.GetDiff:input_type -> singularitree.v1.GetDiffRequest
+	22, // 23: singularitree.v1.GitCore.Stage:input_type -> singularitree.v1.StageRequest
+	24, // 24: singularitree.v1.GitCore.Unstage:input_type -> singularitree.v1.UnstageRequest
+	26, // 25: singularitree.v1.GitCore.Commit:input_type -> singularitree.v1.CommitRequest
+	27, // 26: singularitree.v1.GitCore.Checkout:input_type -> singularitree.v1.CheckoutRequest
+	29, // 27: singularitree.v1.GitCore.Fetch:input_type -> singularitree.v1.FetchRequest
+	30, // 28: singularitree.v1.GitCore.Push:input_type -> singularitree.v1.PushRequest
+	31, // 29: singularitree.v1.GitCore.Pull:input_type -> singularitree.v1.PullRequest
+	33, // 30: singularitree.v1.GitCore.Watch:input_type -> singularitree.v1.WatchRequest
+	1,  // 31: singularitree.v1.GitCore.Ping:output_type -> singularitree.v1.PingResponse
+	35, // 32: singularitree.v1.GitCore.OpenRepository:output_type -> singularitree.v1.Repository
+	35, // 33: singularitree.v1.GitCore.GetRepository:output_type -> singularitree.v1.Repository
+	5,  // 34: singularitree.v1.GitCore.ListRepositories:output_type -> singularitree.v1.ListRepositoriesResponse
+	7,  // 35: singularitree.v1.GitCore.GetCommits:output_type -> singularitree.v1.GetCommitsResponse
+	36, // 36: singularitree.v1.GitCore.StreamCommits:output_type -> singularitree.v1.Commit
+	10, // 37: singularitree.v1.GitCore.GetBranches:output_type -> singularitree.v1.GetBranchesResponse
+	12, // 38: singularitree.v1.GitCore.GetRemotes:output_type -> singularitree.v1.GetRemotesResponse
+	14, // 39: singularitree.v1.GitCore.GetTags:output_type -> singularitree.v1.GetTagsResponse
+	16, // 40: singularitree.v1.GitCore.GetStashes:output_type -> singularitree.v1.GetStashesResponse
+	18, // 41: singularitree.v1.GitCore.GetWorktrees:output_type -> singularitree.v1.GetWorktreesResponse
+	20, // 42: singularitree.v1.GitCore.GetStatus:output_type -> singularitree.v1.GetStatusResponse
+	45, // 43: singularitree.v1.GitCore.GetDiff:output_type -> singularitree.v1.Diff
+	23, // 44: singularitree.v1.GitCore.Stage:output_type -> singularitree.v1.StageResponse
+	25, // 45: singularitree.v1.GitCore.Unstage:output_type -> singularitree.v1.UnstageResponse
+	36, // 46: singularitree.v1.GitCore.Commit:output_type -> singularitree.v1.Commit
+	28, // 47: singularitree.v1.GitCore.Checkout:output_type -> singularitree.v1.CheckoutResponse
+	32, // 48: singularitree.v1.GitCore.Fetch:output_type -> singularitree.v1.Progress
+	32, // 49: singularitree.v1.GitCore.Push:output_type -> singularitree.v1.Progress
+	32, // 50: singularitree.v1.GitCore.Pull:output_type -> singularitree.v1.Progress
+	34, // 51: singularitree.v1.GitCore.Watch:output_type -> singularitree.v1.FsChangedEvent
+	31, // [31:52] is the sub-list for method output_type
+	10, // [10:31] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_gitcore_proto_init() }
