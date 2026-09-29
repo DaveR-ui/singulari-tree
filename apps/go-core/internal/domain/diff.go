@@ -98,6 +98,9 @@ type CachePort interface {
 	// count, mirroring CommitPort.List so callers can compute hasMore. ok is
 	// false on a cache miss.
 	GetCommits(ctx context.Context, repoID RepositoryId, offset, limit int) ([]Commit, int, bool)
-	PutCommits(ctx context.Context, repoID RepositoryId, commits []Commit) error
+	// PutCommits stores a window that starts at offset together with the total
+	// reachable count known when it was read. Implementations may ignore total
+	// when their storage keys on offset alone.
+	PutCommits(ctx context.Context, repoID RepositoryId, offset, total int, commits []Commit) error
 	Invalidate(repoID RepositoryId)
 }

@@ -1,3 +1,17 @@
+---
+last_updated: 2026-09-29
+status: active
+description: Roadmap MVP de SingulariTree — objetivo de 8-10 semanas, entregables y DoD por semana; Semana 1-2 acotada a lane columns verticales (paridad de aristas diferida).
+tags:
+- roadmap
+- mvp
+- git-client
+- legacy
+version: 1.1
+related:
+- accepted-debt
+---
+
 # Roadmap MVP — 8-10 semanas
 
 > Objetivo MVP: abrir repo local existente, ver grafo/history paginado, status/stage/commit, diff Monaco, branches/tags/stashes básicos, fetch/pull/push, watcher realtime, tests automatizados. Multi-repo management parcial. Sin SSH complejo ni conflictos rebase avanzados.
@@ -34,7 +48,7 @@
 - Virtual scroll (CDK `ScrollingModule`) + infinite scroll.
 - Página `features/repo/graph`.
 
-**DoD:** abrir repo 5k commits, scroll fluido, lanes correctas vs `git log --graph --oneline` visual.
+**DoD:** abrir repo 5k commits, scroll fluido, y **columnas de lane verticales correctas** (continuidad entre ventanas garantizada por el estado per-repo en Go). La paridad visual de diagonales/cruces vs `git log --graph` queda **diferida como deuda aceptada** (ver accepted-debt) y el contrato `Lane` no cambia.
 
 ## Semana 3 — Status / Stage / Commit
 

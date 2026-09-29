@@ -3,6 +3,7 @@ package service
 import (
 	"container/heap"
 	"context"
+	"sync"
 
 	"github.com/SingulariTree/go-core/internal/domain"
 )
@@ -13,14 +14,35 @@ import (
 const lanePaletteSize = 8
 
 // GraphService owns commit graph and lanes (service-design.md §1.3).
+//
+// It keeps stateful per-repo lane layout (see WindowLanes) behind mu so a
+// scroll window's lanes match the full-history layout from HEAD. gitPort is the
+// narrow CommitLister: the service never needs the rest of the Git port.
 type GraphService struct {
-	gitPort   domain.GitPort
+	gitPort   domain.CommitLister
 	cachePort domain.CachePort
+
+	mu     sync.Mutex
+	states map[domain.RepositoryId]*repoLaneState
+}
+
+// repoLaneState is the resumable lane layout for one repository, folding
+// history from HEAD in topological order. next is the number of commits already
+// folded from the tip; lanes[i] is the lane of the commit at history position i.
+type repoLaneState struct {
+	tip    string
+	next   int
+	folder *laneFolder
+	lanes  []domain.Lane
 }
 
 // NewGraphService creates a GraphService.
-func NewGraphService(gitPort domain.GitPort, cachePort domain.CachePort) *GraphService {
-	return &GraphService{gitPort: gitPort, cachePort: cachePort}
+func NewGraphService(gitPort domain.CommitLister, cachePort domain.CachePort) *GraphService {
+	return &GraphService{
+		gitPort:   gitPort,
+		cachePort: cachePort,
+		states:    make(map[domain.RepositoryId]*repoLaneState),
+	}
 }
 
 // Commits returns windowed commits (200+100 pattern, handled by Angular GraphStore).
@@ -37,6 +59,11 @@ func (s *GraphService) Commits(ctx context.Context, repoID domain.RepositoryId, 
 	commits, total, err := s.gitPort.List(ctx, repoID, offset, limit)
 	if err != nil {
 		return nil, 0, err
+	}
+	// Write-through to the persistent cache is best-effort: a failed write must
+	// never turn a successful read into an error.
+	if s.cachePort != nil {
+		_ = s.cachePort.PutCommits(ctx, repoID, offset, total, commits)
 	}
 	return commits, total, nil
 }
@@ -86,10 +113,10 @@ func (s *GraphService) Commits(ctx context.Context, repoID domain.RepositoryId, 
 // git's column compaction (a different, larger change).
 //
 // Limitation (mid-history windows): Lanes only sees the requested window, not
-// its ancestors. For offset>0 the oldest commits in the window have parents
-// outside the window; those edges are dropped (Continues=false) and the exact
-// `git log --graph` column layout can differ because git walks the full history
-// from HEAD.
+// its ancestors, so for offset>0 the oldest commits have parents outside the
+// window and those edges are dropped (Continues=false). Callers serving
+// paginated windows should use WindowLanes, which folds the full history from
+// HEAD and keeps columns continuous across windows.
 func (s *GraphService) Lanes(_ context.Context, _ domain.RepositoryId, commits []domain.Commit) ([]domain.Lane, error) {
 	n := len(commits)
 	lanes := make([]domain.Lane, n)
@@ -101,104 +128,231 @@ func (s *GraphService) Lanes(_ context.Context, _ domain.RepositoryId, commits [
 	for i := range commits {
 		inWindow[commits[i].Oid.Hex] = struct{}{}
 	}
-
-	var slots []laneSlot
-	waiting := make(map[string]int) // oid hex -> slot index expecting it
-	free := &intHeap{}
-	heap.Init(free)
-
-	alloc := func() int {
-		if free.Len() > 0 {
-			idx := heap.Pop(free).(int)
-			slots[idx].inUse = true
-			return idx
-		}
-		slots = append(slots, laneSlot{inUse: true})
-		return len(slots) - 1
-	}
-	release := func(idx int) {
-		if idx < 0 || idx >= len(slots) || !slots[idx].inUse {
-			return
-		}
-		if slots[idx].expected != "" {
-			delete(waiting, slots[idx].expected)
-		}
-		slots[idx] = laneSlot{}
-		heap.Push(free, idx)
-	}
-	expect := func(idx int, oidHex string) {
-		slots[idx].expected = oidHex
-		waiting[oidHex] = idx
+	present := func(hex string) bool {
+		_, ok := inWindow[hex]
+		return ok
 	}
 
+	folder := newLaneFolder(present)
 	for i := range commits {
-		c := &commits[i]
+		lanes[i] = folder.fold(&commits[i])
+	}
+	return lanes, nil
+}
 
-		idx, expected := waiting[c.Oid.Hex]
-		if expected {
-			delete(waiting, c.Oid.Hex)
-		} else {
-			idx = alloc()
-		}
+// windowCatchUpChunk bounds how many prefix commits are fetched and folded per
+// Git call while resuming a window.
+const windowCatchUpChunk = 1000
 
-		lanes[i] = domain.Lane{Index: idx, Color: idx % lanePaletteSize}
-
-		parents := c.Parents
-		if len(parents) == 0 {
-			release(idx)
-			continue
-		}
-
-		// Whether the commit draws at least one downward edge inside the window.
-		continues := false
-		for _, p := range parents {
-			if _, ok := inWindow[p.Hex]; ok {
-				continues = true
-				break
-			}
-		}
-		lanes[i].Continues = continues
-
-		// Reserve lanes for extra parents (merge/octopus) while idx is still
-		// held, so a released idx is not immediately reused by a sibling branch.
-		for _, p := range parents[1:] {
-			ph := p.Hex
-			if _, ok := inWindow[ph]; !ok {
-				continue
-			}
-			if _, ok := waiting[ph]; ok {
-				continue // another lane already expects this parent
-			}
-			expect(alloc(), ph)
-		}
-
-		// First parent continues the line in this slot. If another lane already
-		// expects it, the two lanes converge: `git log --graph` preserves the
-		// leftmost (lowest-indexed) column and folds the other lane into it.
-		// So keep whichever of idx/other is smaller and release the other.
-		first := parents[0].Hex
-		if _, ok := inWindow[first]; !ok {
-			release(idx)
-			continue
-		}
-		if other, ok := waiting[first]; ok && other != idx {
-			if other < idx {
-				// The parent's existing (leftmost) lane wins; the current
-				// lane folds into it and is released. lanes[i].Index keeps the
-				// column the commit itself was drawn in.
-				release(idx)
-				idx = other
-			} else {
-				// The current lane is leftmost; it keeps the parent and the
-				// other lane is released. release(other) deletes
-				// waiting[first]; expect(idx, first) below re-adds it here.
-				release(other)
-			}
-		}
-		expect(idx, first)
+// WindowLanes lays out one window of commits while keeping lane columns
+// continuous with the full history from HEAD. Unlike the pure, window-local
+// Lanes it folds commits from the tip in order and remembers the slot state per
+// repository, so the same commit always lands in the same column no matter
+// which scroll window requested it (no per-window re-layout seams).
+//
+// offset is the commit's index in the topological history from HEAD and commits
+// must be the contiguous window starting at offset. The returned slice is a
+// fresh copy and never aliases internal state.
+//
+// When the Git port is unavailable, or history cannot be fetched, it falls back
+// to the pure Lanes for the given window. In the stateful path a commit is
+// considered to continue whenever it has at least one parent: the full history
+// from HEAD is folded, so a parent is always eventually shown and its lane is
+// reserved unconditionally.
+func (s *GraphService) WindowLanes(ctx context.Context, repoID domain.RepositoryId, commits []domain.Commit, offset int) ([]domain.Lane, error) {
+	if s.gitPort == nil {
+		return s.Lanes(ctx, repoID, commits)
+	}
+	if len(commits) == 0 {
+		return []domain.Lane{}, nil
 	}
 
-	return lanes, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	st := s.states[repoID]
+
+	// At the tip of history (offset 0) or with no state yet, (re)anchor the
+	// layout to the current HEAD so a moved tip invalidates stale columns.
+	if st == nil || offset == 0 {
+		tipCommits, _, err := s.gitPort.List(ctx, repoID, 0, 1)
+		if err != nil || len(tipCommits) == 0 {
+			return s.Lanes(ctx, repoID, commits)
+		}
+		st = &repoLaneState{tip: tipCommits[0].Oid.Hex, folder: newLaneFolder(alwaysPresent)}
+		s.states[repoID] = st
+	}
+
+	// Fold any history between the last folded commit and this window.
+	for st.next < offset {
+		chunk := offset - st.next
+		if chunk > windowCatchUpChunk {
+			chunk = windowCatchUpChunk
+		}
+		prefix, _, err := s.gitPort.List(ctx, repoID, st.next, chunk)
+		if err != nil || len(prefix) == 0 {
+			return s.Lanes(ctx, repoID, commits)
+		}
+		for i := range prefix {
+			st.lanes = append(st.lanes, st.folder.fold(&prefix[i]))
+			st.next++
+		}
+	}
+
+	if st.next == offset {
+		for i := range commits {
+			st.lanes = append(st.lanes, st.folder.fold(&commits[i]))
+			st.next++
+		}
+		out := make([]domain.Lane, len(commits))
+		copy(out, st.lanes[offset:offset+len(commits)])
+		return out, nil
+	}
+
+	// The window was already folded (st.next > offset): serve it from state when
+	// it is fully covered, otherwise fall back to the pure window-local layout.
+	if offset+len(commits) <= len(st.lanes) {
+		out := make([]domain.Lane, len(commits))
+		copy(out, st.lanes[offset:offset+len(commits)])
+		return out, nil
+	}
+	return s.Lanes(ctx, repoID, commits)
+}
+
+// Invalidate drops any remembered lane layout for a repository, so the next
+// WindowLanes call re-folds history from HEAD (e.g. after a HEAD move).
+func (s *GraphService) Invalidate(repoID domain.RepositoryId) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.states, repoID)
+}
+
+// presentFunc reports whether an oid belongs to the history being laid out.
+type presentFunc func(hex string) bool
+
+// alwaysPresent marks every oid as part of the history; used by the stateful
+// folder, which walks the full history from HEAD.
+func alwaysPresent(string) bool { return true }
+
+// laneFolder holds the resumable lane-slot state (columns, expectations, free
+// pool) for one history walk. present decides which oids belong to the history.
+// It is not safe for concurrent use; GraphService guards each repository's
+// folder with its mutex.
+type laneFolder struct {
+	slots   []laneSlot
+	waiting map[string]int // oid hex -> slot index expecting it
+	free    *intHeap
+	present presentFunc
+}
+
+func newLaneFolder(present presentFunc) *laneFolder {
+	if present == nil {
+		present = alwaysPresent
+	}
+	f := &laneFolder{
+		waiting: make(map[string]int),
+		free:    &intHeap{},
+		present: present,
+	}
+	heap.Init(f.free)
+	return f
+}
+
+func (f *laneFolder) alloc() int {
+	if f.free.Len() > 0 {
+		idx := heap.Pop(f.free).(int)
+		f.slots[idx].inUse = true
+		return idx
+	}
+	f.slots = append(f.slots, laneSlot{inUse: true})
+	return len(f.slots) - 1
+}
+
+func (f *laneFolder) release(idx int) {
+	if idx < 0 || idx >= len(f.slots) || !f.slots[idx].inUse {
+		return
+	}
+	if f.slots[idx].expected != "" {
+		delete(f.waiting, f.slots[idx].expected)
+	}
+	f.slots[idx] = laneSlot{}
+	heap.Push(f.free, idx)
+}
+
+func (f *laneFolder) expect(idx int, oidHex string) {
+	f.slots[idx].expected = oidHex
+	f.waiting[oidHex] = idx
+}
+
+// fold lays out one commit and returns its lane, mutating the folder's slot
+// state so it can be resumed. The folder's present predicate decides whether an
+// oid belongs to the history: the pure Lanes passes an in-window membership
+// test while the stateful window passes alwaysPresent. See GraphService.Lanes
+// for the full algorithm description.
+func (f *laneFolder) fold(c *domain.Commit) domain.Lane {
+	idx, expected := f.waiting[c.Oid.Hex]
+	if expected {
+		delete(f.waiting, c.Oid.Hex)
+	} else {
+		idx = f.alloc()
+	}
+
+	lane := domain.Lane{Index: idx, Color: idx % lanePaletteSize}
+
+	parents := c.Parents
+	if len(parents) == 0 {
+		f.release(idx)
+		return lane
+	}
+
+	// Whether the commit draws at least one downward edge in the history.
+	continues := false
+	for _, p := range parents {
+		if f.present(p.Hex) {
+			continues = true
+			break
+		}
+	}
+	lane.Continues = continues
+
+	// Reserve lanes for extra parents (merge/octopus) while idx is still
+	// held, so a released idx is not immediately reused by a sibling branch.
+	for _, p := range parents[1:] {
+		ph := p.Hex
+		if !f.present(ph) {
+			continue
+		}
+		if _, ok := f.waiting[ph]; ok {
+			continue // another lane already expects this parent
+		}
+		f.expect(f.alloc(), ph)
+	}
+
+	// First parent continues the line in this slot. If another lane already
+	// expects it, the two lanes converge: `git log --graph` preserves the
+	// leftmost (lowest-indexed) column and folds the other lane into it.
+	// So keep whichever of idx/other is smaller and release the other.
+	first := parents[0].Hex
+	if !f.present(first) {
+		f.release(idx)
+		return lane
+	}
+	if other, ok := f.waiting[first]; ok && other != idx {
+		if other < idx {
+			// The parent's existing (leftmost) lane wins; the current
+			// lane folds into it and is released. lane.Index keeps the
+			// column the commit itself was drawn in.
+			f.release(idx)
+			idx = other
+		} else {
+			// The current lane is leftmost; it keeps the parent and the
+			// other lane is released. release(other) deletes
+			// waiting[first]; expect(idx, first) below re-adds it here.
+			f.release(other)
+		}
+	}
+	f.expect(idx, first)
+	return lane
 }
 
 // laneSlot is one graph column. inUse marks an allocated (non-free) column;

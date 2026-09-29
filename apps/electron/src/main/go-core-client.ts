@@ -66,6 +66,11 @@ export interface Signature {
   when: string;
 }
 
+export interface RefLabel {
+  name: string;
+  kind: string;
+}
+
 export interface Commit {
   oid: Oid | undefined;
   parents: Oid[];
@@ -74,6 +79,13 @@ export interface Commit {
   message: string;
   treeOid: Oid | undefined;
   committedAt: string;
+  refs: RefLabel[];
+}
+
+export interface Lane {
+  index: number;
+  color: number;
+  continues: boolean;
 }
 
 export interface Branch {
@@ -190,6 +202,7 @@ export interface GetCommitsRequest {
 export interface GetCommitsResponse {
   commits: Commit[];
   total: number;
+  lanes: Lane[];
 }
 
 export interface StreamCommitsRequest {

@@ -112,8 +112,10 @@ func (s *Server) GetCommits(ctx context.Context, req *singularitreev1.GetCommits
 		return nil, appErrorToStatus(ctx, err)
 	}
 	// Lanes are computed in Go (ADR-008) and returned as a parallel array:
-	// lanes[i] belongs to commits[i].
-	lanes, err := s.graphSvc.Lanes(ctx, repoID, commits)
+	// lanes[i] belongs to commits[i]. WindowLanes keeps columns continuous with
+	// the full history from HEAD across scroll windows (stateful per-repo lane
+	// state), falling back to the pure window-local Lanes when no Git port.
+	lanes, err := s.graphSvc.WindowLanes(ctx, repoID, commits, int(req.GetOffset()))
 	if err != nil {
 		return nil, appErrorToStatus(ctx, err)
 	}

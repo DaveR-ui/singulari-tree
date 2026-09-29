@@ -19,6 +19,14 @@ func NewGitService(gitPort domain.GitPort, cachePort domain.CachePort, watcher *
 	return &GitService{gitPort: gitPort, cachePort: cachePort, watcher: watcher}
 }
 
+// notifyChange emits a watcher event so derived state (commit cache, lane
+// layout) is invalidated after a mutating operation.
+func (s *GitService) notifyChange(repoID domain.RepositoryId) {
+	if s.watcher != nil {
+		s.watcher.Emit(domain.FsChangedEvent{RepoID: repoID})
+	}
+}
+
 // Status returns working-tree file status.
 func (s *GitService) Status(ctx context.Context, repoID domain.RepositoryId) ([]domain.FileStatus, error) {
 	if s.gitPort == nil {
@@ -38,6 +46,7 @@ func (s *GitService) Stage(ctx context.Context, repoID domain.RepositoryId, path
 	if s.cachePort != nil {
 		s.cachePort.Invalidate(repoID)
 	}
+	s.notifyChange(repoID)
 	return nil
 }
 
@@ -52,6 +61,7 @@ func (s *GitService) Unstage(ctx context.Context, repoID domain.RepositoryId, pa
 	if s.cachePort != nil {
 		s.cachePort.Invalidate(repoID)
 	}
+	s.notifyChange(repoID)
 	return nil
 }
 
@@ -67,6 +77,7 @@ func (s *GitService) Commit(ctx context.Context, repoID domain.RepositoryId, msg
 	if s.cachePort != nil {
 		s.cachePort.Invalidate(repoID)
 	}
+	s.notifyChange(repoID)
 	return c, nil
 }
 
@@ -97,5 +108,6 @@ func (s *GitService) Checkout(ctx context.Context, repoID domain.RepositoryId, r
 	if s.cachePort != nil {
 		s.cachePort.Invalidate(repoID)
 	}
+	s.notifyChange(repoID)
 	return nil
 }

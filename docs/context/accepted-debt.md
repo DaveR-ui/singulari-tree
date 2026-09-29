@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-28
+last_updated: 2026-09-29
 status: active
 description: Deuda aceptada del corpus — documentos legacy sin migrar y decisiones toleradas explícitamente, con el criterio para reducirla.
 tags:
@@ -7,7 +7,7 @@ tags:
 - debt
 - legacy
 - ratchet
-version: 1.0
+version: 1.1
 related:
 - documentation-system
 ---
@@ -24,7 +24,8 @@ Registrar aquí **cada excepción de forma explícita**, con su razón y el crit
 
 | Elemento aceptado | Por qué se tolera | Cómo se reduce |
 |---|---|---|
-| `docs/context/git-client/**` — 12 docs de contenido (`architecture.md`, `decisions.md`, `module-diagram.md`, `service-design.md`, `domain-model.md`, `folder-structure.md`, `roadmap-mvp.md`, `roadmap-v1.md`, `risks.md`, `ipc-strategy.md`, `testing-strategy.md`, `github-oauth-guide.md`) + hub no-kebab `INDEX.md` + alias `README.md` | Sin frontmatter y con hub no-`kebab-case`; **EXCLUIDOS del validador** (`docs/context/git-client/**` congelado). | Ratchet: migrar cada archivo solo al tocarlo (frontmatter + renombrar hub cuando aplique). |
+| `docs/context/git-client/**` — 12 docs de contenido (`architecture.md`, `decisions.md`, `module-diagram.md`, `service-design.md`, `domain-model.md`, `folder-structure.md`, `roadmap-mvp.md`, `roadmap-v1.md`, `risks.md`, `ipc-strategy.md`, `testing-strategy.md`, `github-oauth-guide.md`) + hub no-kebab `INDEX.md` + alias `README.md` | Sin frontmatter y con hub no-`kebab-case`; **EXCLUIDOS del validador** (`docs/context/git-client/**` congelado). `roadmap-mvp.md` ya fue **migrado por ratchet al tocarlo** (frontmatter `context-doc`), pero el resto del árbol sigue congelado y fuera del scan. | Ratchet: migrar cada archivo solo al tocarlo (frontmatter + renombrar hub cuando aplique); `roadmap-mvp.md` ya migrado. |
+| Paridad visual de aristas de lane (diagonales/cruces) vs `git log --graph` — DoD Semana 1-2 acotado (ADR-0016) | El contrato de wire `Lane{index,color,continues}` no porta geometría de aristas; solo se contratan **columnas verticales** (correctas y continuas entre ventanas). Sin cambio de contrato — decisión deliberada (Opción B). | Futura adición de contrato `LaneRow`/segmentos + diagonales SVG en el renderer, **detrás de un ADR** que superseda a [[adr-0016-lane-state-and-graph-dod]]. |
 | ADR-001..ADR-013 embebidos en `docs/context/git-client/decisions.md` | No se extraen a `docs/adrs/` para evitar un big-bang de 13 archivos. | La numeración continúa en **ADR-014**; los nuevos ADRs nacen ya en `docs/adrs/` con su hub. |
 | `README.md` (raíz) | README humano, **sin frontmatter**, FUERA del corpus. | Se mantiene como puntero al entry point ([`docs/project.md`](../project.md)); no se migra. |
 | `docs/context/git-client/README.md` | Alias del hub legacy `INDEX.md`. | Desaparece cuando el hub legacy se migre/normalice al tocarlo. |

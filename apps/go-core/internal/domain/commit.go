@@ -79,6 +79,14 @@ type CommitPort interface {
 	List(ctx context.Context, repoID RepositoryId, offset, limit int) ([]Commit, int, error)
 }
 
+// CommitLister is the narrow read port GraphService needs to walk history from
+// HEAD: a windowed commit listing plus the total reachable count. It is a
+// subset of CommitPort (and therefore of GitPort); services depend on the
+// smallest port that satisfies them.
+type CommitLister interface {
+	List(ctx context.Context, repoID RepositoryId, offset, limit int) ([]Commit, int, error)
+}
+
 // Errors
 var (
 	ErrCommitNotFound = AppError{Code: ErrCodeCommitNotFound, Message: "commit not found"}

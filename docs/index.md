@@ -4,13 +4,13 @@
 # SingulariTree — Índice de documentación
 
 <!-- BEGIN GENERATED: index -->
-<!-- snapshot: 2026-09-28 -->
+<!-- snapshot: 2026-09-29 -->
 ## Generated index
 
 ### Overview
 
-- Markdown files: 18
-- Context docs: 3 | Notes: 6 | Hubs: 2 | adrs: 2 | templates: 0 | protocols: 3
+- Markdown files: 19
+- Context docs: 3 | Notes: 6 | Hubs: 2 | adrs: 3 | templates: 0 | protocols: 3
 
 ### Tree
 
@@ -19,6 +19,7 @@
 - adrs/
   - adr-0014-docs-corpus-layout.md — adr, id: `adr-0014-docs-corpus-layout`
   - adr-0015-docs-validator-generated-index.md — adr, id: `adr-0015-docs-validator-generated-index`
+  - adr-0016-lane-state-and-graph-dod.md — adr, id: `adr-0016-lane-state-and-graph-dod`
   - adr-index.md — hub, id: `adr-index`
 - context/
   - accepted-debt.md — context-doc

@@ -23,6 +23,7 @@ import (
 	httpadapter "github.com/SingulariTree/go-core/internal/adapter/http"
 	"github.com/SingulariTree/go-core/internal/adapter/watcher"
 	"github.com/SingulariTree/go-core/internal/config"
+	"github.com/SingulariTree/go-core/internal/domain"
 	"github.com/SingulariTree/go-core/internal/repository"
 	"github.com/SingulariTree/go-core/internal/service"
 )
@@ -115,10 +116,15 @@ func main() {
 	repoStore := repository.NewRepoStore(db)
 	gitAdapter := git.NewAdapter(repoStore)
 	repoSvc := service.NewRepoService(repoStore, gitAdapter)
-	cacheSvc := service.NewCacheService(500)
+	cacheSvc := service.NewCacheServiceWithStore(500, repository.NewCommitCache(db))
 	graphSvc := service.NewGraphService(gitAdapter, cacheSvc)
 	watcherSvc := service.NewWatcherService(watcher.NewFsnotifyAdapter())
 	gitSvc := service.NewGitService(gitAdapter, cacheSvc, watcherSvc)
+
+	// A filesystem change (including HEAD moves from GitService mutating ops)
+	// invalidates the stateful lane layout so lanes are recomputed from the new
+	// tip.
+	watcherSvc.OnChange(func(ev domain.FsChangedEvent) { graphSvc.Invalidate(ev.RepoID) })
 
 	// Listeners — unix socket for gRPC when requested, TCP loopback otherwise.
 	grpcLis, grpcAddrStr, err := listen(*grpcAddr)

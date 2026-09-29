@@ -62,6 +62,8 @@ export class GraphStore {
   readonly error = signal<AppError | null>(null);
   readonly selectedOid = signal<string | null>(null);
   readonly filter = signal('');
+  /** Recently opened repositories (from `listRepositories`), newest first. */
+  readonly recentRepos = signal<Repository[]>([]);
   /** True when the renderer runs without the Electron preload bridge. */
   readonly offline = signal(false);
 
@@ -89,6 +91,8 @@ export class GraphStore {
       this.selectedOid.set(null);
       this.filter.set('');
       await this.loadWindow(0);
+      // Refresh the picker's recents now that this repo is the most recent.
+      await this.loadRecentRepos();
       return repo;
     } catch (err) {
       if (isIpcUnavailable(err)) {
@@ -97,6 +101,26 @@ export class GraphStore {
         this.error.set(toAppError(err));
       }
       return null;
+    }
+  }
+
+  /**
+   * Load the recently opened repositories. Degrades to an empty list when the
+   * Electron bridge is unavailable (plain browser session); records any other
+   * failure on the `error` signal.
+   */
+  async loadRecentRepos(): Promise<void> {
+    try {
+      const resp = await this.bridge.invoke('listRepositories', {});
+      this.offline.set(false);
+      this.recentRepos.set(resp.repositories ?? []);
+    } catch (err) {
+      if (isIpcUnavailable(err)) {
+        this.offline.set(true);
+        this.recentRepos.set([]);
+      } else {
+        this.error.set(toAppError(err));
+      }
     }
   }
 

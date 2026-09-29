@@ -38,7 +38,7 @@ function makePage(count: number, startIndex = 0, total = count): GetCommitsRespo
 }
 
 type Handler = (req: unknown) => unknown;
-type Handlers = Partial<Record<'getCommits' | 'openRepository', Handler>>;
+type Handlers = Partial<Record<'getCommits' | 'openRepository' | 'listRepositories', Handler>>;
 
 function makeBridge(handlers: Handlers): IpcBridge {
   return {
@@ -168,7 +168,8 @@ describe('GraphStore', () => {
   it('opens a repository and loads its first window', async () => {
     const getCommits = vi.fn(() => Promise.resolve(makePage(2, 0, 2)));
     const openRepository = vi.fn(() => Promise.resolve(REPO));
-    store = new GraphStore(makeBridge({ getCommits, openRepository }));
+    const listRepositories = vi.fn(() => Promise.resolve({ repositories: [REPO] }));
+    store = new GraphStore(makeBridge({ getCommits, openRepository, listRepositories }));
 
     const repo = await store.openRepository('/tmp/repo');
 
@@ -177,6 +178,54 @@ describe('GraphStore', () => {
     expect(store.repoId()).toBe('repo-1');
     expect(store.offline()).toBe(false);
     expect(store.commits()).toHaveLength(2);
+  });
+
+  it('loads recent repositories from listRepositories', async () => {
+    const listRepositories = vi.fn(() => Promise.resolve({ repositories: [REPO] }));
+    store = new GraphStore(makeBridge({ listRepositories }));
+
+    await store.loadRecentRepos();
+
+    expect(listRepositories).toHaveBeenCalledWith({});
+    expect(store.recentRepos()).toEqual([REPO]);
+    expect(store.offline()).toBe(false);
+    expect(store.error()).toBeNull();
+  });
+
+  it('degrades loadRecentRepos to an empty list when the bridge is unavailable', async () => {
+    const listRepositories = vi.fn(() => {
+      throw { code: 'IPC_UNAVAILABLE', message: 'Not running inside Electron' };
+    });
+    store = new GraphStore(makeBridge({ listRepositories }));
+    store.recentRepos.set([REPO]);
+
+    await store.loadRecentRepos();
+
+    expect(store.offline()).toBe(true);
+    expect(store.error()).toBeNull();
+    expect(store.recentRepos()).toEqual([]);
+  });
+
+  it('records non-IPC failures from listRepositories on the error signal', async () => {
+    const listRepositories = vi.fn(() => Promise.reject({ code: 'GIT_FAILED', message: 'boom' }));
+    store = new GraphStore(makeBridge({ listRepositories }));
+
+    await store.loadRecentRepos();
+
+    expect(store.error()).toEqual({ code: 'GIT_FAILED', message: 'boom' });
+    expect(store.offline()).toBe(false);
+  });
+
+  it('refreshes the recents list after a successful open', async () => {
+    const getCommits = vi.fn(() => Promise.resolve(makePage(2, 0, 2)));
+    const openRepository = vi.fn(() => Promise.resolve(REPO));
+    const listRepositories = vi.fn(() => Promise.resolve({ repositories: [REPO] }));
+    store = new GraphStore(makeBridge({ getCommits, openRepository, listRepositories }));
+
+    await store.openRepository('/tmp/repo');
+
+    expect(listRepositories).toHaveBeenCalledWith({});
+    expect(store.recentRepos()).toEqual([REPO]);
   });
 
   it('degrades openRepository to null when the bridge is unavailable', async () => {
