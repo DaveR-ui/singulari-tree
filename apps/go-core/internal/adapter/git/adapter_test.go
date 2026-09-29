@@ -212,6 +212,102 @@ func TestResolveNotAGitRepo(t *testing.T) {
 	}
 }
 
+func TestParseRefs(t *testing.T) {
+	out := strings.Join([]string{
+		"aaa" + unitSep + "refs/heads/main" + unitSep + "",
+		"bbb" + unitSep + "refs/remotes/origin/main" + unitSep + "",
+		"ccc" + unitSep + "refs/tags/v1.0.0" + unitSep + "",
+		// Annotated tag: objectname is the tag object, *objectname the commit.
+		"tagobject" + unitSep + "refs/tags/v2.0.0" + unitSep + "ccc",
+		// Unrelated namespace must be ignored.
+		"ddd" + unitSep + "refs/notes/commits" + unitSep + "",
+	}, "\n")
+
+	got := parseRefs(out)
+
+	want := map[string][]domain.RefLabel{
+		"aaa": {{Name: "main", Kind: domain.RefKindBranch}},
+		"bbb": {{Name: "origin/main", Kind: domain.RefKindRemote}},
+		"ccc": {
+			{Name: "v1.0.0", Kind: domain.RefKindTag},
+			{Name: "v2.0.0", Kind: domain.RefKindTag},
+		},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("parseRefs keys = %d, want %d (%v)", len(got), len(want), got)
+	}
+	for oid, wantRefs := range want {
+		refs := got[oid]
+		if len(refs) != len(wantRefs) {
+			t.Fatalf("refs[%s] len = %d, want %d", oid, len(refs), len(wantRefs))
+		}
+		for i := range refs {
+			if refs[i] != wantRefs[i] {
+				t.Errorf("refs[%s][%d] = %+v, want %+v", oid, i, refs[i], wantRefs[i])
+			}
+		}
+	}
+}
+
+func TestListPopulatesRefs(t *testing.T) {
+	dir := initRepo(t)
+	// Deterministic branch name independent of init.defaultBranch.
+	gitRun(t, dir, "branch", "-M", "main")
+	gitRun(t, dir, "branch", "feature")
+	gitRun(t, dir, "tag", "v1.0.0")
+
+	repoID := domain.RepositoryId("repo-1")
+	a := NewAdapter(&fakeRepoPort{fsPath: dir})
+	ctx := context.Background()
+
+	commits, _, err := a.List(ctx, repoID, 0, 10)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(commits) != 2 {
+		t.Fatalf("len(commits) = %d, want 2", len(commits))
+	}
+
+	got := map[string]string{}
+	for _, r := range commits[0].Refs {
+		got[r.Name] = r.Kind
+	}
+	want := map[string]string{
+		"HEAD":    domain.RefKindHead,
+		"main":    domain.RefKindBranch,
+		"feature": domain.RefKindBranch,
+		"v1.0.0":  domain.RefKindTag,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("HEAD refs = %v, want %v", got, want)
+	}
+	for name, kind := range want {
+		if got[name] != kind {
+			t.Errorf("ref %q kind = %q, want %q", name, got[name], kind)
+		}
+	}
+
+	if len(commits[1].Refs) != 0 {
+		t.Errorf("parent commit refs = %+v, want none", commits[1].Refs)
+	}
+}
+
+func TestListEmptyRepoDegrades(t *testing.T) {
+	dir := t.TempDir()
+	gitRun(t, dir, "init", "-q")
+
+	repoID := domain.RepositoryId("repo-1")
+	a := NewAdapter(&fakeRepoPort{fsPath: dir})
+
+	commits, total, err := a.List(context.Background(), repoID, 0, 10)
+	if err != nil {
+		t.Fatalf("List on empty repo: %v", err)
+	}
+	if total != 0 || len(commits) != 0 {
+		t.Fatalf("empty repo = (%d commits, total %d), want (0, 0)", len(commits), total)
+	}
+}
+
 func TestUnimplementedReturnsTypedError(t *testing.T) {
 	a := NewAdapter(&fakeRepoPort{fsPath: t.TempDir()})
 	err := a.Stage(context.Background(), domain.RepositoryId("x"), []string{"a"})

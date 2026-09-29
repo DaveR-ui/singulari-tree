@@ -30,10 +30,18 @@ func signatureToProto(s domain.Signature) *singularitreev1.Signature {
 	}
 }
 
+func refLabelToProto(r domain.RefLabel) *singularitreev1.RefLabel {
+	return &singularitreev1.RefLabel{Name: r.Name, Kind: r.Kind}
+}
+
 func commitToProto(c domain.Commit) *singularitreev1.Commit {
 	parents := make([]*singularitreev1.Oid, 0, len(c.Parents))
 	for _, p := range c.Parents {
 		parents = append(parents, oidToProto(p))
+	}
+	refs := make([]*singularitreev1.RefLabel, 0, len(c.Refs))
+	for _, r := range c.Refs {
+		refs = append(refs, refLabelToProto(r))
 	}
 	return &singularitreev1.Commit{
 		Oid:         oidToProto(c.Oid),
@@ -43,6 +51,17 @@ func commitToProto(c domain.Commit) *singularitreev1.Commit {
 		Message:     c.Message,
 		TreeOid:     oidToProto(c.TreeOid),
 		CommittedAt: c.CommittedAt.Format(time.RFC3339),
+		Refs:        refs,
+	}
+}
+
+// laneToProto maps a domain lane to its wire form. Index/Color are range-safe
+// (lane indices are bounded by the number of active graph columns).
+func laneToProto(l domain.Lane) *singularitreev1.Lane {
+	return &singularitreev1.Lane{
+		Index:     int32(l.Index),
+		Color:     int32(l.Color),
+		Continues: l.Continues,
 	}
 }
 

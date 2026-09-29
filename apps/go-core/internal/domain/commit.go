@@ -43,6 +43,22 @@ type Signature struct {
 	When  time.Time
 }
 
+// RefLabel is a Git ref decoration pointing at a commit (wire: domain.proto
+// RefLabel). Kind is one of "head", "branch", "remote" or "tag"; Name is the
+// short label (e.g. "main", "origin/main", "v1.0.0").
+type RefLabel struct {
+	Name string
+	Kind string
+}
+
+// Ref kind values used by RefLabel.Kind.
+const (
+	RefKindHead   = "head"
+	RefKindBranch = "branch"
+	RefKindRemote = "remote"
+	RefKindTag    = "tag"
+)
+
 // Commit is an immutable Git commit entity (domain-model.md §1.2).
 type Commit struct {
 	Oid         Oid
@@ -52,6 +68,9 @@ type Commit struct {
 	Message     string
 	TreeOid     Oid
 	CommittedAt time.Time
+	// Refs are the ref decorations pointing at this commit (may be nil). They
+	// are populated by the read adapter and never computed in the domain.
+	Refs []RefLabel
 }
 
 // CommitPort is the read port for commits.

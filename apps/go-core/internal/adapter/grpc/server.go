@@ -106,16 +106,27 @@ func (s *Server) GetCommits(ctx context.Context, req *singularitreev1.GetCommits
 	if s.graphSvc == nil {
 		return nil, status.Error(codes.FailedPrecondition, "graph service not configured")
 	}
-	commits, total, err := s.graphSvc.Commits(ctx, domain.RepositoryId(req.GetRepoId()), int(req.GetOffset()), int(req.GetLimit()))
+	repoID := domain.RepositoryId(req.GetRepoId())
+	commits, total, err := s.graphSvc.Commits(ctx, repoID, int(req.GetOffset()), int(req.GetLimit()))
+	if err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	// Lanes are computed in Go (ADR-008) and returned as a parallel array:
+	// lanes[i] belongs to commits[i].
+	lanes, err := s.graphSvc.Lanes(ctx, repoID, commits)
 	if err != nil {
 		return nil, appErrorToStatus(ctx, err)
 	}
 	out := &singularitreev1.GetCommitsResponse{
 		Commits: make([]*singularitreev1.Commit, 0, len(commits)),
 		Total:   uint32(total),
+		Lanes:   make([]*singularitreev1.Lane, 0, len(lanes)),
 	}
 	for _, c := range commits {
 		out.Commits = append(out.Commits, commitToProto(c))
+	}
+	for _, l := range lanes {
+		out.Lanes = append(out.Lanes, laneToProto(l))
 	}
 	return out, nil
 }

@@ -1,12 +1,18 @@
 package service
 
 import (
+	"container/heap"
 	"context"
 
 	"github.com/SingulariTree/go-core/internal/domain"
 )
 
-// GraphService owns commit graph and lanes (service-design.md §1.2).
+// lanePaletteSize is the number of color slots exposed to the renderer. Lane
+// colors are derived deterministically as Index % lanePaletteSize, so the same
+// lane always gets the same color and adjacent lanes usually differ.
+const lanePaletteSize = 8
+
+// GraphService owns commit graph and lanes (service-design.md §1.3).
 type GraphService struct {
 	gitPort   domain.GitPort
 	cachePort domain.CachePort
@@ -35,11 +41,155 @@ func (s *GraphService) Commits(ctx context.Context, repoID domain.RepositoryId, 
 	return commits, total, nil
 }
 
-// Lanes computes lanes for commits (<100ms for 50k, service-design.md §1.2).
+// Lanes computes one domain.Lane per commit for graph rendering (ADR-008:
+// lanes are computed in Go only; the renderer never computes them).
+//
+// Input must be topologically ordered newest-first, as returned by
+// `git log --topo-order`, so every parent is guaranteed to appear at or after
+// its children. The algorithm is O(n * avgParents):
+//
+//   - A finite set of lane slots (columns) is kept. Each active slot "expects"
+//     the oid of some not-yet-seen commit; when that commit arrives it reuses
+//     the slot's index, keeping the child→parent line in one column.
+//   - A commit that no slot expects is an independent/new tip and takes the
+//     lowest free slot.
+//   - A commit's first parent continues in the same slot; 2nd+ parents (merge,
+//     octopus) reserve extra slots. If a parent is already expected by another
+//     slot the two lines converge: no duplicate slot is created, and the
+//     current slot is released so the lines merge (the renderer draws the
+//     crossing from the commit's index to the parent's).
+//   - A slot whose expected commit is not part of the input is never reserved,
+//     so dangling lanes are not left open.
+//
+// Determinism: output depends only on commit/parent order; maps are used for
+// O(1) lookups and never iterated, and the free-slot pool is a min-heap, so
+// repeated calls on the same input produce identical lanes.
+//
+// Limitation (mid-history windows): Lanes only sees the requested window, not
+// its ancestors. For offset==0 (full history) the column layout is stable and
+// matches `git log --graph`. For offset>0 the oldest commits in the window have
+// parents outside the window; those edges are dropped (Continues=false) and the
+// exact `git log --graph` column layout can differ because git walks the full
+// history from HEAD.
 func (s *GraphService) Lanes(_ context.Context, _ domain.RepositoryId, commits []domain.Commit) ([]domain.Lane, error) {
-	lanes := make([]domain.Lane, len(commits))
-	for i := range lanes {
-		lanes[i] = domain.Lane{Index: i % 8, Color: i % 8, Continues: false}
+	n := len(commits)
+	lanes := make([]domain.Lane, n)
+	if n == 0 {
+		return lanes, nil
 	}
+
+	inWindow := make(map[string]struct{}, n)
+	for i := range commits {
+		inWindow[commits[i].Oid.Hex] = struct{}{}
+	}
+
+	var slots []laneSlot
+	waiting := make(map[string]int) // oid hex -> slot index expecting it
+	free := &intHeap{}
+	heap.Init(free)
+
+	alloc := func() int {
+		if free.Len() > 0 {
+			idx := heap.Pop(free).(int)
+			slots[idx].inUse = true
+			return idx
+		}
+		slots = append(slots, laneSlot{inUse: true})
+		return len(slots) - 1
+	}
+	release := func(idx int) {
+		if idx < 0 || idx >= len(slots) || !slots[idx].inUse {
+			return
+		}
+		if slots[idx].expected != "" {
+			delete(waiting, slots[idx].expected)
+		}
+		slots[idx] = laneSlot{}
+		heap.Push(free, idx)
+	}
+	expect := func(idx int, oidHex string) {
+		slots[idx].expected = oidHex
+		waiting[oidHex] = idx
+	}
+
+	for i := range commits {
+		c := &commits[i]
+
+		idx, expected := waiting[c.Oid.Hex]
+		if expected {
+			delete(waiting, c.Oid.Hex)
+		} else {
+			idx = alloc()
+		}
+
+		lanes[i] = domain.Lane{Index: idx, Color: idx % lanePaletteSize}
+
+		parents := c.Parents
+		if len(parents) == 0 {
+			release(idx)
+			continue
+		}
+
+		// Whether the commit draws at least one downward edge inside the window.
+		continues := false
+		for _, p := range parents {
+			if _, ok := inWindow[p.Hex]; ok {
+				continues = true
+				break
+			}
+		}
+		lanes[i].Continues = continues
+
+		// Reserve lanes for extra parents (merge/octopus) while idx is still
+		// held, so a released idx is not immediately reused by a sibling branch.
+		for _, p := range parents[1:] {
+			ph := p.Hex
+			if _, ok := inWindow[ph]; !ok {
+				continue
+			}
+			if _, ok := waiting[ph]; ok {
+				continue // another lane already expects this parent
+			}
+			expect(alloc(), ph)
+		}
+
+		// First parent continues the line in this slot, unless another lane
+		// already expects it (convergence), in which case this line merges into
+		// that lane and this slot is released.
+		first := parents[0].Hex
+		if _, ok := inWindow[first]; !ok {
+			release(idx)
+			continue
+		}
+		if other, ok := waiting[first]; ok && other != idx {
+			release(idx)
+			continue
+		}
+		expect(idx, first)
+	}
+
 	return lanes, nil
+}
+
+// laneSlot is one graph column. inUse marks an allocated (non-free) column;
+// expected is the oid it awaits ("" while it only holds the current commit).
+type laneSlot struct {
+	expected string
+	inUse    bool
+}
+
+// intHeap is a min-heap of free lane indices, so allocation always reuses the
+// lowest free column in O(log n).
+type intHeap []int
+
+func (h intHeap) Len() int           { return len(h) }
+func (h intHeap) Less(i, j int) bool { return h[i] < h[j] }
+func (h intHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *intHeap) Push(x any)        { *h = append(*h, x.(int)) }
+func (h *intHeap) Pop() any {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[:n-1]
+	return x
 }

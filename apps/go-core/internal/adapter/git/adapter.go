@@ -32,6 +32,13 @@ const (
 		"%aI" + unitSep + "%cn" + unitSep + "%ce" + unitSep + "%cI" + unitSep +
 		"%T" + unitSep + "%B" + recordSep
 
+	// refPrettyFormat mirrors the field order parsed by parseRefs:
+	// objectname, refname, *objectname (dereferenced annotated-tag target).
+	// For a lightweight tag the third field is empty; for an annotated tag it
+	// holds the tagged commit so the decoration lands on the commit, not on the
+	// tag object.
+	refPrettyFormat = "%(objectname)" + unitSep + "%(refname)" + unitSep + "%(*objectname)"
+
 	// defaultListLimit guards against unbounded reads when the caller omits a
 	// limit (the read path must always be paginated).
 	defaultListLimit = 200
@@ -99,11 +106,102 @@ func (a *Adapter) List(ctx context.Context, repoID domain.RepositoryId, offset, 
 	if err != nil {
 		return nil, 0, err
 	}
+	// Ref decorations are attached after parsing; the `git log` pretty format
+	// stays 10 fields so parseCommits/buildCommit are unaffected. A failure to
+	// enumerate refs (empty/unborn repo) degrades to no decorations rather than
+	// failing the read path.
+	a.attachRefs(ctx, fsPath, commits)
+
 	total, err := a.countCommits(ctx, fsPath)
 	if err != nil {
 		return nil, 0, err
 	}
 	return commits, total, nil
+}
+
+// attachRefs populates Commit.Refs in place for the listed commits: branch,
+// remote and tag decorations from a single for-each-ref call, plus a synthetic
+// {Name:"HEAD", Kind:"head"} on the commit HEAD currently points at. Any error
+// degrades to leaving refs unset (the read path never fails on decorations).
+func (a *Adapter) attachRefs(ctx context.Context, fsPath string, commits []domain.Commit) {
+	if len(commits) == 0 {
+		return
+	}
+	byOid := map[string][]domain.RefLabel{}
+	if out, err := runGit(ctx, fsPath, "for-each-ref", "--format="+refPrettyFormat); err == nil {
+		byOid = parseRefs(out)
+	}
+	head := a.headOid(ctx, fsPath)
+
+	for i := range commits {
+		oid := commits[i].Oid.Hex
+		var refs []domain.RefLabel
+		if head != "" && oid == head {
+			refs = append(refs, domain.RefLabel{Name: "HEAD", Kind: domain.RefKindHead})
+		}
+		refs = append(refs, byOid[oid]...)
+		commits[i].Refs = refs
+	}
+}
+
+// headOid returns the oid HEAD resolves to, or "" when HEAD is unborn/absent.
+func (a *Adapter) headOid(ctx context.Context, fsPath string) string {
+	out, err := runGit(ctx, fsPath, "rev-parse", "--verify", "--quiet", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+// parseRefs parses `git for-each-ref --format=refPrettyFormat` output into a
+// map from commit oid hex to its decorations. It is a pure helper (unit-tested
+// directly). Lines that do not classify as head/branch/remote/tag are ignored.
+func parseRefs(out string) map[string][]domain.RefLabel {
+	byOid := map[string][]domain.RefLabel{}
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if line == "" {
+			continue
+		}
+		fields := strings.Split(line, unitSep)
+		if len(fields) < 2 {
+			continue
+		}
+		objectOid := strings.TrimSpace(fields[0])
+		ref := strings.TrimSpace(fields[1])
+		derefOid := ""
+		if len(fields) >= 3 {
+			derefOid = strings.TrimSpace(fields[2])
+		}
+		name, kind, ok := classifyRef(ref)
+		if !ok {
+			continue
+		}
+		target := objectOid
+		// Annotated tags point at a tag object; decorate the tagged commit.
+		if kind == domain.RefKindTag && derefOid != "" {
+			target = derefOid
+		}
+		if target == "" {
+			continue
+		}
+		byOid[target] = append(byOid[target], domain.RefLabel{Name: name, Kind: kind})
+	}
+	return byOid
+}
+
+// classifyRef maps a full refname to its short label and unambiguous kind.
+func classifyRef(ref string) (name, kind string, ok bool) {
+	switch {
+	case strings.HasPrefix(ref, "refs/heads/"):
+		return strings.TrimPrefix(ref, "refs/heads/"), domain.RefKindBranch, true
+	case strings.HasPrefix(ref, "refs/remotes/"):
+		return strings.TrimPrefix(ref, "refs/remotes/"), domain.RefKindRemote, true
+	case strings.HasPrefix(ref, "refs/tags/"):
+		return strings.TrimPrefix(ref, "refs/tags/"), domain.RefKindTag, true
+	default:
+		return "", "", false
+	}
 }
 
 // Get returns a single commit by oid.

@@ -215,6 +215,35 @@ func TestOpenRepositoryThenGetCommits(t *testing.T) {
 		t.Error("committed_at is empty")
 	}
 
+	// Lanes are index-aligned with commits (ADR-008).
+	lanes := resp.GetLanes()
+	if len(lanes) != len(commits) {
+		t.Fatalf("lanes len = %d, want %d (parallel to commits)", len(lanes), len(commits))
+	}
+	if lanes[0].GetIndex() != 0 || !lanes[0].GetContinues() {
+		t.Errorf("lanes[0] = %+v, want index 0 continuing", lanes[0])
+	}
+	if lanes[1].GetIndex() != 0 || lanes[1].GetContinues() {
+		t.Errorf("lanes[1] = %+v, want index 0 non-continuing", lanes[1])
+	}
+
+	// Ref decorations: HEAD + the checked-out branch on the newest commit.
+	var hasHead, hasBranch bool
+	for _, r := range newest.GetRefs() {
+		switch r.GetKind() {
+		case "head":
+			if r.GetName() != "HEAD" {
+				t.Errorf("head ref name = %q, want HEAD", r.GetName())
+			}
+			hasHead = true
+		case "branch":
+			hasBranch = true
+		}
+	}
+	if !hasHead || !hasBranch {
+		t.Errorf("newest refs = %+v, want head + branch decorations", newest.GetRefs())
+	}
+
 	// Pagination window.
 	page, err := client.GetCommits(ctx, &singularitreev1.GetCommitsRequest{
 		RepoId: repo.GetId(),
