@@ -91,9 +91,11 @@ func (c *CommitCache) PutCommits(ctx context.Context, repoID domain.RepositoryId
 // and the total number of cached rows. ok is false when the repo has no cached
 // commits.
 //
-// Note: Git lists commits in topological order while this window is ordered by
-// committed_at. The schema keys windows on committed_at, and the two orders
-// agree for the linear/branching histories the graph renders.
+// Note: this ordering is by commit date, NOT topological. Git lists commits in
+// topological order and the graph's lane layout depends on it, so this reader
+// must NOT serve graph windows directly: it is the L2 write-through sink, while
+// the hot read path goes through CacheService (L1, window-keyed). Serving
+// topo-dependent reads from here would need an explicit ordering key.
 func (c *CommitCache) GetCommits(ctx context.Context, repoID domain.RepositoryId, offset, limit int) ([]domain.Commit, int, bool) {
 	var total int
 	if err := c.db.QueryRowContext(ctx,

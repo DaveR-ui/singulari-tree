@@ -172,14 +172,18 @@ func (s *GraphService) WindowLanes(ctx context.Context, repoID domain.Repository
 
 	st := s.states[repoID]
 
-	// At the tip of history (offset 0) or with no state yet, (re)anchor the
-	// layout to the current HEAD so a moved tip invalidates stale columns.
-	if st == nil || offset == 0 {
-		tipCommits, _, err := s.gitPort.List(ctx, repoID, 0, 1)
-		if err != nil || len(tipCommits) == 0 {
-			return s.Lanes(ctx, repoID, commits)
-		}
-		st = &repoLaneState{tip: tipCommits[0].Oid.Hex, folder: newLaneFolder(alwaysPresent)}
+	// (Re)anchor the layout to the current HEAD so a moved tip (external commit,
+	// rebase) invalidates stale columns. This costs one tiny List(0,1) per call,
+	// which buys detection of HEAD moves that no watcher event reported (the
+	// fsnotify adapter is still a stub) and of any missed invalidation; offset 0
+	// always re-anchors (a reload must not resume stale state).
+	tipCommits, _, err := s.gitPort.List(ctx, repoID, 0, 1)
+	if err != nil || len(tipCommits) == 0 {
+		return s.Lanes(ctx, repoID, commits)
+	}
+	tip := tipCommits[0].Oid.Hex
+	if st == nil || offset == 0 || st.tip != tip {
+		st = &repoLaneState{tip: tip, folder: newLaneFolder(alwaysPresent)}
 		s.states[repoID] = st
 	}
 

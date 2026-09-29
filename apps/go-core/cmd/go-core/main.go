@@ -122,9 +122,12 @@ func main() {
 	gitSvc := service.NewGitService(gitAdapter, cacheSvc, watcherSvc)
 
 	// A filesystem change (including HEAD moves from GitService mutating ops)
-	// invalidates the stateful lane layout so lanes are recomputed from the new
-	// tip.
-	watcherSvc.OnChange(func(ev domain.FsChangedEvent) { graphSvc.Invalidate(ev.RepoID) })
+	// invalidates derived state: the stateful lane layout and the commit cache,
+	// so both are recomputed from the new tip instead of serving stale data.
+	watcherSvc.OnChange(func(ev domain.FsChangedEvent) {
+		graphSvc.Invalidate(ev.RepoID)
+		cacheSvc.Invalidate(ev.RepoID)
+	})
 
 	// Listeners — unix socket for gRPC when requested, TCP loopback otherwise.
 	grpcLis, grpcAddrStr, err := listen(*grpcAddr)
