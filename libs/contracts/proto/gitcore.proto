@@ -3,17 +3,19 @@ syntax = "proto3";
 package singularitree.v1;
 
 import "domain.proto";
-import "errors.proto";
 
 option go_package = "github.com/SingulariTree/go-core/gen/go/singularitree/v1;singularitreev1";
 
 // Service GitCore — primary gRPC contract (ipc-strategy.md §2.3 proto sketch)
 service GitCore {
   rpc Ping(PingRequest) returns (PingResponse);
+  rpc OpenRepository(OpenRepositoryRequest) returns (Repository);
   rpc GetRepository(GetRepositoryRequest) returns (Repository);
   rpc ListRepositories(ListRepositoriesRequest) returns (ListRepositoriesResponse);
   rpc GetCommits(GetCommitsRequest) returns (GetCommitsResponse);
-  rpc StreamCommits(StreamCommitsRequest) returns (stream Commit);
+  // Root-qualified to disambiguate from the `Commit` service method (which would
+  // otherwise shadow the message of the same name in this service's scope).
+  rpc StreamCommits(StreamCommitsRequest) returns (stream .singularitree.v1.Commit);
   rpc GetBranches(GetBranchesRequest) returns (GetBranchesResponse);
   rpc GetRemotes(GetRemotesRequest) returns (GetRemotesResponse);
   rpc GetTags(GetTagsRequest) returns (GetTagsResponse);
@@ -23,7 +25,7 @@ service GitCore {
   rpc GetDiff(GetDiffRequest) returns (Diff);
   rpc Stage(StageRequest) returns (StageResponse);
   rpc Unstage(UnstageRequest) returns (UnstageResponse);
-  rpc Commit(CommitRequest) returns (Commit);
+  rpc Commit(CommitRequest) returns (.singularitree.v1.Commit);
   rpc Checkout(CheckoutRequest) returns (CheckoutResponse);
   rpc Fetch(FetchRequest) returns (stream Progress);
   rpc Push(PushRequest) returns (stream Progress);
@@ -40,6 +42,7 @@ message PingResponse {
 }
 
 // Repository
+message OpenRepositoryRequest { string fs_path = 1; }
 message GetRepositoryRequest { string repo_id = 1; }
 message ListRepositoriesRequest {}
 message ListRepositoriesResponse { repeated Repository repositories = 1; }

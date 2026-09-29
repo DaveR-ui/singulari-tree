@@ -2,141 +2,263 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"log"
-	"math/rand"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
+
+	googlegrpc "google.golang.org/grpc"
+
+	"github.com/SingulariTree/go-core/internal/adapter/git"
+	grpcadapter "github.com/SingulariTree/go-core/internal/adapter/grpc"
+	httpadapter "github.com/SingulariTree/go-core/internal/adapter/http"
+	"github.com/SingulariTree/go-core/internal/adapter/watcher"
+	"github.com/SingulariTree/go-core/internal/config"
+	"github.com/SingulariTree/go-core/internal/repository"
+	"github.com/SingulariTree/go-core/internal/service"
 )
 
-// headless proof — architecture.md §5.
-// Prints GO_CORE_READY addr=... http=... token=... after gRPC/HTTP bind.
+// Headless proof — architecture.md §5 / ADR-007.
+// Prints GO_CORE_READY addr=... http=... token=... so the Electron supervisor
+// can discover the bound addresses and auth token.
+
+type logLevel int
+
+const (
+	levelDebug logLevel = iota
+	levelInfo
+	levelWarn
+	levelError
+)
+
+var minLevel = levelInfo
+
+func parseLevel(s string) logLevel {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "debug":
+		return levelDebug
+	case "warn", "warning":
+		return levelWarn
+	case "error":
+		return levelError
+	default:
+		return levelInfo
+	}
+}
+
+func logf(l logLevel, format string, args ...any) {
+	if l < minLevel {
+		return
+	}
+	log.Printf(format, args...)
+}
 
 func main() {
 	var (
-		headless   = flag.Bool("headless", false, "run in headless mode (no Electron required)")
-		grpcAddr   = flag.String("grpc-addr", "127.0.0.1:0", "gRPC listen addr (unix:///tmp/... or 127.0.0.1:0)")
-		httpAddr   = flag.String("http-fallback-addr", "127.0.0.1:0", "HTTP fallback listen addr")
-		httpFallbackAddr string
-		dbPath     = flag.String("db", "", "SQLite DB path (default per-user location)")
-		logLevel   = flag.String("log-level", "info", "log level (debug|info|warn|error)")
-		tokenFlag  = flag.String("token", "", "auth token (generated if empty in headless)")
+		headless  = flag.Bool("headless", false, "run in headless mode (no Electron required)")
+		grpcAddr  = flag.String("grpc-addr", "127.0.0.1:0", "gRPC listen addr (unix:///tmp/... or 127.0.0.1:0)")
+		httpAddr  = flag.String("http-fallback-addr", "127.0.0.1:0", "HTTP fallback listen addr")
+		dbPath    = flag.String("db", "", "SQLite DB path (default per-user location)")
+		logLevel  = flag.String("log-level", "info", "log level (debug|info|warn|error)")
+		tokenFlag = flag.String("token", "", "auth token (generated if empty in headless)")
 	)
-	// alias for httpAddr to support --http-fallback-addr and --http-addr
-	flag.StringVar(&httpFallbackAddr, "http-addr", "", "alias for --http-fallback-addr")
+	// Alias --http-addr for --http-fallback-addr.
+	httpFallbackAlias := flag.String("http-addr", "", "alias for --http-fallback-addr")
 	flag.Parse()
 
-	// Resolve http addr alias
-	effectiveHTTP := *httpAddr
-	if httpFallbackAddr != "" {
-		effectiveHTTP = httpFallbackAddr
-	}
+	minLevel = parseLevel(*logLevel)
 
-	_ = *dbPath
-	_ = *logLevel
+	effectiveHTTP := *httpAddr
+	if *httpFallbackAlias != "" {
+		effectiveHTTP = *httpFallbackAlias
+	}
 
 	token := *tokenFlag
 	if token == "" && *headless {
-		token = generateToken()
+		generated, err := generateToken()
+		if err != nil {
+			// A predictable security token is worse than failing to start.
+			log.Fatalf("generate auth token: %v", err)
+		}
+		token = generated
 	}
 	if token == "" {
 		token = "dev-token"
 	}
 
-	// Start TCP listeners (stub gRPC + HTTP). Unix socket path handling is stubbed to TCP for portability.
-	grpcLis, err := net.Listen("tcp", resolveAddr(*grpcAddr))
+	// Resolve DB path: flag wins, else per-user config default.
+	effectiveDB := *dbPath
+	if effectiveDB == "" {
+		effectiveDB = config.Load().DbPath
+	}
+	db, err := repository.OpenSQLite(effectiveDB)
+	if err != nil {
+		log.Fatalf("open sqlite %s: %v", effectiveDB, err)
+	}
+	defer func() { _ = db.Close() }()
+
+	if err := repository.ApplyMigrations(context.Background(), db); err != nil {
+		log.Fatalf("apply migrations: %v", err)
+	}
+	logf(levelInfo, "sqlite ready db=%s", effectiveDB)
+
+	// Composition root wiring (ADR-001).
+	repoStore := repository.NewRepoStore(db)
+	gitAdapter := git.NewAdapter(repoStore)
+	repoSvc := service.NewRepoService(repoStore, gitAdapter)
+	cacheSvc := service.NewCacheService(500)
+	graphSvc := service.NewGraphService(gitAdapter, cacheSvc)
+	watcherSvc := service.NewWatcherService(watcher.NewFsnotifyAdapter())
+	gitSvc := service.NewGitService(gitAdapter, cacheSvc, watcherSvc)
+
+	// Listeners — unix socket for gRPC when requested, TCP loopback otherwise.
+	grpcLis, grpcAddrStr, err := listen(*grpcAddr)
 	if err != nil {
 		log.Fatalf("grpc listen failed: %v", err)
 	}
-	defer grpcLis.Close()
+	defer func() { _ = grpcLis.Close() }()
 
-	httpLis, err := net.Listen("tcp", resolveAddr(effectiveHTTP))
+	httpLis, httpAddrStr, err := listenTCP(effectiveHTTP)
 	if err != nil {
 		log.Fatalf("http listen failed: %v", err)
 	}
-	defer httpLis.Close()
+	defer func() { _ = httpLis.Close() }()
 
-	grpcAddrStr := grpcLis.Addr().String()
-	httpAddrStr := httpLis.Addr().String()
-	// Preserve unix:// prefix for display if requested via unix://
-	if isUnixAddr(*grpcAddr) {
-		grpcAddrStr = *grpcAddr
-	}
-
-	// Minimal HTTP fallback stub
+	// HTTP fallback (JSON, loopback-only, token-guarded).
+	handler := httpadapter.NewHandler(repoSvc, gitSvc, graphSvc, token)
 	mux := http.NewServeMux()
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"ok":true}`)
-	})
-	httpSrv := &http.Server{Handler: mux}
-
+	handler.Register(mux)
+	httpSrv := &http.Server{Handler: handler.AuthMiddleware(mux)}
 	go func() {
 		if err := httpSrv.Serve(httpLis); err != nil && err != http.ErrServerClosed {
-			log.Printf("http serve error: %v", err)
+			logf(levelError, "http serve error: %v", err)
 		}
 	}()
 
-	// Stub gRPC accept loop (no real gRPC until buf generated)
+	// gRPC server with token interceptors.
+	grpcSrv := grpcadapter.NewServer(repoSvc, gitSvc, graphSvc, watcherSvc, cacheSvc, token)
+	gs := googlegrpc.NewServer(
+		googlegrpc.UnaryInterceptor(grpcadapter.UnaryAuthInterceptor(token)),
+		googlegrpc.StreamInterceptor(grpcadapter.StreamAuthInterceptor(token)),
+	)
+	grpcSrv.Register(gs)
 	go func() {
-		for {
-			conn, err := grpcLis.Accept()
-			if err != nil {
-				return
-			}
-			// Drain and close — real gRPC handler will replace this
-			_ = conn.Close()
+		if err := gs.Serve(grpcLis); err != nil && err != googlegrpc.ErrServerStopped {
+			logf(levelError, "grpc serve error: %v", err)
 		}
 	}()
 
 	if *headless {
-		// Required stdout line for supervisor discovery (ipc-strategy.md §2.6)
+		// Required stdout line for supervisor discovery (ipc-strategy.md §2.6).
 		fmt.Printf("GO_CORE_READY addr=%s http=%s token=%s\n", grpcAddrStr, httpAddrStr, token)
 		_ = os.Stdout.Sync()
 	} else {
-		log.Printf("go-core listening grpc=%s http=%s (use --headless to emit GO_CORE_READY)", grpcAddrStr, httpAddrStr)
+		logf(levelInfo, "go-core listening grpc=%s http=%s (use --headless to emit GO_CORE_READY)", grpcAddrStr, httpAddrStr)
 	}
 
-	// Graceful shutdown on SIGTERM/SIGINT
+	// Graceful shutdown on SIGTERM/SIGINT (5s hard fallback).
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	<-ctx.Done()
-	log.Printf("shutting down...")
+	logf(levelInfo, "shutting down...")
+
+	stopped := make(chan struct{})
+	go func() {
+		gs.GracefulStop()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		logf(levelWarn, "grpc graceful stop timed out; forcing stop")
+		gs.Stop()
+	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = httpSrv.Shutdown(shutdownCtx)
-	_ = grpcLis.Close()
-	_ = shutdownCtx
 }
 
-func resolveAddr(addr string) string {
-	if addr == "" {
-		return "127.0.0.1:0"
-	}
+// listen binds addr, supporting unix:///path sockets and TCP loopback.
+// It returns the listener and the address string to advertise.
+func listen(addr string) (net.Listener, string, error) {
 	if isUnixAddr(addr) {
-		// Stub: map unix socket to ephemeral TCP for scaffold buildability
-		// Real implementation will listen on unix socket at path
-		return "127.0.0.1:0"
+		path := strings.TrimPrefix(addr, "unix://")
+		if dir := filepath.Dir(path); dir != "" && dir != "." {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return nil, "", err
+			}
+		}
+		// Remove a stale socket left by a crashed previous process.
+		if _, err := os.Stat(path); err == nil {
+			if err := os.Remove(path); err != nil {
+				return nil, "", fmt.Errorf("remove stale socket %s: %w", path, err)
+			}
+		}
+		// Restrict the umask before Listen so the socket is never briefly
+		// world/group-accessible (0o600 is still applied explicitly below).
+		prevUmask := setUmask(0o077)
+		lis, err := net.Listen("unix", path)
+		setUmask(prevUmask)
+		if err != nil {
+			return nil, "", err
+		}
+		_ = os.Chmod(path, 0o600)
+		return lis, "unix://" + path, nil
 	}
-	return addr
+	return listenTCP(addr)
+}
+
+// listenTCP binds a TCP listener on loopback only.
+func listenTCP(addr string) (net.Listener, string, error) {
+	normalized, err := normalizeTCPAddr(addr)
+	if err != nil {
+		return nil, "", err
+	}
+	lis, err := net.Listen("tcp", normalized)
+	if err != nil {
+		return nil, "", err
+	}
+	return lis, lis.Addr().String(), nil
+}
+
+// normalizeTCPAddr forces the host to loopback (ADR-004 / ipc-strategy.md §2.7).
+func normalizeTCPAddr(addr string) (string, error) {
+	if addr == "" {
+		return "127.0.0.1:0", nil
+	}
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "", err
+	}
+	switch host {
+	case "", "0.0.0.0", "::", "[::]":
+		host = "127.0.0.1"
+	}
+	return net.JoinHostPort(host, port), nil
 }
 
 func isUnixAddr(addr string) bool {
-	return len(addr) > 7 && addr[:7] == "unix://"
+	return strings.HasPrefix(addr, "unix://")
 }
 
-func generateToken() string {
-	const letters = "0123456789abcdef"
-	b := make([]byte, 64) // 32B hex = 64 hex chars
-	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
+// generateToken returns 32 cryptographically-random bytes as 64 hex chars
+// (ipc-strategy.md §2.4). It never falls back to a predictable value: on entropy
+// failure the error is returned so the caller can refuse to start.
+func generateToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("crypto/rand.Read: %w", err)
 	}
-	return string(b)
+	return hex.EncodeToString(b), nil
 }

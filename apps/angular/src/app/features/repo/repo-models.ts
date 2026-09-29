@@ -1,24 +1,23 @@
-// Re-export generated domain types (via @contracts alias) + view models.
-// Before `buf generate` runs, these fall back to local stubs so imports remain valid.
+// Re-export the generated contract domain types (types-only, erased at build time).
+// `export type` / `import type` keep the generated `@contracts` modules free of any
+// runtime dependency, so Angular code gets the wire-accurate shapes for free.
 
-// Prefer generated types — path alias @contracts/* -> libs/contracts/gen/ts/*
-// import type { Commit, Branch, Diff } from '@contracts/domain';
+export type {
+  Commit,
+  Oid,
+  Signature,
+  Branch,
+  Remote,
+  Tag,
+  Stash,
+  Worktree,
+  Repository,
+  FileStatus,
+  Diff,
+} from '@contracts/domain';
 
-export interface Oid {
-  hex: string;
-  kind: 'SHA1' | 'SHA256';
-}
-
-export interface Commit {
-  oid: Oid;
-  parents: Oid[];
-  author: { name: string; email: string; when: string };
-  committer: { name: string; email: string; when: string };
-  message: string;
-  treeOid: Oid;
-  committedAt: string;
-}
-
+// Angular-only view type. The contract has no `Lane` message: ADR-008 computes real
+// lanes in Go (Phase 1), so the renderer keeps a local, presentation-only shape.
 export interface Lane {
   index: number;
   color: string;
@@ -26,6 +25,8 @@ export interface Lane {
 }
 
 // View model — joins Commit + computed lane + branches pointing at it (presentation only).
+import type { Commit } from '@contracts/domain';
+
 export interface CommitRow {
   commit: Commit;
   lane: Lane;

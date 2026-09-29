@@ -18,11 +18,28 @@ func NewRepoService(repoPort domain.RepoPort, gitPort domain.GitPort) *RepoServi
 }
 
 // Open validates that fsPath is a git repo and tracks it.
+//
+// Validation runs through the Git port (git rev-parse --show-toplevel /
+// --git-common-dir) before anything is persisted, so a non-repo path yields
+// ErrNotAGitRepo instead of a bogus repository record. The resolved top-level
+// directory is used as the persisted path (worktree/subdirectory-safe).
 func (s *RepoService) Open(ctx context.Context, fsPath string) (*domain.Repository, error) {
-	if s.repoPort == nil {
-		return nil, domain.ErrNotAGitRepo
+	if s.repoPort == nil || s.gitPort == nil {
+		return nil, domain.ErrNotAGitRepo.WithDetail("fs_path", fsPath)
 	}
-	return s.repoPort.Open(ctx, fsPath)
+	topLevel, _, err := s.gitPort.Resolve(ctx, fsPath)
+	if err != nil {
+		return nil, domain.ErrNotAGitRepo.WithDetail("fs_path", fsPath)
+	}
+	return s.repoPort.Open(ctx, topLevel)
+}
+
+// Get returns a tracked repository by ID.
+func (s *RepoService) Get(ctx context.Context, id domain.RepositoryId) (*domain.Repository, error) {
+	if s.repoPort == nil {
+		return nil, domain.ErrRepoNotFound
+	}
+	return s.repoPort.Get(ctx, id)
 }
 
 // List returns tracked repositories.

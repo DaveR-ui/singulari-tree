@@ -1,16 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { rxResource } from '@angular/core/rxjs-interop';
-import { of } from 'rxjs';
+import type { Repository } from '@contracts/domain';
 import { IpcBridge } from './ipc-bridge.service';
-
-// Types re-exported from generated contracts (via @contracts/domain). Fallback to local
-// minimal shapes so the file is syntactically valid before generation.
-export interface Repository {
-  id: string;
-  fsPath: string;
-  commonDir: string;
-  name: string;
-}
 
 type RepositoryId = string;
 
@@ -27,23 +17,16 @@ export class RepoState {
     return this.repos().find((r) => r.id === id) ?? null;
   });
 
-  // Example rxResource stub — fetches single repo details when activeId changes.
-  // In dev without Electron, falls back to empty stream via IPC_UNAVAILABLE guard.
-  readonly activeRepoResource = rxResource({
-    params: () => ({ id: this.activeId() }),
-    stream: ({ params }) => {
-      const id = params.id;
-      if (!id) return of(null);
-      try {
-        // `getRepository` is the Electron channel; cast to satisfy bridge generic.
-        // Will resolve via GitClientApi when running under Electron.
-        const promise = this.bridge.invoke('getCommits' as never, { repoId: id } as never) as Promise<unknown>;
-        // Adapt to rxResource stream shape — wrap Promise via `of`-like handling.
-        // For scaffold, we use `of(null)` placeholder if invoke unavailable.
-        return of(null);
-      } catch {
-        return of(null);
-      }
-    },
-  });
+  /**
+   * Load the persisted repository list from the Go core (`git:listRepositories`).
+   * Degrades silently to the current list in a plain browser (IPC_UNAVAILABLE).
+   */
+  async loadRepositories(): Promise<void> {
+    try {
+      const res = await this.bridge.invoke('listRepositories', {});
+      this.repos.set(res.repositories);
+    } catch {
+      // IPC_UNAVAILABLE / Go core offline: keep whatever is already loaded.
+    }
+  }
 }

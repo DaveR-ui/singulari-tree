@@ -20,8 +20,8 @@ func NewGraphService(gitPort domain.GitPort, cachePort domain.CachePort) *GraphS
 // Commits returns windowed commits (200+100 pattern, handled by Angular GraphStore).
 func (s *GraphService) Commits(ctx context.Context, repoID domain.RepositoryId, offset, limit int) ([]domain.Commit, int, error) {
 	if s.cachePort != nil {
-		if commits, ok := s.cachePort.GetCommits(ctx, repoID, offset, limit); ok {
-			return commits, len(commits), nil
+		if commits, total, ok := s.cachePort.GetCommits(ctx, repoID, offset, limit); ok {
+			return commits, total, nil
 		}
 	}
 	if s.gitPort == nil {

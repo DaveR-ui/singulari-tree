@@ -20,21 +20,21 @@ type Hunk struct {
 
 // Diff value object (domain-model.md §1.3).
 type Diff struct {
-	From                Oid
-	To                  Oid
-	Hunks               []Hunk
-	Additions           int
-	Deletions           int
-	IsBinary            bool
-	HasConflictMarkers  bool
+	From               Oid
+	To                 Oid
+	Hunks              []Hunk
+	Additions          int
+	Deletions          int
+	IsBinary           bool
+	HasConflictMarkers bool
 }
 
 // FileStatus is working-tree status (porcelain v2).
 type FileStatus struct {
-	Path        string
-	Staged      string
-	Unstaged    string
-	IsStaged    bool
+	Path         string
+	Staged       string
+	Unstaged     string
+	IsStaged     bool
 	IsConflicted bool
 }
 
@@ -50,6 +50,9 @@ type DiffPort interface {
 type GitPort interface {
 	DiffPort
 	CommitPort
+	// Resolve returns the repository top-level directory and its git common dir
+	// for a filesystem path, or ErrNotAGitRepo when the path is not a repo.
+	Resolve(ctx context.Context, fsPath string) (topLevel, commonDir string, err error)
 	Status(ctx context.Context, repoID RepositoryId) ([]FileStatus, error)
 	Stage(ctx context.Context, repoID RepositoryId, paths []string) error
 	Unstage(ctx context.Context, repoID RepositoryId, paths []string) error
@@ -91,7 +94,10 @@ type FsChangedEvent struct {
 
 // CachePort is the persistence port for commit cache + file_status.
 type CachePort interface {
-	GetCommits(ctx context.Context, repoID RepositoryId, offset, limit int) ([]Commit, bool)
+	// GetCommits returns a window of cached commits plus the total reachable
+	// count, mirroring CommitPort.List so callers can compute hasMore. ok is
+	// false on a cache miss.
+	GetCommits(ctx context.Context, repoID RepositoryId, offset, limit int) ([]Commit, int, bool)
 	PutCommits(ctx context.Context, repoID RepositoryId, commits []Commit) error
 	Invalidate(repoID RepositoryId)
 }

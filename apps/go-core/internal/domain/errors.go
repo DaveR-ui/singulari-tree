@@ -47,11 +47,15 @@ const (
 	ErrCodeDiffFailed        = "DIFF_FAILED"
 	ErrCodeWatchFailed       = "WATCH_FAILED"
 	ErrCodeUnauthenticated   = "UNAUTHENTICATED"
+	// ErrCodeNotImplemented marks Git read-path operations that are scheduled for
+	// later phases (Phase 1/2). Returning it explicitly is preferable to faking
+	// success. See docs/context/git-client/roadmap-mvp.md.
+	ErrCodeNotImplemented = "NOT_IMPLEMENTED"
 	// GitHub OAuth prototype (auth.proto)
-	ErrCodeGitHubAuthFailed  = "GITHUB_AUTH_FAILED"
-	ErrCodeGitHubApiFailed   = "GITHUB_API_FAILED"
-	ErrCodeMissingClientId   = "MISSING_CLIENT_ID"
-	ErrCodeTokenNotFound     = "TOKEN_NOT_FOUND"
-	ErrCodeOAuthCancelled    = "OAUTH_CANCELLED"
+	ErrCodeGitHubAuthFailed   = "GITHUB_AUTH_FAILED"
+	ErrCodeGitHubApiFailed    = "GITHUB_API_FAILED"
+	ErrCodeMissingClientId    = "MISSING_CLIENT_ID"
+	ErrCodeTokenNotFound      = "TOKEN_NOT_FOUND"
+	ErrCodeOAuthCancelled     = "OAUTH_CANCELLED"
 	ErrCodeOAuthStateMismatch = "OAUTH_STATE_MISMATCH"
 )

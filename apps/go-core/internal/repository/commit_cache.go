@@ -7,8 +7,12 @@ import (
 	"github.com/SingulariTree/go-core/internal/domain"
 )
 
-// CommitCache is the SQLite-backed commit_cache + file_status (stub).
-// Real impl uses GORM with tables per domain-model.md §3.
+// CommitCache is an in-memory LRU-ish cache implementing domain.CachePort.
+//
+// TODO(Phase 1): populate the SQLite `commit_cache` table instead of this
+// in-memory map, keyed by (repo_id, oid) with index (repo_id, committed_at DESC)
+// for windowed reads (service-design.md §1.4). Phase 0 only needs the port filled
+// so GraphService can be wired; no SQLite commit reads happen yet.
 type CommitCache struct {
 	mu      sync.RWMutex
 	commits map[domain.RepositoryId]map[string]domain.Commit
@@ -23,26 +27,29 @@ func NewCommitCache() *CommitCache {
 	}
 }
 
-// GetCommits returns cached commits if present.
-func (c *CommitCache) GetCommits(_ context.Context, repoID domain.RepositoryId, offset, limit int) ([]domain.Commit, bool) {
+// GetCommits returns cached commits if present. total is the number of cached
+// commits for the repo (all commits are cached together for Phase 0), not the
+// size of the returned window, so callers can still compute hasMore.
+func (c *CommitCache) GetCommits(_ context.Context, repoID domain.RepositoryId, offset, limit int) ([]domain.Commit, int, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	m, ok := c.commits[repoID]
 	if !ok {
-		return nil, false
+		return nil, 0, false
 	}
 	// Simplified: return all if offset 0, else miss
 	if offset != 0 {
-		return nil, false
+		return nil, 0, false
 	}
 	out := make([]domain.Commit, 0, len(m))
 	for _, v := range m {
 		out = append(out, v)
 	}
+	total := len(out)
 	if limit > 0 && len(out) > limit {
 		out = out[:limit]
 	}
-	return out, true
+	return out, total, true
 }
 
 // PutCommits stores commits.

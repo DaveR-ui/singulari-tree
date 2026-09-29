@@ -20,6 +20,18 @@ function getGoCoreBinary(): string {
 }
 
 /**
+ * Directory holding the proto SSOT (libs/contracts/proto). The GoCoreClient
+ * loads these with @grpc/proto-loader at runtime; proto files are bundled as
+ * resources when packaged.
+ */
+function getProtoDir(): string {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'proto');
+  }
+  return path.join(app.getAppPath(), '../../libs/contracts/proto');
+}
+
+/**
  * Wait until dev server responds (poll with http). Returns true if reachable within timeout.
  * Used to avoid Electron racing ahead of `ng serve`.
  */
@@ -76,18 +88,17 @@ async function bootstrap(): Promise<void> {
 
   mainWindow = createMainWindow();
 
-  // Supervisor — mock in dev when ELECTRON_START_URL is set and binary missing, or when MOCK_GO_CORE=1
   const devUrl = process.env['VITE_DEV_SERVER_URL'] ?? process.env['ELECTRON_START_URL'];
-  const isMock = process.env['MOCK_GO_CORE'] === '1' || (!!devUrl && process.env['MOCK_GO_CORE'] !== '0');
-  // If dev and no explicit opt-out, default to mock unless a real binary is desired (set MOCK_GO_CORE=0)
-  const supervisorMock = isMock;
 
+  // Mock is strictly opt-in (MOCK_GO_CORE=1). Real go-core is the default so
+  // IPC traffic always exercises the gRPC dispatch path.
   supervisor = new Supervisor({
     goCoreBinary: getGoCoreBinary(),
     grpcAddr: '127.0.0.1:0',
     httpAddr: '127.0.0.1:0',
     token: process.env['GO_CORE_TOKEN'],
-    mock: supervisorMock,
+    protoDir: getProtoDir(),
+    mock: process.env['MOCK_GO_CORE'] === '1',
   });
 
   // Fire-and-forget supervisor start; renderer will queue until GO_CORE_READY (mock resolves instantly)

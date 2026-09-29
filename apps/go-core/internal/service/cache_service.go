@@ -7,11 +7,18 @@ import (
 	"github.com/SingulariTree/go-core/internal/domain"
 )
 
+// cacheEntry stores a cached commit window together with the total reachable
+// count that was known when the window was cached.
+type cacheEntry struct {
+	commits []domain.Commit
+	total   int
+}
+
 // CacheService implements LRU (500 entries) + SQLite coherence (service-design.md §6).
 type CacheService struct {
 	mu       sync.RWMutex
 	capacity int
-	entries  map[string][]domain.Commit
+	entries  map[string]cacheEntry
 	order    []string
 }
 
@@ -22,7 +29,7 @@ func NewCacheService(capacity int) *CacheService {
 	}
 	return &CacheService{
 		capacity: capacity,
-		entries:  make(map[string][]domain.Commit),
+		entries:  make(map[string]cacheEntry),
 	}
 }
 
@@ -54,15 +61,19 @@ func itoa(n int) string {
 }
 
 // GetCommits tries LRU.
-func (s *CacheService) GetCommits(_ context.Context, repoID domain.RepositoryId, offset, limit int) ([]domain.Commit, bool) {
+func (s *CacheService) GetCommits(_ context.Context, repoID domain.RepositoryId, offset, limit int) ([]domain.Commit, int, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	k := cacheKey(repoID, offset, limit)
-	c, ok := s.entries[k]
-	return c, ok
+	e, ok := s.entries[k]
+	if !ok {
+		return nil, 0, false
+	}
+	return e.commits, e.total, true
 }
 
-// PutCommits stores in LRU (evicts oldest if over capacity).
+// PutCommits stores in LRU (evicts oldest if over capacity). The port carries no
+// separate total, so the stored total is the size of the given window.
 func (s *CacheService) PutCommits(_ context.Context, repoID domain.RepositoryId, commits []domain.Commit) error {
 	// Use window 0 as placeholder key for bulk put; real impl keys by offset/limit/tip
 	s.mu.Lock()
@@ -77,7 +88,7 @@ func (s *CacheService) PutCommits(_ context.Context, repoID domain.RepositoryId,
 		}
 		s.order = append(s.order, k)
 	}
-	s.entries[k] = commits
+	s.entries[k] = cacheEntry{commits: commits, total: len(commits)}
 	return nil
 }
 

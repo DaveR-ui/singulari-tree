@@ -1,6 +1,7 @@
 package http
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 
@@ -39,10 +40,20 @@ func (h *Handler) AuthMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if r.Header.Get("Authorization") != "Bearer "+h.token {
+		if !secureEqual(r.Header.Get("Authorization"), "Bearer "+h.token) {
 			http.Error(w, `{"error":{"code":"UNAUTHENTICATED","message":"invalid token"}}`, http.StatusUnauthorized)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// secureEqual compares a and b in constant time (length-checked first) so body
+// token validation does not leak information through timing. Behaviour is
+// identical to == for the boolean result.
+func secureEqual(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }

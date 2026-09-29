@@ -1,25 +1,60 @@
 import { Injectable } from '@angular/core';
+import type { Commit, Diff, Repository } from '@contracts/domain';
+import type {
+  CheckoutRequest,
+  CheckoutResponse,
+  CommitRequest,
+  FetchRequest,
+  FsChangedEvent,
+  GetBranchesRequest,
+  GetBranchesResponse,
+  GetCommitsRequest,
+  GetCommitsResponse,
+  GetDiffRequest,
+  GetRemotesRequest,
+  GetRemotesResponse,
+  GetStashesRequest,
+  GetStashesResponse,
+  GetStatusRequest,
+  GetStatusResponse,
+  GetTagsRequest,
+  GetTagsResponse,
+  ListRepositoriesRequest,
+  ListRepositoriesResponse,
+  OpenRepositoryRequest,
+  Progress,
+  PullRequest,
+  PushRequest,
+  StageRequest,
+  StageResponse,
+  UnstageRequest,
+  UnstageResponse,
+} from '@contracts/gitcore';
 
-// Minimal GitClientApi shape mirroring preload contract (libs/contracts/gen/ts/api).
-// Actual generated types will replace this via @contracts path alias once buf generate runs.
+// Typed mirror of the preload bridge (`window.gitClientApi`, ipc-strategy.md §1.2).
+// Channel -> proto request/response pulled from the generated contracts. `fetch`,
+// `pull` and `push` are server-streaming in proto; progress arrives via `onProgress`
+// and the invoke promise resolves when the operation completes.
 export interface GitClientApi {
-  getCommits: (req: unknown) => Promise<unknown>;
-  getBranches: (req: unknown) => Promise<unknown>;
-  getRemotes: (req: unknown) => Promise<unknown>;
-  getTags: (req: unknown) => Promise<unknown>;
-  getStashes: (req: unknown) => Promise<unknown>;
-  getStatus: (req: unknown) => Promise<unknown>;
-  getDiff: (req: unknown) => Promise<unknown>;
-  stage: (req: unknown) => Promise<unknown>;
-  unstage: (req: unknown) => Promise<unknown>;
-  commit: (req: unknown) => Promise<unknown>;
-  checkout: (req: unknown) => Promise<unknown>;
-  fetch: (req: unknown) => Promise<unknown>;
-  pull: (req: unknown) => Promise<unknown>;
-  push: (req: unknown) => Promise<unknown>;
-  onRepoChanged: (cb: (payload: unknown) => void) => () => void;
-  onFsChanged: (cb: (payload: unknown) => void) => () => void;
-  onProgress: (cb: (payload: unknown) => void) => () => void;
+  getCommits: (req: GetCommitsRequest) => Promise<GetCommitsResponse>;
+  openRepository: (req: OpenRepositoryRequest) => Promise<Repository>;
+  listRepositories: (req: ListRepositoriesRequest) => Promise<ListRepositoriesResponse>;
+  getBranches: (req: GetBranchesRequest) => Promise<GetBranchesResponse>;
+  getRemotes: (req: GetRemotesRequest) => Promise<GetRemotesResponse>;
+  getTags: (req: GetTagsRequest) => Promise<GetTagsResponse>;
+  getStashes: (req: GetStashesRequest) => Promise<GetStashesResponse>;
+  getStatus: (req: GetStatusRequest) => Promise<GetStatusResponse>;
+  getDiff: (req: GetDiffRequest) => Promise<Diff>;
+  stage: (req: StageRequest) => Promise<StageResponse>;
+  unstage: (req: UnstageRequest) => Promise<UnstageResponse>;
+  commit: (req: CommitRequest) => Promise<Commit>;
+  checkout: (req: CheckoutRequest) => Promise<CheckoutResponse>;
+  fetch: (req: FetchRequest) => Promise<void>;
+  pull: (req: PullRequest) => Promise<void>;
+  push: (req: PushRequest) => Promise<void>;
+  onRepoChanged: (cb: (payload: Repository) => void) => () => void;
+  onFsChanged: (cb: (payload: FsChangedEvent) => void) => () => void;
+  onProgress: (cb: (payload: Progress) => void) => () => void;
 }
 
 export interface AppError {
@@ -53,19 +88,19 @@ export class IpcBridge {
     return fn(req);
   }
 
-  onRepoChanged(cb: (payload: unknown) => void): () => void {
+  onRepoChanged(cb: (payload: Repository) => void): () => void {
     const api = this.api;
     if (!api?.onRepoChanged) return () => {};
     return api.onRepoChanged(cb);
   }
 
-  onFsChanged(cb: (payload: unknown) => void): () => void {
+  onFsChanged(cb: (payload: FsChangedEvent) => void): () => void {
     const api = this.api;
     if (!api?.onFsChanged) return () => {};
     return api.onFsChanged(cb);
   }
 
-  onProgress(cb: (payload: unknown) => void): () => void {
+  onProgress(cb: (payload: Progress) => void): () => void {
     const api = this.api;
     if (!api?.onProgress) return () => {};
     return api.onProgress(cb);

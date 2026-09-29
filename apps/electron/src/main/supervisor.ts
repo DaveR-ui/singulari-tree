@@ -2,10 +2,16 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { app } from 'electron';
+import {
+  CHANNEL_TO_RPC,
+  isStreamingRpc,
+  type ChannelName,
+} from '../ipc/channels';
+import { GoCoreClient } from './go-core-client';
 
 /**
  * Supervisor — spawns go-core, awaits GO_CORE_READY, heartbeats Ping 5s,
- * exponential backoff restart, queue drain (ipc-strategy.md §2.6).
+ * exponential backoff restart, queue drain (ipc-strategy.md §2.6, ADR-007).
  */
 
 export interface SupervisorOptions {
@@ -13,8 +19,19 @@ export interface SupervisorOptions {
   grpcAddr: string;
   httpAddr: string;
   dbPath?: string;
+  /**
+   * Explicit auth-token override. Omit in production: go-core generates a
+   * 32-byte hex token in `--headless` mode and prints it on the GO_CORE_READY
+   * line, which `awaitReady()` adopts as authoritative. Only a caller-supplied
+   * override is forwarded via `--token` (see `spawn()`).
+   */
   token?: string;
-  /** When true, do not spawn a real process — in-memory mock for dev bootstrap. */
+  /**
+   * Directory containing libs/contracts/proto (gitcore.proto + imports).
+   * Injected by main.ts; required whenever go-core is really spawned.
+   */
+  protoDir?: string;
+  /** Explicit opt-in mock mode (also `MOCK_GO_CORE=1`). Never the default. */
   mock?: boolean;
 }
 
@@ -25,6 +42,12 @@ interface PendingRequest {
   reject: (e: unknown) => void;
 }
 
+interface ReadyInfo {
+  addr: string;
+  http: string;
+  token: string;
+}
+
 export class Supervisor {
   private proc: ChildProcess | null = null;
   private ready = false;
@@ -33,148 +56,239 @@ export class Supervisor {
   private httpAddr = '';
   private restarts = 0;
   private heartbeatTimer: NodeJS.Timeout | null = null;
+  /** Pending restart-chain timer; non-null means a restart is already queued. */
+  private restartTimer: NodeJS.Timeout | null = null;
   private queue: PendingRequest[] = [];
   private readonly maxQueue = 100;
   private readonly mockMode: boolean;
+  private client: GoCoreClient | null = null;
+  private readonly protoDir?: string;
+  private readonly tokenOverride?: string;
 
   constructor(private readonly opts: SupervisorOptions) {
-    this.token = opts.token ?? this.generateToken();
+    // Token ownership lives in go-core. In `--headless` it generates a random
+    // 32-byte hex token and prints it on GO_CORE_READY; `awaitReady()` adopts
+    // that value. We deliberately do NOT generate a secret here and do NOT put
+    // one on argv by default — argv is observable (e.g. `ps`). An explicit
+    // `opts.token` remains supported as an opt-in override.
+    this.tokenOverride = opts.token;
+    this.token = opts.token ?? '';
     this.grpcAddr = opts.grpcAddr;
     this.httpAddr = opts.httpAddr;
-    // Explicit mock flag or env var MOCK_GO_CORE=1 triggers mock mode
+    this.protoDir = opts.protoDir;
+    // Mock only on explicit opt-in — never a silent default.
     this.mockMode = opts.mock ?? process.env['MOCK_GO_CORE'] === '1';
   }
 
   async start(): Promise<void> {
     if (this.mockMode) {
-      console.log('[supervisor] mock mode — skipping go-core spawn');
+      console.log('[supervisor] mock mode (explicit opt-in) — skipping go-core spawn');
       this.ready = true;
       this.drainQueue();
       this.startHeartbeat();
       return;
     }
-    try {
-      await this.spawn();
-      this.startHeartbeat();
-    } catch (e) {
-      // Graceful fallback to mock if spawn fails in dev (no binary, go not installed, etc.)
-      const isDev = Boolean(process.env['VITE_DEV_SERVER_URL'] ?? process.env['ELECTRON_START_URL']);
-      if (isDev) {
-        console.warn('[supervisor] spawn failed in dev — falling back to mock', e);
-        this.ready = true;
-        this.drainQueue();
-        this.startHeartbeat();
-        return;
-      }
-      throw e;
-    }
+    await this.spawn();
+    this.startHeartbeat();
   }
 
   stop(): void {
-    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
-    this.proc?.kill();
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+    this.ready = false;
+    this.client?.close();
+    this.client = null;
+    // Null before kill so the child's `exit` handler does not schedule a restart.
+    const child = this.proc;
     this.proc = null;
+    child?.kill();
   }
 
   private async spawn(): Promise<void> {
     const args = [
+      '--headless',
       '--grpc-addr',
       this.opts.grpcAddr,
       '--http-fallback-addr',
       this.opts.httpAddr,
-      '--token',
-      this.token,
     ];
+    // Only an explicit override is passed on argv; by default go-core generates
+    // the token itself and reports it back in GO_CORE_READY.
+    if (this.tokenOverride) args.push('--token', this.tokenOverride);
     if (this.opts.dbPath) args.push('--db', this.opts.dbPath);
 
-    // Resolve binary — in dev, prefer go run fallback if binary not present.
+    // Resolve binary — in dev, fall back to `go run` if binary not present.
     const bin = this.opts.goCoreBinary;
     const useGoRun = !fs.existsSync(bin);
+    const repoRoot = path.join(app.getAppPath(), '../..');
 
-    if (useGoRun) {
-      // dev fallback: go run ./apps/go-core/cmd/go-core
-      this.proc = spawn('go', ['run', path.join(app.getAppPath(), '../apps/go-core/cmd/go-core'), ...args], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-    } else {
-      this.proc = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = useGoRun
+      ? spawn('go', ['run', './apps/go-core/cmd/go-core', ...args], {
+          cwd: repoRoot,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        })
+      : spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+
+    this.proc = child;
+    // Attach lifecycle handlers BEFORE awaiting readiness: a child that dies
+    // during startup must be observed and restarted, not merely time out.
+    this.attachChildLifecycle(child);
+
+    try {
+      await this.awaitReady(child);
+    } catch (err) {
+      console.error('[supervisor] go-core failed to become ready', err);
+      if (this.proc === child) this.proc = null;
+      child.kill();
+      // Route startup failure into the same single restart chain.
+      this.handleChildLoss('readiness failure');
+      throw err;
     }
+  }
 
-    await this.awaitReady();
-
-    this.proc.on('exit', (code, signal) => {
-      this.ready = false;
-      console.warn(`[supervisor] go-core exited code=${code} signal=${signal} — restarting`);
-      this.scheduleRestart();
+  /** Observe child loss (exit/spawn error) from spawn time onward. */
+  private attachChildLifecycle(child: ChildProcess): void {
+    child.on('exit', (code, signal) => {
+      // Ignore stale children superseded by stop()/restart.
+      if (this.proc !== child) return;
+      this.proc = null;
+      this.handleChildLoss(`exit code=${code} signal=${signal}`);
     });
-
-    this.proc.on('error', (err) => {
-      this.ready = false;
-      console.error('[supervisor] spawn error', err);
-      this.scheduleRestart();
+    child.on('error', (err) => {
+      if (this.proc !== child) return;
+      this.proc = null;
+      this.handleChildLoss(`spawn error: ${String(err)}`);
     });
   }
 
-  private awaitReady(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('GO_CORE_READY timeout')), 15000);
-      const onData = (chunk: Buffer) => {
+  /** Shared child-loss path: tear down client state and queue exactly one restart. */
+  private handleChildLoss(reason: string): void {
+    this.ready = false;
+    this.client?.close();
+    this.client = null;
+    console.warn(`[supervisor] go-core lost (${reason}) — scheduling restart`);
+    this.scheduleRestart();
+  }
+
+  private awaitReady(child: ChildProcess): Promise<ReadyInfo> {
+    return new Promise<ReadyInfo>((resolve, reject) => {
+      let settled = false;
+      let timeout: NodeJS.Timeout | undefined;
+
+      const cleanup = (): void => {
+        if (timeout !== undefined) clearTimeout(timeout);
+        child.stdout?.off('data', onData);
+        child.stderr?.off('data', onStderr);
+        child.off('exit', onExit);
+      };
+      const finish = (fn: () => void): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        fn();
+      };
+      const onData = (chunk: Buffer): void => {
         const line = chunk.toString();
+        process.stdout.write(`[go-core] ${line}`);
         const m = line.match(/GO_CORE_READY\s+addr=(\S+)\s+http=(\S+)\s+token=(\S+)/);
         if (m) {
           this.grpcAddr = m[1];
           this.httpAddr = m[2];
-          // token from stdout may rotate; keep supervisor token in sync if provided
+          // stdout is authoritative for the token (go-core generates it).
+          this.token = m[3];
+          this.connectClient();
           this.ready = true;
           this.restarts = 0;
-          clearTimeout(timeout);
-          this.proc?.stdout?.off('data', onData);
-          this.drainQueue();
-          resolve();
+          finish(() => {
+            this.drainQueue();
+            resolve({ addr: this.grpcAddr, http: this.httpAddr, token: this.token });
+          });
         }
-        // Also log
-        process.stdout.write(`[go-core] ${line}`);
       };
-      this.proc?.stdout?.on('data', onData);
-      this.proc?.stderr?.on('data', (c: Buffer) => process.stderr.write(`[go-core:err] ${c.toString()}`));
+      const onStderr = (c: Buffer): void => {
+        process.stderr.write(`[go-core:err] ${c.toString()}`);
+      };
+      const onExit = (code: number | null, signal: NodeJS.Signals | null): void =>
+        finish(() =>
+          reject(
+            new Error(
+              `go-core exited before GO_CORE_READY (code=${code} signal=${signal})`,
+            ),
+          ),
+        );
+
+      timeout = setTimeout(
+        () => finish(() => reject(new Error('GO_CORE_READY timeout'))),
+        15000,
+      );
+      child.stdout?.on('data', onData);
+      child.stderr?.on('data', onStderr);
+      child.on('exit', onExit);
     });
   }
 
+  /** Build/replace the gRPC client for the freshly parsed addr + token. */
+  private connectClient(): void {
+    if (!this.protoDir) {
+      console.error('[supervisor] protoDir not configured — cannot create gRPC client');
+      return;
+    }
+    if (!this.client) {
+      this.client = new GoCoreClient({ protoDir: this.protoDir });
+    }
+    this.client.connect(this.grpcAddr, this.token);
+  }
+
   private scheduleRestart(): void {
-    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    // Re-entrancy guard: `error`+`exit` (or heartbeat vs exit) must not start
+    // two concurrent restart chains (which would spawn two go-core processes).
+    if (this.restartTimer) return;
+
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
     const backoffs = [200, 500, 1000, 2000, 5000];
     const delay = backoffs[Math.min(this.restarts, backoffs.length - 1)];
     this.restarts += 1;
-    // Rotate token on each restart
-    this.token = this.generateToken();
-    setTimeout(() => {
-      this.spawn()
-        .then(() => this.startHeartbeat())
-        .catch((e) => {
+
+    this.restartTimer = setTimeout(() => {
+      this.restartTimer = null;
+      // Clear before re-spawning so a stale child's exit cannot be misread.
+      this.proc = null;
+      void this.spawn().then(
+        () => this.startHeartbeat(),
+        (e) => {
           console.error('[supervisor] restart failed', e);
           this.scheduleRestart();
-        });
+        },
+      );
     }, delay);
   }
 
   private startHeartbeat(): void {
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
-    this.heartbeatTimer = setInterval(async () => {
-      try {
-        await this.ping();
-      } catch {
+    this.heartbeatTimer = setInterval(() => {
+      void this.ping().catch(() => {
         console.warn('[supervisor] Ping missed — restarting go-core');
         this.proc?.kill();
-        // exit handler will restart
-      }
+        // exit may fire asynchronously; the guard collapses both into one chain.
+        this.handleChildLoss('ping missed');
+      });
     }, 5000);
   }
 
+  /** Real gRPC `Ping` with Bearer metadata (mock mode is always healthy). */
   private async ping(): Promise<void> {
-    // Placeholder — real implementation uses gRPC Ping RPC with token metadata.
-    if (!this.ready) throw new Error('not ready');
-    if (this.mockMode) return; // mock: always healthy
-    // TODO: gRPC client Ping({ }) with authorization Bearer token
+    if (this.mockMode) return;
+    if (!this.ready || !this.client) throw new Error('go-core not ready');
+    await this.client.ping();
   }
 
   private drainQueue(): void {
@@ -186,6 +300,15 @@ export class Supervisor {
   }
 
   async forwardToGo(channel: string, payload: unknown): Promise<unknown> {
+    const rpc = CHANNEL_TO_RPC[channel as ChannelName] as string | undefined;
+    if (!rpc) {
+      throw { code: 'UNKNOWN_CHANNEL', message: `No gRPC mapping for channel ${channel}` };
+    }
+    if (isStreamingRpc(rpc)) {
+      // The unary invoke path cannot drive a server-streaming method (its
+      // callback never settles). Fail fast and honestly instead of hanging.
+      throw { code: 'NOT_IMPLEMENTED', message: `${rpc} streaming is Phase 6` };
+    }
     if (!this.ready) {
       if (this.queue.length >= this.maxQueue) {
         throw { code: 'QUEUE_FULL', message: 'Go core unavailable and queue full' };
@@ -194,16 +317,13 @@ export class Supervisor {
         this.queue.push({ channel, payload, resolve, reject });
       });
     }
-    // Mock mode: echo payload without gRPC
-    console.log(`[supervisor${this.mockMode ? ':mock' : ''}] forward ${channel}`, payload);
-    return { ok: true, channel, payload, mock: this.mockMode || undefined };
-  }
-
-  private generateToken(): string {
-    // 32B hex
-    const chars = '0123456789abcdef';
-    let out = '';
-    for (let i = 0; i < 64; i++) out += chars[Math.floor(Math.random() * 16)];
-    return out;
+    if (this.mockMode) {
+      console.log(`[supervisor:mock] forward ${channel}`, payload);
+      return { ok: true, channel, payload, mock: true };
+    }
+    if (!this.client) {
+      throw { code: 'GO_CORE_UNAVAILABLE', message: 'Go core gRPC client not connected' };
+    }
+    return this.client.invoke(rpc, payload);
   }
 }

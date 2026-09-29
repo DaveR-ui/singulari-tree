@@ -2,8 +2,6 @@ syntax = "proto3";
 
 package singularitree.v1;
 
-import "domain.proto";
-
 option go_package = "github.com/SingulariTree/go-core/gen/go/singularitree/v1;singularitreev1";
 
 // Service Auth — GitHub OAuth prototype (scalable, security deferred)
