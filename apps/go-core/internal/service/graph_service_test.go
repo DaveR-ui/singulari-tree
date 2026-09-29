@@ -112,6 +112,38 @@ func TestLanesCrossover(t *testing.T) {
 	assertLanes(t, lanes, []int{0, 1, 0}, []bool{true, true, false})
 }
 
+// TestLanesConvergenceKeepsFirstParentLane is the regression guard for the
+// convergence bug: when a commit's first parent is already expected by another
+// lane, `git log --graph` keeps the leftmost column (here the current,
+// first-parent lane) and folds the side lane into it. Encodes this real
+// topology (all commits on --topo-order):
+//
+//   - 9630c12 tail
+//   - db395a6 merge
+//     |\
+//     | * 7638063 b2
+//     | * 2f9b2ce b1
+//   - | 647c654 a2
+//     |/
+//   - 120c8fb a1
+//   - 4bd7cef base
+//
+// Expected lane indices (tail, merge, b2, b1, a2, a1, base) = [0,0,1,1,0,0,0].
+func TestLanesConvergenceKeepsFirstParentLane(t *testing.T) {
+	lanes := lanesOf(t, []domain.Commit{
+		commit("tail", "merge"),
+		commit("merge", "a2", "b2"), // first parent a2 (main), second b2 (branch)
+		commit("b2", "b1"),
+		commit("b1", "a1"),
+		commit("a2", "a1"),
+		commit("a1", "base"),
+		commit("base"),
+	})
+	assertLanes(t, lanes,
+		[]int{0, 0, 1, 1, 0, 0, 0},
+		[]bool{true, true, true, true, true, true, false})
+}
+
 func TestLanesIndependentLines(t *testing.T) {
 	// Two unrelated chains interleaved; lanes stay distinct and close.
 	lanes := lanesOf(t, []domain.Commit{

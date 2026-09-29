@@ -54,10 +54,13 @@ func (s *GraphService) Commits(ctx context.Context, repoID domain.RepositoryId, 
 //   - A commit that no slot expects is an independent/new tip and takes the
 //     lowest free slot.
 //   - A commit's first parent continues in the same slot; 2nd+ parents (merge,
-//     octopus) reserve extra slots. If a parent is already expected by another
-//     slot the two lines converge: no duplicate slot is created, and the
-//     current slot is released so the lines merge (the renderer draws the
-//     crossing from the commit's index to the parent's).
+//     octopus) reserve extra slots. If the first parent is already expected by
+//     another slot the two lanes converge: `git log --graph` preserves the
+//     leftmost (lowest-indexed) column and folds the other lane into it, so the
+//     higher-indexed of the two lanes is released. (In the common case the
+//     current lane is the lower one and keeps the parent; when a side lane
+//     already holds it, the current lane folds into that side lane.) No
+//     duplicate slot is created.
 //   - A slot whose expected commit is not part of the input is never reserved,
 //     so dangling lanes are not left open.
 //
@@ -65,12 +68,28 @@ func (s *GraphService) Commits(ctx context.Context, repoID domain.RepositoryId, 
 // O(1) lookups and never iterated, and the free-slot pool is a min-heap, so
 // repeated calls on the same input produce identical lanes.
 //
+// Limitation (wire contract): a row carries only Lane{index,color,continues},
+// so the renderer learns the column a commit sits in but receives no edge
+// geometry. Convergences and crossings therefore cannot be drawn as diagonals:
+// the renderer can keep each row in its column at most. The column
+// *assignment* is what this method guarantees; no crossing geometry is
+// promised.
+//
+// Limitation (fixed slots vs git column shifting): lanes are stable slots,
+// assigned from the lowest free column. `git log --graph` instead numbers
+// display columns positionally and shifts/compacts them as branches open. The
+// results agree for linear, single branch+merge and octopus histories (the
+// committed parity contract), but can differ when a new branch is opened while
+// an unrelated side lane already occupies the column to its right: git shifts
+// that side lane further right, while Lanes keeps it fixed and opens the new
+// branch in the next free column. Reconciling this would mean reimplementing
+// git's column compaction (a different, larger change).
+//
 // Limitation (mid-history windows): Lanes only sees the requested window, not
-// its ancestors. For offset==0 (full history) the column layout is stable and
-// matches `git log --graph`. For offset>0 the oldest commits in the window have
-// parents outside the window; those edges are dropped (Continues=false) and the
-// exact `git log --graph` column layout can differ because git walks the full
-// history from HEAD.
+// its ancestors. For offset>0 the oldest commits in the window have parents
+// outside the window; those edges are dropped (Continues=false) and the exact
+// `git log --graph` column layout can differ because git walks the full history
+// from HEAD.
 func (s *GraphService) Lanes(_ context.Context, _ domain.RepositoryId, commits []domain.Commit) ([]domain.Lane, error) {
 	n := len(commits)
 	lanes := make([]domain.Lane, n)
@@ -153,17 +172,28 @@ func (s *GraphService) Lanes(_ context.Context, _ domain.RepositoryId, commits [
 			expect(alloc(), ph)
 		}
 
-		// First parent continues the line in this slot, unless another lane
-		// already expects it (convergence), in which case this line merges into
-		// that lane and this slot is released.
+		// First parent continues the line in this slot. If another lane already
+		// expects it, the two lanes converge: `git log --graph` preserves the
+		// leftmost (lowest-indexed) column and folds the other lane into it.
+		// So keep whichever of idx/other is smaller and release the other.
 		first := parents[0].Hex
 		if _, ok := inWindow[first]; !ok {
 			release(idx)
 			continue
 		}
 		if other, ok := waiting[first]; ok && other != idx {
-			release(idx)
-			continue
+			if other < idx {
+				// The parent's existing (leftmost) lane wins; the current
+				// lane folds into it and is released. lanes[i].Index keeps the
+				// column the commit itself was drawn in.
+				release(idx)
+				idx = other
+			} else {
+				// The current lane is leftmost; it keeps the parent and the
+				// other lane is released. release(other) deletes
+				// waiting[first]; expect(idx, first) below re-adds it here.
+				release(other)
+			}
 		}
 		expect(idx, first)
 	}
