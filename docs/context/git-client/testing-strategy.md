@@ -79,6 +79,8 @@ go vet ./...
 - **Casos:** open repo, graph scroll+prefetch, stage/commit, diff Monaco, branch checkout, fetch progress bar.
 - **CI:** `playwright test` en `ubuntu` + `windows` + `macos` matrix; artifact `trace.zip`.
 
+**Estado (Fase 0):** el tramo E2E renderer↔ipcMain (criterio 6) queda **diferido** al smoke Playwright Electron de la Semana 7 (ADR-011). Cobertura actual: round-trip real **Electron-main → gRPC → Go → `exec git` → repo** (no skipped), más typecheck en compilación y tests unitarios de mapping.
+
 ## 6. Contratos
 
 - **buf lint/breaking:** `tools/ci/verify-contracts.sh`:

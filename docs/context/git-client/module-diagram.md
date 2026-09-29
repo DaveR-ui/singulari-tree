@@ -9,7 +9,7 @@ C4Context
   System_Boundary(app, "SingulariTree Desktop") {
     Container(angular, "Angular Renderer", "Angular 21 + Signals + SCSS", "Grafo, Monaco diff, status/stage")
     Container(electron, "Electron Main + Preload", "Node + Electron", "Shell, supervisor, IPC bridge")
-    Container(gocore, "Go Core Headless", "Go 1.24", "Git, lanes, cache, watchers")
+    Container(gocore, "Go Core Headless", "Go 1.25+", "Git, lanes, cache, watchers")
     ContainerDb(sqlite, "SQLite WAL", "file per-user", "config/recents/cache — NO Git objects")
     Container(contracts, "Contracts", "buf + proto", "singularitree.v1 → gen/go + gen/ts")
   }
@@ -34,6 +34,7 @@ flowchart TB
   subgraph Driving["Driving (primary) adapters"]
     A["Angular Signals Stores\n(IpcBridge)"]
     E["Electron ipcMain.handle\n(channels.ts/handlers.ts)"]
+    M["adapter/mcp\n(opcional, stdio)"]
   end
 
   subgraph Hex["Hexágono — Services (use cases)"]
@@ -59,6 +60,7 @@ flowchart TB
   end
 
   A --> E --> S1 & S2 & S3
+  M --> S1 & S2 & S3
   S1 & S2 & S3 --> P1 & P2 & P3 & P4
   P1 --> D1
   P2 & P3 --> D2
@@ -68,7 +70,7 @@ flowchart TB
   classDef domain fill:#dbeafe,stroke:#2563eb
   classDef adapter fill:#fef3c7,stroke:#d97706
   class S1,S2,S3,S4,S5,P1,P2,P3,P4 domain
-  class A,E,D1,D2,D3,D4 adapter
+  class A,E,D1,D2,D3,D4,M adapter
 ```
 
 **Prueba de sustituibilidad:**
@@ -79,8 +81,11 @@ flowchart TB
 | Electron → Tauri | `E` + `supervisor.ts` | `Hex`, `Ports` |
 | `go-git` → exec git | `D1` | `S*`, `P1` |
 | gRPC → solo HTTP | `D4` | `S*` |
+| Añadir superficie MCP (opcional) | `adapter/mcp` + `cmd/mcp-server` | `Hex`, `Ports`, `Driven` |
 
 `domain/` no importa `service/` ni `adapter/`; `service` solo conoce interfaces.
+
+> MCP es un inbound adapter **opcional** sobre el mismo core Go (no altera el spine gRPC/`--headless`); ver ADR-013.
 
 ## 3. Secuencia IPC (request/response + streaming + watcher)
 
@@ -207,8 +212,10 @@ Cada feature tiene su **Signals store** (ver `service-design.md §2`): `GraphSto
 | `adapter/grpc` | `service`, `gen/go` | `GitCore` gRPC server, interceptors token/auth |
 | `adapter/http` | `service` | fallback REST `/health`, `/commits`, etc. |
 | `adapter/watcher` | `domain` | `WatcherPort` fsnotify |
+| `adapter/mcp` *(opcional)* | `service`, `gen/go` | MCP server (stdio), tools `git_<verb>` — ver ADR-013 |
 | `config` | Viper, flags | `Config` struct |
 | `cmd/go-core` | todos | DI wiring, listeners, graceful shutdown |
+| `cmd/mcp-server` *(opcional)* | todos | composition root MCP; wiring compartido vía `internal/bootstrap` |
 
 ## 6. Dependencias externas
 

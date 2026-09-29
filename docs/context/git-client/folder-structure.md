@@ -21,7 +21,7 @@ SingulariTree/                         <- monorepo root (carpeta física Singula
 │           ├── roadmap-mvp.md         <- MVP 8-10 semanas
 │           ├── roadmap-v1.md          <- V1 16-20 semanas post-MVP
 │           ├── risks.md               <- riesgos técnicos
-│           └── decisions.md           <- 10 ADRs justificadas
+│           └── decisions.md           <- 13 ADRs justificadas
 ├── apps/
 │   ├── angular/                       <- Angular 21 renderer (zoneless, standalone, signals)
 │   │   ├── angular.json
@@ -71,7 +71,7 @@ SingulariTree/                         <- monorepo root (carpeta física Singula
 │   │           ├── window.ts
 │   │           └── csp.ts             <- Content-Security-Policy
 │   └── go-core/                       <- Go headless core (domain + services + adapters)
-│       ├── go.mod                     <- module github.com/SingulariTree/go-core (Go 1.24)
+│       ├── go.mod                     <- module github.com/SingulariTree/go-core (Go 1.25+)
 │       ├── cmd/
 │       │   └── go-core/
 │       │       └── main.go            <- Viper + DI + gRPC/HTTP, --headless flag

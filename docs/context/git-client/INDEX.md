@@ -30,8 +30,14 @@ Principios no negociables (inglés técnico preservado):
 | 8 | [roadmap-mvp.md](./roadmap-mvp.md) | MVP 8-10 semanas, épicas, DoD | MVP |
 | 9 | [roadmap-v1.md](./roadmap-v1.md) | V1 16-20 semanas post-MVP | V1 |
 | 10 | [risks.md](./risks.md) | Riesgos técnicos, mitigaciones, RACI | Riesgos |
-| 11 | [decisions.md](./decisions.md) | ADRs justificadas (10 decisiones) | Decisiones |
+| 11 | [decisions.md](./decisions.md) | ADRs justificadas (13 decisiones) | Decisiones |
 | 12 | Este índice | Navegación | Índice |
+
+## Superficie MCP (opcional) — ADR-013
+
+- **Qué:** MCP (Model Context Protocol) como **inbound adapter opcional** sobre el core Go — permite que clientes AI manejen/consulten el mismo core, headless.
+- **Dónde:** `apps/go-core/internal/adapter/mcp/` + `apps/go-core/cmd/mcp-server/main.go` (stdio; HTTP en loopback en fase MCP-C).
+- **Estado:** **Proposed** (advisory — no bloquea el spine de Fase 0). Ver [decisions.md](./decisions.md) ADR-013, [architecture.md](./architecture.md) §2, [module-diagram.md](./module-diagram.md) §2/§5, [risks.md](./risks.md) R13-R15, [roadmap-v1.md](./roadmap-v1.md) workstream MCP-A/B/C.
 
 ## Convenciones
 

@@ -2,16 +2,23 @@
 
 > Objetivo MVP: abrir repo local existente, ver grafo/history paginado, status/stage/commit, diff Monaco, branches/tags/stashes básicos, fetch/pull/push, watcher realtime, tests automatizados. Multi-repo management parcial. Sin SSH complejo ni conflictos rebase avanzados.
 
-## Semana 0 — Fundaciones (sem 1)
+## Semana 0 — Fundaciones (sem 1) — ✅ COMPLETADA
 
-**Entregables:**
-- [ ] `buf generate` funcional (`gen/go` + `gen/ts` reales, eliminar `.gitkeep`).
-- [ ] `apps/go-core` DI wiring real (Viper config, SQLite open WAL, gRPC server con interceptors token).
-- [ ] `supervisor.ts` gRPC cliente real (reemplazar stub `forwardToGo`).
-- [ ] `apps/angular` path alias `@contracts` → `libs/contracts/gen/ts`.
-- [ ] `data/sqlite/migrations/001_initial.sql` aplicado al arranque (`embed.FS` + `golang-migrate` o manual).
+**Entregables (verificados):**
+- [x] `buf generate` funcional — contratos generados y commiteados (`gen/go` + `gen/ts` reales).
+- [x] gRPC server real con `RegisterGitCoreServer` + interceptor de token (incluye `OpenRepository` aditivo).
+- [x] SQLite WAL + migraciones aplicadas al arranque vía `embed`.
+- [x] `GitPort` read path real vía `exec git`.
+- [x] `GetCommits` end-to-end real (Go ↔ gRPC ↔ Electron).
+- [x] `supervisor.ts` cliente gRPC real + heartbeat `Ping` (stub `forwardToGo` reemplazado).
+- [x] `apps/angular` bridge tipado (`@contracts` → `libs/contracts/gen/ts`).
 
-**DoD:** `go run --headless` + `supervisor.start()` + `buf generate` en CI verde.
+**DoD:** ✅ `go run --headless` + `supervisor.start()` + `buf generate` en CI verde.
+
+**Desviaciones deliberadas (respecto al plan original):**
+- **Sin Viper:** configuración con flags explícitos + `config.Load()`.
+- **Migraciones embebidas** vía un generator guardado por `tools/ci/verify-migrations.sh`; la **SSOT sigue en `data/sqlite/migrations/`**.
+- **ts-proto types-only** (sin runtime de servicio generado en TS).
 
 ## Semana 1-2 — Repo + Graph
 

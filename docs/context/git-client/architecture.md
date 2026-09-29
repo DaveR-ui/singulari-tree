@@ -1,6 +1,6 @@
 # Arquitectura — C4 + Hexagonal + Headless Proof
 
-> Stack: Angular latest stable + Signals + TypeScript + SCSS, Electron, Go 1.24, SQLite WAL, IPC Electron↔Angular (`contextIsolation` + preload) + Electron↔Go (gRPC unix socket/named pipe primario + HTTP fallback). Principios: performance, scalability, clean architecture, maintainability, automated testing.
+> Stack: Angular latest stable + Signals + TypeScript + SCSS, Electron, Go 1.25+, SQLite WAL, IPC Electron↔Angular (`contextIsolation` + preload) + Electron↔Go (gRPC unix socket/named pipe primario + HTTP fallback). Principios: performance, scalability, clean architecture, maintainability, automated testing.
 
 ## 1. Visión C4
 
@@ -24,7 +24,7 @@ Usuario ──▶ SingulariTree Desktop App (Angular + Electron + Go + SQLite)
 |-----------|---------|-----------------|--------------|--------------|
 | **Angular renderer** | Chromium (Electron renderer) | UI: grafo, diff Monaco, status/stage, history, stash, branches | `window.gitClientApi` → IPC (invoke/handle + events) | Sí — cualquier SPA que hable `gitClientApi` |
 | **Electron main + preload** | Node + Electron main | Shell, ventanas, menus, `supervisor` de Go, bridge IPC | `contextBridge` + `ipcMain.handle` + gRPC/HTTP cliente a Go | Sí (Tauri/Wails) — mantiene contrato |
-| **Go core headless** | Go 1.24 binary | Todo Git, grafo lanes, cache, watchers, diff, progress streaming | gRPC (`singularitree.v1`) primaria + HTTP fallback | Sí — corre sin UI (`--headless`) |
+| **Go core headless** | Go 1.25+ binary | Todo Git, grafo lanes, cache, watchers, diff, progress streaming | gRPC (`singularitree.v1`) primaria + HTTP fallback | Sí — corre sin UI (`--headless`) |
 | **SQLite** | file WAL | Solo config/recents/favorites/prefs/UI-state/metadata cache | `database/sql` + `modernc.org/sqlite` o `mattn/go-sqlite3` | Sí — nunca Git objects |
 | **Contracts** | buf + proto | Fuente única de verdad | `libs/contracts/proto/*.proto` → `gen/go + gen/ts` | — |
 
@@ -80,6 +80,7 @@ Reglas:
 - `service/` depende de interfaces (ports) definidas en `domain/`, no de concretos.
 - `adapter/` implementa ports.
 - Angular nunca importa Go; Electron nunca implementa lógica Git.
+- **Inbound adapters opcionales:** MCP (Model Context Protocol) es un inbound/driving adapter adicional sobre el mismo core Go — aislado en `adapter/mcp` + `cmd/mcp-server`, consume la `service` layer in-process y nunca se acopla a `domain/`/`service/` (detalle y fases MCP-A/B/C en ADR-013).
 
 ```
              ┌─────────────────────┐
@@ -107,6 +108,7 @@ Reglas:
 - Angular → Svelte/React: solo reimplementar `window.gitClientApi` consumer.
 - Electron → Tauri: mantener `supervisor` contract (spawn Go, `GO_CORE_READY`).
 - `go-git` → exec git: cambiar `adapter/git` sin tocar services.
+- Go core → superficie MCP opcional (stdio): `adapter/mcp` reutiliza la service layer in-process; el spine gRPC y `--headless` no cambian (ver ADR-013).
 
 Interfaces clave ya esbozadas:
 ```go

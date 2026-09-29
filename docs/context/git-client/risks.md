@@ -16,6 +16,9 @@
 | R10| **Electron packaging / signing / auto-update** | Baja (MVP) / Alta (V1) | Medio | 🟡 | `electron-builder` + notary; V1 only; MVP sin sign | tools |
 | R11| **Submodules / LFS / worktrees edge cases** | Media | Medio | 🟡 | Detectar y marcar unsupported con mensaje claro; no bloquear repo open | GitService |
 | R12| **Memory leak streaming (Watch/Fetch never close)** | Media | Alto | 🟡 | Context cancel en gRPC stream, `signal.NotifyContext` cleanup, deadline por RPC | grpc server |
+| R13| **MCP adapter = segundo writer de SQLite (`cache.db`)** | Baja | Alto | 🟡 | MCP es único proceso core con su propia DB, o corre `--proxy-grpc` contra un go-core activo; dos writers completos a `cache.db` prohibidos (ref R4) | adapter/mcp |
+| R14| **MCP tool schema drift vs proto** | Media | Medio | 🟡 | JSON Schema generado desde proto (`protoreflect`/buf), nunca duplicado a mano; check en CI (ref R6) | adapter/mcp |
+| R15| **Streaming/cancelación MCP (`Fetch/Push/Pull`, `Watch`)** | Media | Medio | 🟡 | `notifications/cancelled` → context-cancel del stream gRPC; `Watch` como cursor/poll `git_events(since_cursor)` (ref R12) | adapter/mcp |
 
 ## Detalle por riesgo
 
@@ -49,6 +52,21 @@
 - **Mitigación:** MVP usa `exec git` para paridad total; abstrae tras `GitPort`; go-git solo para lectura rápida si aporta performance (opcional feature flag).
 - **Verificación:** tabla feature parity en `adapter/git/README.md`.
 
+### R13 — MCP + SQLite single-writer
+- **Síntoma:** `--mcp-stdio` arranca un segundo core completo → dos writers a `cache.db` → `database is locked` / corrupción.
+- **Mitigación:** regla explícita de ownership: MCP es **único** proceso core con su DB, **o** corre `--proxy-grpc` contra un go-core ya activo; nunca dos writers full (ref R4). Read-only por defecto.
+- **Verificación:** test que rechaza un segundo writer; smoke `--proxy-grpc` con go-core en marcha.
+
+### R14 — MCP schema drift
+- **Síntoma:** tools MCP declaran schemas desincronizados de `gitcore.proto` tras un cambio de contrato.
+- **Mitigación:** input JSON Schema **generado** desde proto (`protoreflect`/buf), nunca hand-duplicated; outputs protojson; verificación en CI junto a `verify-contracts.sh` (ref R6).
+- **Verificación:** `buf generate` + comparación de schemas → falla CI si divergen.
+
+### R15 — MCP streaming/cancel
+- **Síntoma:** `Fetch/Push/Pull` sin progreso o sin cancelación; `Watch` no encaja en streaming MCP.
+- **Mitigación:** `Progress` → `notifications/progress`; `notifications/cancelled` → context-cancel del stream gRPC; `Watch` como cursor/poll `git_events(since_cursor)` (ref R12).
+- **Verificación:** test de cancelación de `git_fetch`; test de cursor incremental `git_events`.
+
 ## Plan de mitigación priorizado (MVP)
 
 1. R1, R2, R5 (sem 1-5) — perf + watchers.
@@ -56,6 +74,7 @@
 3. R4, R7 (sem 0-1) — SQLite + GitPort.
 4. R12 (sem 6) — streaming cleanup.
 5. R10 (V1) — packaging.
+6. R13, R14, R15 (post-MVP, workstream MCP opcional) — DB ownership + schema + cancel.
 
 ## Fallbacks
 

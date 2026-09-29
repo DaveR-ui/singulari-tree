@@ -29,6 +29,18 @@
 
 **DoD:** grafo 100k commits searchable, keyboard-only usable.
 
+## Workstream opcional — Superficie MCP (MCP-A/B/C)
+
+> **Opcional** y desacoplado del spine; no bloquea ninguna fase. Registrado en **ADR-013**. Se sitúa entre el MVP y las integraciones de hosting (V1.3). MCP es un inbound adapter sobre el mismo core Go (`adapter/mcp` + `cmd/mcp-server`), consumido por clientes AI de forma headless (sin Electron/Angular).
+
+| Fase | Alcance | Entregable |
+|------|---------|------------|
+| **MCP-A** | Read-only | `adapter/mcp` + `cmd/mcp-server` (stdio); tools read (`git_ping`, `git_get_commits`, `git_get_status`, `git_get_diff`, `git_events`…); JSON Schema generado desde proto |
+| **MCP-B** | Writes + progreso/cancel | Mutation set tras `--allow-write` (`git_stage`/`git_commit`/`git_fetch`…); `Progress`→`notifications/progress`; `notifications/cancelled`→context-cancel (cierra R12) |
+| **MCP-C** | Streamable HTTP + resources/prompts | MCP HTTP en loopback (Bearer por sesión + Origin check); resources/prompts; DI compartida vía `internal/bootstrap` |
+
+**DoD:** `cmd/mcp-server` corre headless contra el core Go sin Electron/Angular; schemas MCP generados desde `gitcore.proto`; sin segundo writer a `cache.db` (R13).
+
 ## Fase V1.3 — Remotos & Auth (sem 11-14)
 
 - **Remote CRUD:** add/rename/remove remote, fetch_specs edit.
@@ -70,6 +82,8 @@ gantt
     Branch/Merge/Rebase/Cherry-pick :a1, 2026-11-01, 6w
   section V1.2 Grafo pro
     Search/Zoom/Blame :a2, after a1, 4w
+  section MCP (opcional)
+    Adapter MCP stdio/HTTP :aM, after a2, 3w
   section V1.3 Remotos+Auth
     SSH/HTTPS/LFS/Submodules :a3, after a2, 4w
   section V1.4 Packaging
@@ -82,6 +96,7 @@ gantt
 
 - V1.1 bloquea V1.2 (merge logic primero).
 - V1.3 puede solaparse con V1.2 (distintos ports: GitPort vs GraphService).
+- Workstream MCP (opcional) puede solaparse con V1.1-V1.3; no bloquea fases (ADR-013).
 - Packing (V1.4) requiere V1.1-1.3 estables.
 
 ## Criterios de salida V1

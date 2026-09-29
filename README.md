@@ -65,7 +65,7 @@ Behavior in `--headless`:
 
 ## Contracts
 
-- Go module: `github.com/SingulariTree/go-core` (Go 1.24)
+- Go module: `github.com/SingulariTree/go-core` (Go 1.25+)
 - Proto package: `singularitree.v1` (alias `gitclient.v1` for compatibility — see `libs/contracts/proto/*.proto` header comments)
 - Generation: `buf generate --template buf.gen.yaml` -> `libs/contracts/gen/go` + `libs/contracts/gen/ts`
 - Breaking check: `buf breaking` via `tools/ci/verify-contracts.sh`
