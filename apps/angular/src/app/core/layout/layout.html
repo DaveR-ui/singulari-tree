@@ -8,7 +8,12 @@
     (toggleRight)="toggleRight()"
   />
 
-  <st-shell-toolbar />
+  <st-shell-toolbar
+    [hasActiveRepo]="repoState.activeId() !== null"
+    (pullRequested)="remoteOps.openDialog('pull')"
+    (pushRequested)="remoteOps.openDialog('push')"
+    (fetchRequested)="remoteOps.openDialog('fetch')"
+  />
 
   <!-- BODY: left | center | right -->
   <div class="st-body">
@@ -61,4 +66,47 @@
       ›
     </button>
   }
+
+  <st-pull-dialog
+    [open]="remoteOps.activeDialog() === 'pull'"
+    [repoName]="repoState.activeRepo()?.name ?? ''"
+    [remotes]="remoteOps.remoteOptions()"
+    [remoteBranchesByRemote]="remoteOps.remoteBranchesByRemote()"
+    [localBranchNames]="remoteOps.localBranchNames()"
+    [currentBranch]="remoteOps.currentBranch()"
+    [loading]="remoteOps.refsLoading()"
+    [running]="remoteOps.running()"
+    [progress]="remoteOps.progress()"
+    [error]="remoteOps.opError() ?? remoteOps.refsError()"
+    [offline]="remoteOps.offline()"
+    (closed)="remoteOps.closeDialog()"
+    (refreshRequested)="remoteOps.loadRefs()"
+    (submitted)="remoteOps.runPull($event)"
+  />
+  <st-push-dialog
+    [open]="remoteOps.activeDialog() === 'push'"
+    [repoName]="repoState.activeRepo()?.name ?? ''"
+    [remotes]="remoteOps.remoteOptions()"
+    [rows]="remoteOps.pushRows()"
+    [remoteBranchesByRemote]="remoteOps.remoteBranchesByRemote()"
+    [loading]="remoteOps.refsLoading()"
+    [running]="remoteOps.running()"
+    [progress]="remoteOps.progress()"
+    [error]="remoteOps.opError() ?? remoteOps.refsError()"
+    [offline]="remoteOps.offline()"
+    (closed)="remoteOps.closeDialog()"
+    (refreshRequested)="remoteOps.loadRefs()"
+    (submitted)="remoteOps.runPush($event)"
+  />
+  <st-fetch-dialog
+    [open]="remoteOps.activeDialog() === 'fetch'"
+    [remotes]="remoteOps.remoteOptions()"
+    [loading]="remoteOps.refsLoading()"
+    [running]="remoteOps.running()"
+    [progress]="remoteOps.progress()"
+    [error]="remoteOps.opError() ?? remoteOps.refsError()"
+    [offline]="remoteOps.offline()"
+    (closed)="remoteOps.closeDialog()"
+    (submitted)="remoteOps.runFetch($event)"
+  />
 </div>

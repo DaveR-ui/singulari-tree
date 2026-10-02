@@ -11,6 +11,10 @@ import {
 import { Router, RouterOutlet } from '@angular/router';
 import type { RepoCardView } from '@singularitree/ui-kit';
 import { RepoState } from '@core/services/repo-state.service';
+import { RemoteOpsStore } from '@features/remote/remote-ops.store';
+import { FetchDialog } from '@features/remote/ui/fetch-dialog/fetch-dialog';
+import { PullDialog } from '@features/remote/ui/pull-dialog/pull-dialog';
+import { PushDialog } from '@features/remote/ui/push-dialog/push-dialog';
 import { toLocalRepoCardView } from './local-repo-card-view';
 import { RepoDrawer } from './ui/repo-drawer/repo-drawer';
 import { ShellHeader } from './ui/shell-header/shell-header';
@@ -27,13 +31,24 @@ import { SidebarLeft } from './ui/sidebar-left/sidebar-left';
 @Component({
   selector: 'st-layout',
   standalone: true,
-  imports: [RouterOutlet, ShellHeader, ShellMenubar, ShellToolbar, SidebarLeft, RepoDrawer],
+  imports: [
+    RouterOutlet,
+    ShellHeader,
+    ShellMenubar,
+    ShellToolbar,
+    SidebarLeft,
+    RepoDrawer,
+    PullDialog,
+    PushDialog,
+    FetchDialog,
+  ],
   templateUrl: './layout.html',
   styleUrls: ['./layout.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LayoutComponent implements OnInit {
   readonly repoState = inject(RepoState);
+  readonly remoteOps = inject(RemoteOpsStore);
   private readonly router = inject(Router);
 
   // -- responsive --

@@ -1,9 +1,11 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 /**
- * Git action toolbar. Commit/Pull/Push/… are inert visual chrome for this
- * iteration (no handlers); Repo/GitHub navigate to the routed feature pages.
+ * Git action toolbar. Pull/Push/Fetch emit request events (the shell opens the
+ * matching remote dialog and disables them with `hasActiveRepo=false`); the
+ * remaining Git actions are inert visual chrome for this iteration. Repo/GitHub
+ * navigate to the routed feature pages.
  */
 @Component({
   selector: 'st-shell-toolbar',
@@ -14,9 +16,33 @@ import { RouterLink } from '@angular/router';
     <div class="st-toolbar">
       <button class="st-tool" type="button"><i>⬆</i><span>Commit</span></button>
       <div class="st-toolbar__sep"></div>
-      <button class="st-tool" type="button"><i>⭳</i><span>Pull</span></button>
-      <button class="st-tool" type="button"><i>⭱</i><span>Push</span></button>
-      <button class="st-tool" type="button"><i>⟳</i><span>Fetch</span></button>
+      <button
+        class="st-tool"
+        type="button"
+        data-testid="toolbar-pull"
+        [disabled]="!hasActiveRepo()"
+        (click)="pullRequested.emit()"
+      >
+        <i>⭳</i><span>Pull</span>
+      </button>
+      <button
+        class="st-tool"
+        type="button"
+        data-testid="toolbar-push"
+        [disabled]="!hasActiveRepo()"
+        (click)="pushRequested.emit()"
+      >
+        <i>⭱</i><span>Push</span>
+      </button>
+      <button
+        class="st-tool"
+        type="button"
+        data-testid="toolbar-fetch"
+        [disabled]="!hasActiveRepo()"
+        (click)="fetchRequested.emit()"
+      >
+        <i>⟳</i><span>Fetch</span>
+      </button>
       <div class="st-toolbar__sep"></div>
       <button class="st-tool" type="button"><i>⑂</i><span>Branch</span></button>
       <button class="st-tool" type="button"><i>⑃</i><span>Merge</span></button>
@@ -89,6 +115,15 @@ import { RouterLink } from '@angular/router';
       color: var(--text, #d6d6de);
     }
 
+    .st-tool:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+
+    .st-tool:disabled:hover {
+      background: transparent;
+    }
+
     .st-tool--icon {
       min-width: 36px;
       font-size: 16px;
@@ -106,4 +141,11 @@ import { RouterLink } from '@angular/router';
     }
   `,
 })
-export class ShellToolbar {}
+export class ShellToolbar {
+  /** Whether a repository is active; Pull/Push/Fetch are disabled otherwise. */
+  readonly hasActiveRepo = input(true);
+
+  readonly pullRequested = output<void>();
+  readonly pushRequested = output<void>();
+  readonly fetchRequested = output<void>();
+}

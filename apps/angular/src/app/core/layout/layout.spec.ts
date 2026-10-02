@@ -6,6 +6,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Repository } from '@contracts/domain';
 import type { AppError } from '@core/services/ipc-bridge.service';
 import { RepoState } from '@core/services/repo-state.service';
+import { RemoteOpsStore } from '@features/remote/remote-ops.store';
+import type {
+  PushRowView,
+  RemoteBranchOption,
+  RemoteDialogKind,
+  RemoteOpProgress,
+  RemoteOption,
+} from '@features/remote/remote-models';
 import { LayoutComponent } from './layout';
 
 @Component({
@@ -76,10 +84,15 @@ interface StubRepoStateOptions {
 }
 
 function makeRepoState(opts: StubRepoStateOptions = {}) {
+  const repos = signal<Repository[]>(opts.repos ?? []);
+  const activeId = signal<string | null>(opts.activeId ?? null);
   return {
-    repos: signal<Repository[]>(opts.repos ?? []),
-    activeId: signal<string | null>(opts.activeId ?? null),
-    activeRepo: computed<Repository | null>(() => null),
+    repos,
+    activeId,
+    activeRepo: computed<Repository | null>(() => {
+      const id = activeId();
+      return id ? (repos().find((r) => r.id === id) ?? null) : null;
+    }),
     reposLoading: signal(opts.reposLoading ?? false),
     reposError: signal<AppError | null>(opts.reposError ?? null),
     reposOffline: signal(opts.reposOffline ?? false),
@@ -95,13 +108,54 @@ function makeRepoState(opts: StubRepoStateOptions = {}) {
   };
 }
 
-async function setup(repoStateOpts: StubRepoStateOptions = {}) {
+interface StubRemoteOpsOptions {
+  activeDialog?: RemoteDialogKind | null;
+  remoteOptions?: RemoteOption[];
+  localBranchNames?: string[];
+  currentBranch?: string;
+  pushRows?: PushRowView[];
+}
+
+/**
+ * Minimal `RemoteOpsStore` stand-in exposing only the members the shell
+ * template reads. Every method is a spy so the toolbar wiring can be asserted
+ * without crossing the IPC bridge.
+ */
+function makeRemoteOps(opts: StubRemoteOpsOptions = {}) {
+  return {
+    activeDialog: signal<RemoteDialogKind | null>(opts.activeDialog ?? null),
+    remoteOptions: signal<RemoteOption[]>(opts.remoteOptions ?? []),
+    remoteBranchesByRemote: signal<Record<string, RemoteBranchOption[]>>({}),
+    localBranchNames: signal<string[]>(opts.localBranchNames ?? []),
+    currentBranch: signal(opts.currentBranch ?? ''),
+    pushRows: signal<PushRowView[]>(opts.pushRows ?? []),
+    refsLoading: signal(false),
+    offline: signal(false),
+    running: signal(false),
+    progress: signal<RemoteOpProgress | null>(null),
+    opError: signal<AppError | null>(null),
+    refsError: signal<AppError | null>(null),
+    openDialog: vi.fn(),
+    closeDialog: vi.fn(),
+    loadRefs: vi.fn(async () => {}),
+    runPull: vi.fn(async () => {}),
+    runPush: vi.fn(async () => {}),
+    runFetch: vi.fn(async () => {}),
+  };
+}
+
+async function setup(
+  repoStateOpts: StubRepoStateOptions = {},
+  remoteOpsOpts: StubRemoteOpsOptions = {},
+) {
   const repoState = makeRepoState(repoStateOpts);
+  const remoteOps = makeRemoteOps(remoteOpsOpts);
   await TestBed.configureTestingModule({
     providers: [
       provideZonelessChangeDetection(),
       provideRouter([{ path: '**', component: StubPageComponent }]),
       { provide: RepoState, useValue: repoState },
+      { provide: RemoteOpsStore, useValue: remoteOps },
     ],
   }).compileComponents();
 
@@ -109,7 +163,7 @@ async function setup(repoStateOpts: StubRepoStateOptions = {}) {
   fixture.detectChanges();
   await fixture.whenStable();
   fixture.detectChanges();
-  return { fixture, repoState };
+  return { fixture, repoState, remoteOps };
 }
 
 function text(fixture: { nativeElement: unknown }): string {
@@ -266,5 +320,148 @@ describe('LayoutComponent', () => {
     expect(el.querySelector('[data-testid="st-sidebar-branches-empty"]')?.textContent).toContain(
       'No branches',
     );
+  });
+
+  it('disables the remote-op toolbar buttons when no repository is active', async () => {
+    const { fixture } = await setup({ activeId: null });
+
+    for (const testId of ['toolbar-pull', 'toolbar-push', 'toolbar-fetch']) {
+      expect(query<HTMLButtonElement>(fixture, testId)?.disabled).toBe(true);
+    }
+  });
+
+  it('enables the remote-op toolbar buttons when a repository is active', async () => {
+    const { fixture } = await setup({ activeId: 'repo-1' });
+
+    for (const testId of ['toolbar-pull', 'toolbar-push', 'toolbar-fetch']) {
+      expect(query<HTMLButtonElement>(fixture, testId)?.disabled).toBe(false);
+    }
+  });
+
+  it('opens the pull dialog from the toolbar', async () => {
+    const { fixture, remoteOps } = await setup({ activeId: 'repo-1' });
+
+    query<HTMLButtonElement>(fixture, 'toolbar-pull')!.click();
+
+    expect(remoteOps.openDialog).toHaveBeenCalledTimes(1);
+    expect(remoteOps.openDialog).toHaveBeenCalledWith('pull');
+  });
+
+  it('opens the push dialog from the toolbar', async () => {
+    const { fixture, remoteOps } = await setup({ activeId: 'repo-1' });
+
+    query<HTMLButtonElement>(fixture, 'toolbar-push')!.click();
+
+    expect(remoteOps.openDialog).toHaveBeenCalledTimes(1);
+    expect(remoteOps.openDialog).toHaveBeenCalledWith('push');
+  });
+
+  it('opens the fetch dialog from the toolbar', async () => {
+    const { fixture, remoteOps } = await setup({ activeId: 'repo-1' });
+
+    query<HTMLButtonElement>(fixture, 'toolbar-fetch')!.click();
+
+    expect(remoteOps.openDialog).toHaveBeenCalledTimes(1);
+    expect(remoteOps.openDialog).toHaveBeenCalledWith('fetch');
+  });
+
+  it('renders the fetch dialog only while the store has fetch active', async () => {
+    const { fixture, remoteOps } = await setup({ activeId: 'repo-1' });
+
+    expect(query(fixture, 'fetch-dialog')).toBeNull();
+
+    remoteOps.activeDialog.set('fetch');
+    fixture.detectChanges();
+
+    expect(query(fixture, 'fetch-dialog')).not.toBeNull();
+    expect(query(fixture, 'pull-dialog')).toBeNull();
+    expect(query(fixture, 'push-dialog')).toBeNull();
+  });
+
+  it('renders the pull dialog only while the store has pull active', async () => {
+    const { fixture, remoteOps } = await setup({ activeId: 'repo-1' });
+
+    expect(query(fixture, 'pull-dialog')).toBeNull();
+
+    remoteOps.activeDialog.set('pull');
+    fixture.detectChanges();
+
+    expect(query(fixture, 'pull-dialog')).not.toBeNull();
+    expect(query(fixture, 'fetch-dialog')).toBeNull();
+    expect(query(fixture, 'push-dialog')).toBeNull();
+  });
+
+  it('routes the pull dialog submit to the store', async () => {
+    const { fixture, remoteOps } = await setup(
+      { activeId: 'repo-1' },
+      {
+        activeDialog: 'pull',
+        remoteOptions: [{ name: 'origin', url: 'git@example.com:org/repo.git' }],
+        localBranchNames: ['main', 'feature'],
+        currentBranch: 'main',
+      },
+    );
+
+    query<HTMLButtonElement>(fixture, 'pull-submit')!.click();
+    fixture.detectChanges();
+
+    expect(remoteOps.runPull).toHaveBeenCalledTimes(1);
+    expect(remoteOps.runPull).toHaveBeenCalledWith({
+      remote: 'origin',
+      branch: 'main',
+      intoLocalBranch: 'main',
+    });
+  });
+
+  it('routes the push dialog submit to the store', async () => {
+    const { fixture, remoteOps } = await setup(
+      { activeId: 'repo-1' },
+      {
+        activeDialog: 'push',
+        remoteOptions: [{ name: 'origin', url: 'git@example.com:org/repo.git' }],
+        pushRows: [
+          {
+            localBranch: 'main',
+            isCurrent: true,
+            upstream: 'refs/remotes/origin/main',
+            defaultRemoteBranch: 'main',
+          },
+        ],
+      },
+    );
+
+    const checkbox = query<HTMLInputElement>(fixture, 'push-row-checkbox')!;
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    query<HTMLButtonElement>(fixture, 'push-submit')!.click();
+    fixture.detectChanges();
+
+    expect(remoteOps.runPush).toHaveBeenCalledTimes(1);
+    expect(remoteOps.runPush).toHaveBeenCalledWith({
+      remote: 'origin',
+      branches: [{ localBranch: 'main', remoteBranch: 'main', track: false }],
+    });
+  });
+
+  it('routes the fetch dialog submit to the store', async () => {
+    const { fixture, remoteOps } = await setup(
+      { activeId: 'repo-1' },
+      {
+        activeDialog: 'fetch',
+        remoteOptions: [{ name: 'origin', url: 'git@example.com:org/repo.git' }],
+      },
+    );
+
+    query<HTMLButtonElement>(fixture, 'fetch-submit')!.click();
+    fixture.detectChanges();
+
+    expect(remoteOps.runFetch).toHaveBeenCalledTimes(1);
+    expect(remoteOps.runFetch).toHaveBeenCalledWith({
+      allRemotes: true,
+      remote: 'origin',
+      prune: false,
+    });
   });
 });
