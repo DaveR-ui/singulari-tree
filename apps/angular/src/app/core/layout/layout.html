@@ -1,242 +1,51 @@
-<div class="st-shell" [class.st-shell--overlay]="isOverlay()" [class.st-shell--right-collapsed]="rightCollapsed()">
+<div class="st-shell">
+  <st-shell-header [tabs]="[]" />
 
-  <!-- HEADER: blue SourceTree-like top bar -->
-  <header class="st-header">
-    <div class="st-header__drag">SingulariTree</div>
-    <div class="st-header__tabs">
-      <span class="st-tab st-tab--active">DFCustomerPortal_SPA_AIR.X</span>
-      <span class="st-tab">.opencode</span>
-      <button class="st-tab__add" aria-label="Add tab">+</button>
-    </div>
-    <div class="st-header__actions">
-      <span class="st-header__win">─ □ ×</span>
-    </div>
-  </header>
+  <st-shell-menubar
+    [leftCollapsed]="leftCollapsed()"
+    [rightCollapsed]="rightCollapsed()"
+    (toggleLeft)="toggleLeft()"
+    (toggleRight)="toggleRight()"
+  />
 
-  <!-- menu bar (File/Edit/View/Repo ...) -->
-  <nav class="st-menubar">
-    <span>File</span><span>Edit</span><span>View</span><span>Repository</span><span>Branch</span><span>Help</span>
-    <span class="st-menubar__spacer"></span>
-    <button class="st-icon-btn" (click)="toggleLeft()" [attr.aria-label]="leftCollapsed() ? 'Expand left' : 'Collapse left'" title="Toggle left">☰</button>
-    <button class="st-icon-btn" (click)="toggleRight()" [attr.aria-label]="rightCollapsed() ? 'Open repositories' : 'Close repositories'" title="Toggle right">◧</button>
-  </nav>
+  <st-shell-toolbar />
 
-  <!-- TOOLBAR: second row dark #2a2a3a -->
-  <div class="st-toolbar">
-    <button class="st-tool"><i>⬆</i><span>Commit</span></button>
-    <div class="st-toolbar__sep"></div>
-    <button class="st-tool"><i>⭳</i><span>Pull</span></button>
-    <button class="st-tool"><i>⭱</i><span>Push</span></button>
-    <button class="st-tool"><i>⟳</i><span>Fetch</span></button>
-    <div class="st-toolbar__sep"></div>
-    <button class="st-tool"><i>⑂</i><span>Branch</span></button>
-    <button class="st-tool"><i>⑃</i><span>Merge</span></button>
-    <button class="st-tool"><i>⎘</i><span>Stash</span></button>
-    <button class="st-tool"><i>✕</i><span>Discard</span></button>
-    <button class="st-tool"><i>🏷</i><span>Tag</span></button>
-    <span class="st-toolbar__spacer"></span>
-    <button class="st-tool st-tool--icon">⚙</button>
-  </div>
-
-  <!-- BODY: 3 columns (left | center+bottom | right) -->
+  <!-- BODY: left | center | right -->
   <div class="st-body">
+    <st-sidebar-left
+      [collapsed]="leftCollapsed()"
+      [activeWorkspace]="activeWorkspace()"
+      [branches]="[]"
+      [tags]="[]"
+      [remotes]="[]"
+      (collapseToggle)="toggleLeft()"
+      (workspaceSelected)="activeWorkspace.set($event)"
+    />
 
-    <!-- LEFT SIDEBAR -->
-    @if (!leftCollapsed()) {
-      <aside class="st-left">
-        <div class="st-left__section">
-          <button class="st-left__head" (click)="workspaceExpanded.set(!workspaceExpanded())">
-            <span class="st-left__arrow">{{ workspaceExpanded() ? '▾' : '▸' }}</span> WORKSPACE
-          </button>
-          @if (workspaceExpanded()) {
-            <ul class="st-left__list">
-              <li class="st-left__item"><span class="st-left__ico">▦</span> File status</li>
-              <li class="st-left__item st-left__item--active"><span class="st-left__ico">≡</span> History</li>
-              <li class="st-left__item"><span class="st-left__ico">⌕</span> Search</li>
-            </ul>
-          }
-        </div>
-
-        <div class="st-left__section">
-          <button class="st-left__head" (click)="branchesExpanded.set(!branchesExpanded())">
-            <span class="st-left__arrow">{{ branchesExpanded() ? '▾' : '▸' }}</span> BRANCHES
-          </button>
-          @if (branchesExpanded()) {
-            <ul class="st-left__list">
-              <li class="st-left__item" (click)="davidExpanded.set(!davidExpanded())">
-                <span class="st-left__arrow">{{ davidExpanded() ? '▾' : '▸' }}</span> david
-              </li>
-              @if (davidExpanded()) {
-                <li class="st-left__item st-left__sub">feature/layout-shell</li>
-                <li class="st-left__item st-left__sub">feature/graph-lanes</li>
-              }
-              <li class="st-left__item">main</li>
-              <li class="st-left__item">develop</li>
-            </ul>
-          }
-        </div>
-
-        <div class="st-left__section">
-          <button class="st-left__head" (click)="tagsExpanded.set(!tagsExpanded())">
-            <span class="st-left__arrow">{{ tagsExpanded() ? '▾' : '▸' }}</span> TAGS
-          </button>
-          @if (tagsExpanded()) {
-            <ul class="st-left__list"><li class="st-left__item">v0.1.0</li></ul>
-          }
-        </div>
-
-        <div class="st-left__section">
-          <button class="st-left__head" (click)="remotesExpanded.set(!remotesExpanded())">
-            <span class="st-left__arrow">{{ remotesExpanded() ? '▾' : '▸' }}</span> REMOTES
-          </button>
-          @if (remotesExpanded()) {
-            <ul class="st-left__list">
-              <li class="st-left__item" (click)="originExpanded.set(!originExpanded())">
-                <span class="st-left__arrow">{{ originExpanded() ? '▾' : '▸' }}</span> origin
-              </li>
-              @if (originExpanded()) {
-                <li class="st-left__item st-left__sub">origin/main</li>
-                <li class="st-left__item st-left__sub">origin/feature/layout-shell</li>
-              }
-              <li class="st-left__item">claude</li>
-            </ul>
-          }
-        </div>
-
-        <div class="st-left__footer">
-          <button class="st-left__collapse" (click)="toggleLeft()" title="Collapse">«</button>
-        </div>
-      </aside>
-    } @else {
-      <aside class="st-left st-left--collapsed">
-        <button class="st-left__collapse" (click)="toggleLeft()" title="Expand">»</button>
-      </aside>
-    }
-
-    <!-- CENTER -->
+    <!-- CENTER: always route-driven -->
     <div class="st-center">
-      <!-- filter bar -->
-      <div class="st-center__filters">
-        <select class="st-select" [value]="branchFilter()" (change)="branchFilter.set($any($event.target).value)">
-          <option>All Branches</option>
-          <option>Current Branch</option>
-        </select>
-        <label class="st-check"><input type="checkbox" [checked]="showRemoteBranches()" (change)="showRemoteBranches.set($any($event.target).checked)"> Show Remote Branches</label>
-        <select class="st-select" [value]="orderFilter()" (change)="orderFilter.set($any($event.target).value)">
-          <option>Date Order</option>
-          <option>Ancestry Order</option>
-        </select>
-        <span class="st-center__spacer"></span>
-        <input class="st-search" placeholder="Search commits…" />
-      </div>
-
-      <!-- graph table -->
-      <div class="st-graph">
-        <div class="st-graph__header">
-          <span class="st-graph__col st-graph__col--graph">Graph</span>
-          <span class="st-graph__col st-graph__col--desc">Description</span>
-          <span class="st-graph__col st-graph__col--author">Author</span>
-          <span class="st-graph__col st-graph__col--date">Date</span>
-        </div>
-        <div class="st-graph__rows">
-          @for (c of commits; track c.hash) {
-            <div class="st-row" [class.st-row--selected]="selectedHash() === c.hash" (click)="selectCommit(c.hash)">
-              <div class="st-row__graph">
-                <!-- lane lines SVG mock -->
-                <svg class="st-lane" viewBox="0 0 60 20" preserveAspectRatio="none">
-                  <!-- vertical lines -->
-                  <line x1="10" y1="0" x2="10" y2="20" [attr.stroke]="c.lane === 0 ? c.dot : '#3a3a4a'" stroke-width="2" />
-                  @if (c.lane > 0) {
-                    <line x1="30" y1="0" x2="30" y2="20" [attr.stroke]="c.dot" stroke-width="2" />
-                  }
-                  @if (c.lane > 1) {
-                    <line x1="50" y1="0" x2="50" y2="20" stroke="#af52de" stroke-width="2" />
-                  }
-                  <!-- dot -->
-                  <circle [attr.cx]="c.lane === 0 ? 10 : c.lane === 1 ? 30 : 50" cy="10" r="5" [attr.fill]="c.dot" stroke="#1e1e2e" stroke-width="1.5"/>
-                </svg>
-              </div>
-              <div class="st-row__desc">
-                <span class="st-row__msg">{{ c.message }}</span>
-                @for (b of c.branches; track b) {
-                  <span class="st-badge" [class.st-badge--tag]="b.startsWith('tag:')">{{ b }}</span>
-                }
-              </div>
-              <span class="st-row__author">{{ c.author }}</span>
-              <span class="st-row__date">{{ c.date }}</span>
-            </div>
-          }
-        </div>
-      </div>
-
-      <!-- bottom commit detail (split) -->
-      <div class="st-bottom">
-        <div class="st-bottom__pane st-bottom__pane--meta">
-          <div class="st-bottom__title">Commit Details</div>
-          <div class="st-meta">
-            <div><span class="st-meta__k">Commit</span><span class="st-meta__v st-meta__v--mono">{{ selectedHash() }}</span></div>
-            <div><span class="st-meta__k">Parents</span><span class="st-meta__v st-meta__v--mono">b91d0f1, c44a8b2</span></div>
-            <div><span class="st-meta__k">Author</span><span class="st-meta__v">David &lt;david@singularitree.dev&gt;</span></div>
-            <div><span class="st-meta__k">Date</span><span class="st-meta__v">2026-08-25 12:47 UTC</span></div>
-            <div><span class="st-meta__k">Committer</span><span class="st-meta__v">David &lt;david@singularitree.dev&gt;</span></div>
-          </div>
-          <div class="st-message">feat(layout): shell grid + right drawer persistence — implements responsive 4-region splitter with signals, localStorage, overlay <1024px and resizable handle.</div>
-        </div>
-        <div class="st-bottom__pane st-bottom__pane--files">
-          <div class="st-bottom__title">Files <span class="st-count">3</span></div>
-          <ul class="st-files">
-            <li class="st-file"><span class="st-file__ico st-file__ico--mod">✎</span> apps/angular/src/app/core/layout/layout.ts</li>
-            <li class="st-file"><span class="st-file__ico st-file__ico--mod">✎</span> apps/angular/src/app/core/layout/layout.html</li>
-            <li class="st-file"><span class="st-file__ico st-file__ico--mod">✎</span> apps/angular/src/app/core/layout/layout.scss</li>
-          </ul>
-          <div class="st-diff">
-            <div class="st-diff__gutter">1  2  3  4  5  6</div>
-            <div class="st-diff__code">+ Implemented CSS grid/flex shell…<br>+ Signals: rightCollapsed / rightWidth / isMobile<br>+ localStorage persistence + drag handle</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- keep router-outlet for future feature routes (hidden placeholder) -->
       <div class="st-router-host">
         <router-outlet />
       </div>
     </div>
 
     <!-- RIGHT DRAWER -->
-    <aside class="st-right"
-      [class.st-right--collapsed]="rightCollapsed()"
-      [class.st-right--overlay]="isOverlay()"
-      [style.width.px]="isOverlay() || rightCollapsed() ? null : rightWidth()"
-      [attr.aria-hidden]="rightCollapsed() && !isOverlay() ? 'true' : null">
-      @if (!rightCollapsed() || isOverlay()) {
-        <div class="st-right__resize" (mousedown)="onDragStart($event)" title="Drag to resize"></div>
-      }
-      <div class="st-right__head">
-        <span class="st-right__title">Local repositories</span>
-        <span class="st-right__spacer"></span>
-        <button class="st-icon-btn st-icon-btn--sm" (click)="togglePin()" [title]="rightPinned() ? 'Unpin (overlay)' : 'Pin (push)'" [attr.aria-pressed]="rightPinned()">{{ rightPinned() ? '📌' : '📍' }}</button>
-        <button class="st-icon-btn st-icon-btn--sm" (click)="toggleRight()" title="Close">✕</button>
-        <button class="st-icon-btn st-icon-btn--sm" title="Menu">☰</button>
-      </div>
-      <div class="st-right__search">
-        <input class="st-search st-search--full" placeholder="Search repositories…" />
-      </div>
-      <div class="st-right__list">
-        @for (r of repoCards; track r.name) {
-          <div class="st-repo-card">
-            <div class="st-repo-card__icon">📁</div>
-            <div class="st-repo-card__main">
-              <div class="st-repo-card__name">{{ r.name }} <span class="st-badge st-badge--branch">{{ r.branch }}</span></div>
-              <div class="st-repo-card__path">{{ r.path }}</div>
-            </div>
-            <span class="st-repo-card__arrow">›</span>
-          </div>
-        }
-        <button class="st-right__add">+ Add repository</button>
-      </div>
-    </aside>
-
-  </div> <!-- /st-body -->
+    <st-repo-drawer
+      [repos]="repoCards()"
+      [collapsed]="rightCollapsed()"
+      [overlay]="isOverlay()"
+      [pinned]="rightPinned()"
+      [width]="isOverlay() || rightCollapsed() ? null : rightWidth()"
+      [loading]="gh.loading()"
+      [offline]="gh.offline()"
+      [authenticated]="gh.authenticated()"
+      [error]="gh.error()"
+      (toggleRight)="toggleRight()"
+      (togglePin)="togglePin()"
+      (resizeStart)="onDragStart($event)"
+    />
+  </div>
+  <!-- /st-body -->
 
   <!-- backdrop for overlay mode -->
   @if (isOverlay() && !rightCollapsed()) {
@@ -245,7 +54,8 @@
 
   <!-- collapsed right peek button (desktop) -->
   @if (!isOverlay() && rightCollapsed()) {
-    <button class="st-right-peek" (click)="toggleRight()" title="Show repositories">›</button>
+    <button class="st-right-peek" type="button" (click)="toggleRight()" title="Show repositories">
+      ›
+    </button>
   }
-
 </div>

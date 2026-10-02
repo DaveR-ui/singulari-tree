@@ -6,8 +6,9 @@
   "main": "dist/main/main.js",
   "type": "commonjs",
   "scripts": {
-    "start": "npm run build && cross-env MOCK_GO_CORE=1 ELECTRON_START_URL=http://localhost:4200 electron .",
-    "start:dev": "npm run build && cross-env MOCK_GO_CORE=1 ELECTRON_START_URL=http://localhost:4200 electron .",
+    "start": "npm run build && cross-env ELECTRON_START_URL=http://localhost:4200 electron .",
+    "start:dev": "npm run build && cross-env ELECTRON_START_URL=http://localhost:4200 electron .",
+    "start:mock": "npm run build && cross-env MOCK_GO_CORE=1 ELECTRON_START_URL=http://localhost:4200 electron .",
     "start:prod": "npm run build && electron .",
     "start:wait": "wait-on http://localhost:4200 && npm run start:dev",
     "build": "tsc -p tsconfig.json",

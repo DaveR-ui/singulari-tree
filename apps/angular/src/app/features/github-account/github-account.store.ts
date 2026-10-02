@@ -66,8 +66,11 @@ function normalizeStatus(status: AuthStatus | undefined): AuthStatus | undefined
  * The renderer never talks to GitHub: every action goes through `IpcBridge`
  * (`auth:*` channels served by the Go core). The bridge is a constructor
  * parameter (defaulting to DI) so the store can be unit-tested without TestBed.
+ *
+ * Root-provided so every consumer (the routed page and the shell drawer) shares
+ * the same account state.
  */
-@Injectable()
+@Injectable({ providedIn: 'root' })
 export class GithubAccountStore {
   private readonly bridge: IpcBridge;
 

@@ -1,40 +1,39 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  computed,
-  effect,
   HostListener,
   OnInit,
+  computed,
+  effect,
+  inject,
   signal,
 } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
+import type { RepoCardView } from '@singularitree/ui-kit';
+import { GithubAccountStore } from '@features/github-account/github-account.store';
+import { toRepoCardView } from '@features/github-account/repo-card-view';
+import { RepoDrawer } from './ui/repo-drawer/repo-drawer';
+import { ShellHeader } from './ui/shell-header/shell-header';
+import { ShellMenubar } from './ui/shell-menubar/shell-menubar';
+import { ShellToolbar } from './ui/shell-toolbar/shell-toolbar';
+import { SidebarLeft } from './ui/sidebar-left/sidebar-left';
 
-interface MockCommit {
-  hash: string;
-  message: string;
-  author: string;
-  date: string;
-  branches: string[];
-  lane: number;
-  dot: string;
-  selected?: boolean;
-}
-
-interface RepoCard {
-  name: string;
-  branch: string;
-  path: string;
-}
-
+/**
+ * Application shell: header + menubar + toolbar chrome, a route-driven center
+ * region and the repository drawer. Layout state (width/collapse/pin) is
+ * persisted to localStorage; drawer data comes from `GithubAccountStore`.
+ */
 @Component({
   selector: 'st-layout',
   standalone: true,
-  imports: [RouterOutlet],
+  imports: [RouterOutlet, ShellHeader, ShellMenubar, ShellToolbar, SidebarLeft, RepoDrawer],
   templateUrl: './layout.html',
   styleUrls: ['./layout.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LayoutComponent implements OnInit {
+  readonly gh = inject(GithubAccountStore);
+
   // -- responsive --
   private readonly MOBILE_BP = 1024;
   private readonly LS_RIGHT_W = 'st:rightWidth';
@@ -45,44 +44,14 @@ export class LayoutComponent implements OnInit {
   readonly rightCollapsed = signal(false);
   readonly rightPinned = signal(true);
   readonly leftCollapsed = signal(false);
+  /** Controlled workspace selection for `<st-sidebar-left>`. */
+  readonly activeWorkspace = signal('history');
   readonly viewportW = signal(typeof window !== 'undefined' ? window.innerWidth : 1280);
   readonly isMobile = computed(() => this.viewportW() < this.MOBILE_BP);
-
-  // left sidebar sections
-  readonly workspaceExpanded = signal(true);
-  readonly branchesExpanded = signal(true);
-  readonly tagsExpanded = signal(false);
-  readonly remotesExpanded = signal(true);
-  readonly davidExpanded = signal(true);
-  readonly originExpanded = signal(true);
-
-  // center
-  readonly selectedHash = signal('a3f9c2e');
-  readonly showRemoteBranches = signal(true);
-  readonly branchFilter = signal('All Branches');
-  readonly orderFilter = signal('Date Order');
-
   readonly isOverlay = computed(() => this.isMobile() || !this.rightPinned());
-  readonly rightVisible = computed(() => !this.rightCollapsed() || this.isOverlay());
 
-  // mock data
-  readonly repoCards: RepoCard[] = [
-    { name: 'DFCustomerPortal_SPA_AIR.X', branch: 'main', path: 'C:\\Work\\DFCustomerPortal_SPA_AIR.X' },
-    { name: 'singulariTree', branch: 'feature/layout-shell', path: 'D:\\SingulariTree' },
-    { name: 'go-core', branch: 'main', path: 'D:\\SingulariTree\\apps\\go-core' },
-    { name: 'design-tokens', branch: 'dev', path: 'D:\\Tokens' },
-  ];
-
-  readonly commits: MockCommit[] = [
-    { hash: 'a3f9c2e', message: 'feat(layout): shell grid + right drawer persistence', author: 'David', date: '2 hours ago', branches: ['origin/feature/layout-shell', 'origin/main'], lane: 0, dot: '#0a84ff', selected: true },
-    { hash: 'b91d0f1', message: 'fix(graph): lane assignment for merge commits', author: 'Laura', date: '3 hours ago', branches: [], lane: 1, dot: '#ff3b30' },
-    { hash: 'c44a8b2', message: 'chore: update proto contracts', author: 'David', date: 'yesterday', branches: [], lane: 0, dot: '#0a84ff' },
-    { hash: 'd12e773', message: 'feat(ipc): supervisor queue drain on restart', author: 'Ana', date: 'yesterday', branches: [], lane: 2, dot: '#af52de' },
-    { hash: 'e7a901c', message: 'Merge branch hotfix/csp into develop', author: 'GitHub', date: '2 days ago', branches: [], lane: 0, dot: '#30d158' },
-    { hash: 'f003ae4', message: 'docs: roadmap-mvp week 4', author: 'David', date: '3 days ago', branches: ['tag: v0.1.0'], lane: 1, dot: '#ff9f0a' },
-    { hash: '10bc2ff', message: 'refactor(go): hexagonal ports', author: 'Laura', date: '4 days ago', branches: [], lane: 0, dot: '#0a84ff' },
-    { hash: '22a1d09', message: 'initial commit', author: 'David', date: '1 week ago', branches: [], lane: 0, dot: '#0a84ff' },
-  ];
+  /** GitHub account repos mapped to the drawer's presentational view model. */
+  readonly repoCards = computed<RepoCardView[]>(() => this.gh.repos().map(toRepoCardView));
 
   // drag state
   private dragging = false;
@@ -93,19 +62,25 @@ export class LayoutComponent implements OnInit {
     // persist side effects
     effect(() => {
       const w = this.rightWidth();
-      try { localStorage.setItem(this.LS_RIGHT_W, String(w)); } catch {}
+      try {
+        localStorage.setItem(this.LS_RIGHT_W, String(w));
+      } catch {}
     });
     effect(() => {
       const c = this.rightCollapsed();
-      try { localStorage.setItem(this.LS_RIGHT_COL, String(c)); } catch {}
+      try {
+        localStorage.setItem(this.LS_RIGHT_COL, String(c));
+      } catch {}
     });
     effect(() => {
       const p = this.rightPinned();
-      try { localStorage.setItem(this.LS_RIGHT_PIN, String(p)); } catch {}
+      try {
+        localStorage.setItem(this.LS_RIGHT_PIN, String(p));
+      } catch {}
     });
   }
 
-  ngOnInit(): void {
+  async ngOnInit(): Promise<void> {
     try {
       const w = localStorage.getItem(this.LS_RIGHT_W);
       if (w) {
@@ -118,6 +93,11 @@ export class LayoutComponent implements OnInit {
       if (p !== null) this.rightPinned.set(p === 'true');
     } catch {}
     this.viewportW.set(typeof window !== 'undefined' ? window.innerWidth : 1280);
+
+    await this.gh.refreshStatus();
+    if (this.gh.authenticated()) {
+      await this.gh.loadRepos();
+    }
   }
 
   @HostListener('window:resize')
@@ -136,16 +116,9 @@ export class LayoutComponent implements OnInit {
   togglePin(): void {
     this.rightPinned.update((v) => !v);
     // when pinning on desktop, ensure visible
-    if (this.rightPinned() && this.isMobile()) {
-      // on mobile pinning has no effect, keep overlay
-    }
     if (this.rightPinned() && !this.isMobile()) {
       this.rightCollapsed.set(false);
     }
-  }
-
-  selectCommit(hash: string): void {
-    this.selectedHash.set(hash);
   }
 
   // -- resizable drag handle

@@ -1,6 +1,9 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject } from '@angular/core';
-import type { AuthSource, GitHubRepo } from '@contracts/auth';
+import type { AuthSource } from '@contracts/auth';
+import { ButtonComponent } from '@singularitree/ui-kit';
 import { GithubAccountStore } from './github-account.store';
+import { AccountProfile } from './ui/account-profile/account-profile';
+import { RepoList } from './ui/repo-list/repo-list';
 
 /** Human label for the token source (never shown when unauthenticated). */
 const SOURCE_LABELS: Record<AuthSource, string> = {
@@ -13,36 +16,30 @@ const SOURCE_LABELS: Record<AuthSource, string> = {
 
 /**
  * GitHub account feature page. Account linking + repository listing are served
- * entirely through `GithubAccountStore` (`auth:*` IPC); this component never
- * talks to GitHub.
+ * entirely through `GithubAccountStore` (`auth:*` IPC); this container composes
+ * the dumb `st-account-profile` / `st-repo-list` views and never talks to GitHub.
  */
 @Component({
   selector: 'st-github-account',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [ButtonComponent, AccountProfile, RepoList],
   template: `
     <section class="st-gh-account">
       <header class="st-gh-account__header">
         <h1 class="st-gh-account__title">GitHub account</h1>
-        <button
-          type="button"
-          class="st-gh-account__button"
-          data-testid="gh-connect"
-          [disabled]="store.loading()"
-          (click)="connect()"
-        >
+        <st-button data-testid="gh-connect" [disabled]="store.loading()" (click)="connect()">
           {{ store.authenticated() ? 'Reconnect' : 'Connect GitHub' }}
-        </button>
+        </st-button>
         @if (store.authenticated()) {
-          <button
-            type="button"
-            class="st-gh-account__button st-gh-account__button--ghost"
+          <st-button
+            variant="ghost"
             data-testid="gh-logout"
             [disabled]="store.loading()"
             (click)="logout()"
           >
             Logout
-          </button>
+          </st-button>
         }
         @if (store.loading()) {
           <span class="st-gh-account__status" data-testid="gh-loading">Loading…</span>
@@ -58,64 +55,27 @@ const SOURCE_LABELS: Record<AuthSource, string> = {
         <p class="st-gh-account__error" data-testid="gh-error">{{ error.message }}</p>
       }
 
-      @if (store.status(); as status) {
-        <div class="st-gh-account__profile" data-testid="gh-profile">
-          @if (status.avatarUrl) {
-            <img class="st-gh-account__avatar" [src]="status.avatarUrl" [alt]="status.accountLogin" />
-          }
-          <div class="st-gh-account__identity">
-            <p class="st-gh-account__login">
-              {{ status.accountLogin || 'Not connected' }}
-              <span class="st-gh-account__badge">{{ sourceLabel(status.source) }}</span>
-            </p>
-            @if (status.name) {
-              <p class="st-gh-account__name">{{ status.name }}</p>
-            }
-            <p class="st-gh-account__email" data-testid="gh-email">
-              {{ status.email || 'no disponible' }}
-            </p>
-          </div>
-        </div>
-      }
+      <st-account-profile
+        [status]="store.status() ?? null"
+        [sourceLabel]="sourceLabel(store.status()?.source)"
+      />
 
       @if (rateLimit(); as limit) {
         <p class="st-gh-account__rate" data-testid="gh-rate-limit">
-          Rate limit ({{ limit.resource || 'core' }}): {{ limit.remaining }}/{{
-            limit.limit
-          }}
+          Rate limit ({{ limit.resource || 'core' }}): {{ limit.remaining }}/{{ limit.limit }}
         </p>
       }
 
       <h2 class="st-gh-account__subtitle">Repositories</h2>
-      @if (store.repos().length === 0) {
-        <p class="st-gh-account__status" data-testid="gh-repos-empty">
-          No repositories loaded.
-        </p>
-      } @else {
-        <ul class="st-gh-account__repos" data-testid="gh-repos">
-          @for (repo of store.repos(); track repo.id) {
-            <li class="st-gh-account__repo">
-              <span class="st-gh-account__repo-name">{{ repo.fullName || repo.name }}</span>
-              <span class="st-gh-account__badge">{{ visibilityOf(repo) }}</span>
-              @if (repo.language) {
-                <span class="st-gh-account__lang">{{ repo.language }}</span>
-              }
-            </li>
-          }
-        </ul>
-
-        @if (store.hasMore()) {
-          <button
-            type="button"
-            class="st-gh-account__button"
-            data-testid="gh-load-more"
-            [disabled]="store.loading()"
-            (click)="loadMore()"
-          >
-            Load more
-          </button>
-        }
-      }
+      <st-repo-list
+        [repos]="store.repos()"
+        [loading]="store.loading()"
+        [offline]="store.offline()"
+        [authenticated]="store.authenticated()"
+        [hasMore]="store.hasMore()"
+        [error]="store.error()"
+        (loadMore)="loadMore()"
+      />
     </section>
   `,
   styles: `
@@ -144,25 +104,6 @@ const SOURCE_LABELS: Record<AuthSource, string> = {
       font-weight: 600;
     }
 
-    .st-gh-account__button {
-      padding: 4px 12px;
-      border-radius: 4px;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      background: var(--st-color-surface, #252536);
-      color: inherit;
-      font-size: 12px;
-      cursor: pointer;
-    }
-
-    .st-gh-account__button:disabled {
-      opacity: 0.5;
-      cursor: default;
-    }
-
-    .st-gh-account__button--ghost {
-      background: transparent;
-    }
-
     .st-gh-account__status {
       font-size: 12px;
       opacity: 0.6;
@@ -174,79 +115,9 @@ const SOURCE_LABELS: Record<AuthSource, string> = {
       color: #ff6b6b;
     }
 
-    .st-gh-account__profile {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-top: 14px;
-    }
-
-    .st-gh-account__avatar {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-    }
-
-    .st-gh-account__identity p {
-      margin: 0;
-    }
-
-    .st-gh-account__login {
-      font-weight: 600;
-    }
-
-    .st-gh-account__name,
-    .st-gh-account__email {
-      font-size: 12px;
-      opacity: 0.8;
-    }
-
     .st-gh-account__rate {
       margin: 10px 0 0;
       font-size: 12px;
-      opacity: 0.7;
-    }
-
-    .st-gh-account__repos {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      max-width: 640px;
-    }
-
-    .st-gh-account__repo {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 8px;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      border-radius: 4px;
-    }
-
-    .st-gh-account__repo-name {
-      flex: 1 1 auto;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-size: 13px;
-    }
-
-    .st-gh-account__badge {
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      padding: 1px 6px;
-      border-radius: 8px;
-      background: var(--st-color-surface, #252536);
-      opacity: 0.8;
-    }
-
-    .st-gh-account__lang {
-      font-size: 11px;
       opacity: 0.7;
     }
   `,
@@ -279,11 +150,8 @@ export class GithubAccount implements OnInit {
     await this.store.logout();
   }
 
-  sourceLabel(source: AuthSource): string {
+  sourceLabel(source: AuthSource | undefined): string {
+    if (source === undefined) return 'unknown';
     return SOURCE_LABELS[source] ?? 'unknown';
-  }
-
-  visibilityOf(repo: GitHubRepo): string {
-    return repo.visibility || (repo.private ? 'private' : 'public');
   }
 }
