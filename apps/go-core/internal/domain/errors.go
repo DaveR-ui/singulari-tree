@@ -58,4 +58,10 @@ const (
 	ErrCodeTokenNotFound      = "TOKEN_NOT_FOUND"
 	ErrCodeOAuthCancelled     = "OAUTH_CANCELLED"
 	ErrCodeOAuthStateMismatch = "OAUTH_STATE_MISMATCH"
+	// GitHub real data via gh CLI (errors.proto 19-23).
+	ErrCodeGHCLINotFound        = "GH_CLI_NOT_FOUND"
+	ErrCodeGHCLIUnauthenticated = "GH_CLI_UNAUTHENTICATED"
+	ErrCodeGitHubRateLimited    = "GITHUB_RATE_LIMITED"
+	ErrCodeGitHubAPIError       = "GITHUB_API_ERROR"
+	ErrCodeGitHubTokenInvalid   = "GITHUB_TOKEN_INVALID"
 )

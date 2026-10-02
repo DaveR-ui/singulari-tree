@@ -19,12 +19,13 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Auth_GetAuthStatus_FullMethodName    = "/singularitree.v1.Auth/GetAuthStatus"
-	Auth_StartGitHubOAuth_FullMethodName = "/singularitree.v1.Auth/StartGitHubOAuth"
-	Auth_ExchangeCode_FullMethodName     = "/singularitree.v1.Auth/ExchangeCode"
-	Auth_GetGitHubUser_FullMethodName    = "/singularitree.v1.Auth/GetGitHubUser"
-	Auth_ListGitHubRepos_FullMethodName  = "/singularitree.v1.Auth/ListGitHubRepos"
-	Auth_Logout_FullMethodName           = "/singularitree.v1.Auth/Logout"
+	Auth_GetAuthStatus_FullMethodName        = "/singularitree.v1.Auth/GetAuthStatus"
+	Auth_StartGitHubOAuth_FullMethodName     = "/singularitree.v1.Auth/StartGitHubOAuth"
+	Auth_ExchangeCode_FullMethodName         = "/singularitree.v1.Auth/ExchangeCode"
+	Auth_GetGitHubUser_FullMethodName        = "/singularitree.v1.Auth/GetGitHubUser"
+	Auth_ListGitHubRepos_FullMethodName      = "/singularitree.v1.Auth/ListGitHubRepos"
+	Auth_Logout_FullMethodName               = "/singularitree.v1.Auth/Logout"
+	Auth_ConnectGitHubFromCLI_FullMethodName = "/singularitree.v1.Auth/ConnectGitHubFromCLI"
 )
 
 // AuthClient is the client API for Auth service.
@@ -41,6 +42,9 @@ type AuthClient interface {
 	GetGitHubUser(ctx context.Context, in *GetGitHubUserRequest, opts ...grpc.CallOption) (*GitHubUser, error)
 	ListGitHubRepos(ctx context.Context, in *ListGitHubReposRequest, opts ...grpc.CallOption) (*ListGitHubReposResponse, error)
 	Logout(ctx context.Context, in *LogoutRequest, opts ...grpc.CallOption) (*LogoutResponse, error)
+	// Additive: obtain a token from the GitHub CLI (`gh auth token`).
+	// OAuth RPCs above are retained as documented future evolution.
+	ConnectGitHubFromCLI(ctx context.Context, in *ConnectGitHubFromCLIRequest, opts ...grpc.CallOption) (*ConnectGitHubFromCLIResponse, error)
 }
 
 type authClient struct {
@@ -111,6 +115,16 @@ func (c *authClient) Logout(ctx context.Context, in *LogoutRequest, opts ...grpc
 	return out, nil
 }
 
+func (c *authClient) ConnectGitHubFromCLI(ctx context.Context, in *ConnectGitHubFromCLIRequest, opts ...grpc.CallOption) (*ConnectGitHubFromCLIResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ConnectGitHubFromCLIResponse)
+	err := c.cc.Invoke(ctx, Auth_ConnectGitHubFromCLI_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AuthServer is the server API for Auth service.
 // All implementations must embed UnimplementedAuthServer
 // for forward compatibility.
@@ -125,6 +139,9 @@ type AuthServer interface {
 	GetGitHubUser(context.Context, *GetGitHubUserRequest) (*GitHubUser, error)
 	ListGitHubRepos(context.Context, *ListGitHubReposRequest) (*ListGitHubReposResponse, error)
 	Logout(context.Context, *LogoutRequest) (*LogoutResponse, error)
+	// Additive: obtain a token from the GitHub CLI (`gh auth token`).
+	// OAuth RPCs above are retained as documented future evolution.
+	ConnectGitHubFromCLI(context.Context, *ConnectGitHubFromCLIRequest) (*ConnectGitHubFromCLIResponse, error)
 	mustEmbedUnimplementedAuthServer()
 }
 
@@ -152,6 +169,9 @@ func (UnimplementedAuthServer) ListGitHubRepos(context.Context, *ListGitHubRepos
 }
 func (UnimplementedAuthServer) Logout(context.Context, *LogoutRequest) (*LogoutResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Logout not implemented")
+}
+func (UnimplementedAuthServer) ConnectGitHubFromCLI(context.Context, *ConnectGitHubFromCLIRequest) (*ConnectGitHubFromCLIResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ConnectGitHubFromCLI not implemented")
 }
 func (UnimplementedAuthServer) mustEmbedUnimplementedAuthServer() {}
 func (UnimplementedAuthServer) testEmbeddedByValue()              {}
@@ -282,6 +302,24 @@ func _Auth_Logout_Handler(srv interface{}, ctx context.Context, dec func(interfa
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Auth_ConnectGitHubFromCLI_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConnectGitHubFromCLIRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServer).ConnectGitHubFromCLI(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Auth_ConnectGitHubFromCLI_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServer).ConnectGitHubFromCLI(ctx, req.(*ConnectGitHubFromCLIRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Auth_ServiceDesc is the grpc.ServiceDesc for Auth service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -312,6 +350,10 @@ var Auth_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Logout",
 			Handler:    _Auth_Logout_Handler,
+		},
+		{
+			MethodName: "ConnectGitHubFromCLI",
+			Handler:    _Auth_ConnectGitHubFromCLI_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

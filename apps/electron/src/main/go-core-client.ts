@@ -51,6 +51,19 @@ export const GIT_CORE_RPC_METHODS = [
 
 export type RpcName = (typeof GIT_CORE_RPC_METHODS)[number];
 
+/**
+ * Every Auth RPC exposed over IPC (frozen additive surface; all unary).
+ * Mirrors `singularitree.v1.Auth`; the remaining OAuth RPCs are not yet wired.
+ */
+export const AUTH_RPC_METHODS = [
+  'GetAuthStatus',
+  'ConnectGitHubFromCLI',
+  'ListGitHubRepos',
+  'Logout',
+] as const;
+
+export type AuthRpcName = (typeof AUTH_RPC_METHODS)[number];
+
 // ---------------------------------------------------------------------------
 // Wire types (mirror libs/contracts/gen/ts/{domain,gitcore}.ts)
 // ---------------------------------------------------------------------------
@@ -337,7 +350,12 @@ export interface FsChangedEvent {
 export interface AppError {
   code: string;
   message: string;
-  details: Record<string, string>;
+  /**
+   * Structured error payload. `errors.proto` types this as `map<string,string>`
+   * but the `x-app-error-details` trailer carries arbitrary JSON, so values are
+   * kept open to avoid a dishonest cast. Never place secrets here.
+   */
+  details: Record<string, unknown>;
 }
 
 export interface GoCoreClientOptions {
@@ -345,6 +363,11 @@ export interface GoCoreClientOptions {
   protoDir: string;
   /** Per-call deadline in milliseconds (default 10s). */
   callTimeoutMs?: number;
+  /**
+   * Which `singularitree.v1` service to bind to. Defaults to `'GitCore'`;
+   * the supervisor creates a second client with `'Auth'`.
+   */
+  serviceName?: 'GitCore' | 'Auth';
 }
 
 const DEFAULT_CALL_TIMEOUT_MS = 10_000;
@@ -359,6 +382,23 @@ function notConnectedError(): AppError {
 
 /** Trailing-metadata key carrying the domain `AppError.code` (ipc-strategy.md §2.5). */
 const APP_ERROR_CODE_TRAILER = 'x-app-error-code';
+/** Trailing-metadata key carrying structured JSON `AppError.details` (ipc-strategy.md §2.5). */
+const APP_ERROR_DETAILS_TRAILER = 'x-app-error-details';
+
+/** Parse the `x-app-error-details` trailer; `{}` when absent or not a JSON object. */
+function parseErrorDetails(metadata: grpc.Metadata | undefined): Record<string, unknown> {
+  const raw = metadata?.get(APP_ERROR_DETAILS_TRAILER)?.[0];
+  if (raw === undefined) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw.toString());
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Invalid JSON — fall through to the empty default.
+  }
+  return {};
+}
 
 function normalizeGrpcError(err: grpc.ServiceError): AppError {
   const statusByName = grpc.status as unknown as Record<number, string>;
@@ -373,12 +413,14 @@ function normalizeGrpcError(err: grpc.ServiceError): AppError {
   return {
     code: domainCode || codeName || `GRPC_${String(err.code ?? 'UNKNOWN')}`,
     message: err.details || err.message || 'gRPC call failed',
-    details: {},
+    details: parseErrorDetails(err.metadata),
   };
 }
 
 interface NestedGrpcObject {
-  singularitree?: { v1?: { GitCore?: grpc.ServiceClientConstructor } };
+  singularitree?: {
+    v1?: Record<string, grpc.ServiceClientConstructor | undefined>;
+  };
 }
 
 /**
@@ -412,10 +454,11 @@ export class GoCoreClient {
     const loaded = grpc.loadPackageDefinition(
       packageDefinition,
     ) as unknown as NestedGrpcObject;
-    const serviceCtor = loaded.singularitree?.v1?.GitCore;
+    const serviceName = opts.serviceName ?? 'GitCore';
+    const serviceCtor = loaded.singularitree?.v1?.[serviceName];
     if (typeof serviceCtor !== 'function') {
       throw new Error(
-        'GoCoreClient: singularitree.v1.GitCore service not found in protoDir ' +
+        `GoCoreClient: singularitree.v1.${serviceName} service not found in protoDir ` +
           opts.protoDir,
       );
     }

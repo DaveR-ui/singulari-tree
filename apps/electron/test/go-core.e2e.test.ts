@@ -181,6 +181,7 @@ describe.skipIf(!goAvailable)(
     let fixture: Fixture;
     let proc: ChildProcessWithoutNullStreams | null = null;
     let client: GoCoreClient | null = null;
+    let authClient: GoCoreClient | null = null;
 
     beforeAll(async () => {
       fixture = createFixtureRepo();
@@ -188,10 +189,15 @@ describe.skipIf(!goAvailable)(
       const ready = await awaitReady(proc, 180_000);
       client = new GoCoreClient({ protoDir });
       client.connect(ready.addr, ready.token);
+      // Second channel-bound client for the distinct singularitree.v1.Auth
+      // service registered on the same go-core process/addr/token.
+      authClient = new GoCoreClient({ protoDir, serviceName: 'Auth' });
+      authClient.connect(ready.addr, ready.token);
     });
 
     afterAll(async () => {
       client?.close();
+      authClient?.close();
       if (proc) await killProc(proc);
       fs.rmSync(tmpRoot, { recursive: true, force: true });
       if (fixture) fs.rmSync(fixture.dir, { recursive: true, force: true });
@@ -234,6 +240,51 @@ describe.skipIf(!goAvailable)(
         ).rejects.toMatchObject({ code: 'NOT_A_GIT_REPO' });
       } finally {
         fs.rmSync(notARepo, { recursive: true, force: true });
+      }
+    });
+
+    it('talks to the real Auth service: status, logout, unauthenticated, gh-missing', async () => {
+      if (!authClient) throw new Error('auth client not initialised');
+
+      // Fresh core holds no token.
+      const status = (await authClient.invoke('GetAuthStatus', {})) as {
+        authenticated: boolean;
+      };
+      expect(status.authenticated).toBe(false);
+
+      // Logout is idempotent and always resolves on a fresh core.
+      await expect(authClient.invoke('Logout', {})).resolves.toBeDefined();
+
+      // No token → domain code preserved through the x-app-error-code trailer.
+      await expect(authClient.invoke('ListGitHubRepos', {})).rejects.toMatchObject({
+        code: 'UNAUTHENTICATED',
+      });
+
+      // A guaranteed-missing gh binary must fail deterministically without
+      // touching the developer's gh or the network.
+      let caught: unknown;
+      try {
+        await authClient.invoke('ConnectGitHubFromCLI', {
+          ghBinary: 'singularitree-nonexistent-gh-binary',
+          verify: true,
+        });
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toMatchObject({ code: 'GH_CLI_NOT_FOUND' });
+
+      // NEW x-app-error-details trailer round-trips as structured JSON.
+      const err = caught as { message: string; details: Record<string, unknown> };
+      expect(err.details.binary).toBe('singularitree-nonexistent-gh-binary');
+      expect(typeof err.details.searched_path).toBe('string');
+      expect((err.details.searched_path as string).length).toBeGreaterThan(0);
+
+      // Structured fields only — never raw stderr in message or details.
+      expect(err.message).not.toContain('fatal:');
+      expect(err.message).not.toContain('not logged');
+      for (const value of Object.values(err.details)) {
+        expect(String(value)).not.toContain('fatal:');
+        expect(String(value)).not.toContain('not logged');
       }
     });
   },

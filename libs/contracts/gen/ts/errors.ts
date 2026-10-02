@@ -29,6 +29,12 @@ export enum ErrorCode {
   DIFF_FAILED = 16,
   WATCH_FAILED = 17,
   UNAUTHENTICATED = 18,
+  /** GH_CLI_NOT_FOUND - ===== Additive: GitHub CLI (gh) token source + GitHub REST ===== */
+  GH_CLI_NOT_FOUND = 19,
+  GH_CLI_UNAUTHENTICATED = 20,
+  GITHUB_RATE_LIMITED = 21,
+  GITHUB_API_ERROR = 22,
+  GITHUB_TOKEN_INVALID = 23,
   UNRECOGNIZED = -1,
 }
 

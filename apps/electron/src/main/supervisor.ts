@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { app } from 'electron';
 import {
+  AUTH_CHANNELS,
   CHANNEL_TO_RPC,
   isStreamingRpc,
   type ChannelName,
@@ -62,6 +63,8 @@ export class Supervisor {
   private readonly maxQueue = 100;
   private readonly mockMode: boolean;
   private client: GoCoreClient | null = null;
+  /** Second client bound to `singularitree.v1.Auth` (same addr/token). */
+  private authClient: GoCoreClient | null = null;
   private readonly protoDir?: string;
   private readonly tokenOverride?: string;
 
@@ -104,6 +107,8 @@ export class Supervisor {
     this.ready = false;
     this.client?.close();
     this.client = null;
+    this.authClient?.close();
+    this.authClient = null;
     // Null before kill so the child's `exit` handler does not schedule a restart.
     const child = this.proc;
     this.proc = null;
@@ -172,6 +177,8 @@ export class Supervisor {
     this.ready = false;
     this.client?.close();
     this.client = null;
+    this.authClient?.close();
+    this.authClient = null;
     console.warn(`[supervisor] go-core lost (${reason}) — scheduling restart`);
     this.scheduleRestart();
   }
@@ -233,16 +240,22 @@ export class Supervisor {
     });
   }
 
-  /** Build/replace the gRPC client for the freshly parsed addr + token. */
+  /** Build/replace the gRPC clients for the freshly parsed addr + token. */
   private connectClient(): void {
     if (!this.protoDir) {
       console.error('[supervisor] protoDir not configured — cannot create gRPC client');
       return;
     }
     if (!this.client) {
-      this.client = new GoCoreClient({ protoDir: this.protoDir });
+      this.client = new GoCoreClient({ protoDir: this.protoDir, serviceName: 'GitCore' });
     }
     this.client.connect(this.grpcAddr, this.token);
+    // Auth is a distinct service on the same go-core process/addr/token; it needs
+    // its own channel-bound client and must follow the identical reconnect path.
+    if (!this.authClient) {
+      this.authClient = new GoCoreClient({ protoDir: this.protoDir, serviceName: 'Auth' });
+    }
+    this.authClient.connect(this.grpcAddr, this.token);
   }
 
   private scheduleRestart(): void {
@@ -321,9 +334,11 @@ export class Supervisor {
       console.log(`[supervisor:mock] forward ${channel}`, payload);
       return { ok: true, channel, payload, mock: true };
     }
-    if (!this.client) {
+    // Auth channels bind to the Auth client; everything else stays on GitCore.
+    const target = AUTH_CHANNELS.has(channel) ? this.authClient : this.client;
+    if (!target) {
       throw { code: 'GO_CORE_UNAVAILABLE', message: 'Go core gRPC client not connected' };
     }
-    return this.client.invoke(rpc, payload);
+    return target.invoke(rpc, payload);
   }
 }

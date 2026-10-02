@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -17,6 +18,11 @@ import (
 // appErrorTrailerKey carries the domain error code alongside the gRPC status
 // (ipc-strategy.md §2.5).
 const appErrorTrailerKey = "x-app-error-code"
+
+// appErrorDetailsTrailerKey carries AppError.Details (structured fields only)
+// as a JSON object. Secrets/tokens are never placed here
+// (github-real-data-guide.md §12e).
+const appErrorDetailsTrailerKey = "x-app-error-details"
 
 func oidToProto(o domain.Oid) *singularitreev1.Oid {
 	return &singularitreev1.Oid{Hex: o.Hex, Kind: o.Kind}
@@ -89,6 +95,105 @@ func fileStatusToProto(f domain.FileStatus) *singularitreev1.FileStatus {
 	}
 }
 
+func authSourceToProto(s domain.AuthSource) singularitreev1.AuthSource {
+	switch s {
+	case domain.AuthSourceNone:
+		return singularitreev1.AuthSource_AUTH_SOURCE_NONE
+	case domain.AuthSourceGitHubCLI:
+		return singularitreev1.AuthSource_AUTH_SOURCE_GITHUB_CLI
+	case domain.AuthSourceOAuth:
+		return singularitreev1.AuthSource_AUTH_SOURCE_OAUTH
+	default:
+		return singularitreev1.AuthSource_AUTH_SOURCE_UNSPECIFIED
+	}
+}
+
+func authStatusToProto(s *domain.AuthStatus) *singularitreev1.AuthStatus {
+	if s == nil {
+		return nil
+	}
+	return &singularitreev1.AuthStatus{
+		Authenticated: s.Authenticated,
+		Source:        authSourceToProto(s.Source),
+		AccountLogin:  s.AccountLogin,
+		Name:          s.Name,
+		AvatarUrl:     s.AvatarURL,
+		Email:         s.Email,
+		Scopes:        s.Scopes,
+		RateLimit:     rateLimitToProto(s.RateLimit),
+	}
+}
+
+func githubUserToProto(u *domain.GitHubUser) *singularitreev1.GitHubUser {
+	if u == nil {
+		return nil
+	}
+	return &singularitreev1.GitHubUser{
+		Id:        u.ID,
+		Login:     u.Login,
+		Name:      u.Name,
+		AvatarUrl: u.AvatarURL,
+		Email:     u.Email,
+		HtmlUrl:   u.HTMLURL,
+	}
+}
+
+func githubRepoToProto(r domain.GitHubRepo) *singularitreev1.GitHubRepo {
+	return &singularitreev1.GitHubRepo{
+		Id:              r.ID,
+		Name:            r.Name,
+		FullName:        r.FullName,
+		Private:         r.Private,
+		HtmlUrl:         r.HTMLURL,
+		Description:     r.Description,
+		Language:        r.Language,
+		StargazersCount: r.StargazersCount,
+		UpdatedAt:       r.UpdatedAt,
+		NodeId:          r.NodeID,
+		DefaultBranch:   r.DefaultBranch,
+		OwnerLogin:      r.OwnerLogin,
+		OwnerAvatarUrl:  r.OwnerAvatarURL,
+		Visibility:      r.Visibility,
+		Fork:            r.Fork,
+		Archived:        r.Archived,
+		Disabled:        r.Disabled,
+		CloneUrl:        r.CloneURL,
+		SshUrl:          r.SSHURL,
+		GitUrl:          r.GitURL,
+		PushedAt:        r.PushedAt,
+		CreatedAt:       r.CreatedAt,
+		ForksCount:      r.ForksCount,
+		OpenIssuesCount: r.OpenIssuesCount,
+		Topics:          r.Topics,
+		LicenseSpdxId:   r.LicenseSPDXID,
+		IsTemplate:      r.IsTemplate,
+		Homepage:        r.Homepage,
+	}
+}
+
+func pageInfoToProto(p domain.PageInfo) *singularitreev1.PageInfo {
+	return &singularitreev1.PageInfo{
+		Page:     p.Page,
+		PerPage:  p.PerPage,
+		NextPage: p.NextPage,
+		HasMore:  p.HasMore,
+		Total:    p.Total,
+	}
+}
+
+func rateLimitToProto(r *domain.RateLimit) *singularitreev1.RateLimit {
+	if r == nil {
+		return nil
+	}
+	return &singularitreev1.RateLimit{
+		Resource:  r.Resource,
+		Limit:     r.Limit,
+		Remaining: r.Remaining,
+		Reset_:    r.Reset,
+		ResetAt:   r.ResetAt,
+	}
+}
+
 // grpcCodeFor maps a domain error code to the closest gRPC status code.
 func grpcCodeFor(appCode string) codes.Code {
 	switch appCode {
@@ -103,6 +208,14 @@ func grpcCodeFor(appCode string) codes.Code {
 		return codes.AlreadyExists
 	case domain.ErrCodeUnauthenticated:
 		return codes.Unauthenticated
+	case domain.ErrCodeGHCLINotFound:
+		return codes.NotFound
+	case domain.ErrCodeGHCLIUnauthenticated, domain.ErrCodeGitHubTokenInvalid:
+		return codes.Unauthenticated
+	case domain.ErrCodeGitHubRateLimited:
+		return codes.ResourceExhausted
+	case domain.ErrCodeGitHubAPIError:
+		return codes.Unavailable
 	case domain.ErrCodeQueueFull:
 		return codes.ResourceExhausted
 	case domain.ErrCodeGoCoreUnavailable:
@@ -126,7 +239,14 @@ func appErrorToStatus(ctx context.Context, err error) error {
 
 	var appErr domain.AppError
 	if errors.As(err, &appErr) {
-		_ = googlegrpc.SetTrailer(ctx, metadata.Pairs(appErrorTrailerKey, appErr.Code))
+		trailer := metadata.Pairs(appErrorTrailerKey, appErr.Code)
+		if len(appErr.Details) > 0 {
+			// Structured fields only; never surface secrets/tokens here.
+			if encoded, mErr := json.Marshal(appErr.Details); mErr == nil {
+				trailer.Set(appErrorDetailsTrailerKey, string(encoded))
+			}
+		}
+		_ = googlegrpc.SetTrailer(ctx, trailer)
 		msg := appErr.Message
 		if msg == "" {
 			msg = appErr.Code

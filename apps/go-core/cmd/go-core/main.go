@@ -18,7 +18,9 @@ import (
 
 	googlegrpc "google.golang.org/grpc"
 
+	"github.com/SingulariTree/go-core/internal/adapter/ghcli"
 	"github.com/SingulariTree/go-core/internal/adapter/git"
+	"github.com/SingulariTree/go-core/internal/adapter/github"
 	grpcadapter "github.com/SingulariTree/go-core/internal/adapter/grpc"
 	httpadapter "github.com/SingulariTree/go-core/internal/adapter/http"
 	"github.com/SingulariTree/go-core/internal/adapter/watcher"
@@ -96,10 +98,19 @@ func main() {
 		token = "dev-token"
 	}
 
+	// Load configuration once and reuse it (DB default + GitHub CLI search path).
+	cfg := config.Load()
+
+	// Early, non-fatal diagnostic: warn when `gh` cannot be resolved so the user
+	// learns within the first seconds (github-real-data-guide.md §12a).
+	if _, ok := ghcli.Lookup(ghcli.SearchedPath(cfg.GhPath), "gh"); !ok {
+		logf(levelWarn, "gh CLI not found (searched: %s)", ghcli.SearchedPath(cfg.GhPath))
+	}
+
 	// Resolve DB path: flag wins, else per-user config default.
 	effectiveDB := *dbPath
 	if effectiveDB == "" {
-		effectiveDB = config.Load().DbPath
+		effectiveDB = cfg.DbPath
 	}
 	db, err := repository.OpenSQLite(effectiveDB)
 	if err != nil {
@@ -120,6 +131,12 @@ func main() {
 	graphSvc := service.NewGraphService(gitAdapter, cacheSvc)
 	watcherSvc := service.NewWatcherService(watcher.NewFsnotifyAdapter())
 	gitSvc := service.NewGitService(gitAdapter, cacheSvc, watcherSvc)
+
+	// GitHub real-data vertical: token from `gh` CLI, REST over api.github.com.
+	githubAdapter := github.NewAdapter(&http.Client{Timeout: 15 * time.Second})
+	ghSource := ghcli.NewTokenSource(cfg.GhPath)
+	authSvc := service.NewAuthService(githubAdapter, ghSource, service.AuthConfig{GhSearchPath: cfg.GhPath})
+	authServer := grpcadapter.NewAuthServer(authSvc)
 
 	// A filesystem change (including HEAD moves from GitService mutating ops)
 	// invalidates derived state: the stateful lane layout and the commit cache,
@@ -160,6 +177,7 @@ func main() {
 		googlegrpc.StreamInterceptor(grpcadapter.StreamAuthInterceptor(token)),
 	)
 	grpcSrv.Register(gs)
+	authServer.Register(gs)
 	go func() {
 		if err := gs.Serve(grpcLis); err != nil && err != googlegrpc.ErrServerStopped {
 			logf(levelError, "grpc serve error: %v", err)

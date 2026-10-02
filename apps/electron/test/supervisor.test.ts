@@ -57,4 +57,12 @@ describe('Supervisor.forwardToGo streaming guard', () => {
     const outcome = await settleWithin(supervisor.forwardToGo('git:getStatus', { repoId: 'x' }), 50);
     expect(outcome).toBe('pending'); // queued while not ready
   });
+
+  it('routes an auth channel without hitting the GitCore streaming guard', async () => {
+    const supervisor = makeSupervisor();
+    // Auth RPCs are unary: `auth:logout` must pass the streaming guard and queue
+    // while go-core is not ready — never reject NOT_IMPLEMENTED.
+    const outcome = await settleWithin(supervisor.forwardToGo('auth:logout', {}), 50);
+    expect(outcome).toBe('pending');
+  });
 });

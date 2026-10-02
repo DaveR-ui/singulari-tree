@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { CHANNELS, CHANNEL_TO_RPC, type ChannelName } from '../src/ipc/channels';
-import { GIT_CORE_RPC_METHODS } from '../src/main/go-core-client';
+import {
+  AUTH_CHANNELS,
+  CHANNELS,
+  CHANNEL_TO_RPC,
+  type ChannelName,
+} from '../src/ipc/channels';
+import { AUTH_RPC_METHODS, GIT_CORE_RPC_METHODS } from '../src/main/go-core-client';
 
 /**
- * Guards the frozen IPC surface (16 channels) and catches channel→gRPC mapping
- * drift: every channel value must resolve to a real `singularitree.v1.GitCore`
- * RPC name.
+ * Guards the frozen IPC surface (20 channels) and catches channel→gRPC mapping
+ * drift: every channel value must resolve to a real RPC on its owning service
+ * (`singularitree.v1.GitCore` for `git:*`, `singularitree.v1.Auth` for `auth:*`).
  */
 
 const EXPECTED_MAPPING: Record<string, string> = {
@@ -25,12 +30,16 @@ const EXPECTED_MAPPING: Record<string, string> = {
   'git:push': 'Push',
   'git:openRepository': 'OpenRepository',
   'git:listRepositories': 'ListRepositories',
+  'auth:getAuthStatus': 'GetAuthStatus',
+  'auth:connectGitHubFromCLI': 'ConnectGitHubFromCLI',
+  'auth:listGitHubRepos': 'ListGitHubRepos',
+  'auth:logout': 'Logout',
 };
 
-describe('CHANNELS ↔ GitCore RPC mapping', () => {
-  it('exposes exactly the 16 frozen channels', () => {
+describe('CHANNELS ↔ service RPC mapping', () => {
+  it('exposes exactly the 20 frozen channels', () => {
     const values = Object.values(CHANNELS);
-    expect(values).toHaveLength(16);
+    expect(values).toHaveLength(20);
     expect([...values].sort()).toEqual(Object.keys(EXPECTED_MAPPING).sort());
   });
 
@@ -43,14 +52,30 @@ describe('CHANNELS ↔ GitCore RPC mapping', () => {
     }
   });
 
-  it('maps every channel to a known GitCore RPC method', () => {
+  it('routes each channel to a known RPC on its owning service', () => {
     for (const channel of Object.values(CHANNELS) as ChannelName[]) {
       const rpc = CHANNEL_TO_RPC[channel];
-      expect(
-        GIT_CORE_RPC_METHODS as readonly string[],
-        `channel ${channel} → unknown RPC ${rpc}`,
-      ).toContain(rpc);
+      if (AUTH_CHANNELS.has(channel)) {
+        expect(
+          AUTH_RPC_METHODS as readonly string[],
+          `auth channel ${channel} → unknown Auth RPC ${rpc}`,
+        ).toContain(rpc);
+      } else {
+        expect(
+          GIT_CORE_RPC_METHODS as readonly string[],
+          `git channel ${channel} → unknown GitCore RPC ${rpc}`,
+        ).toContain(rpc);
+      }
     }
+  });
+
+  it('marks exactly the four auth channels as Auth-service channels', () => {
+    expect([...AUTH_CHANNELS].sort()).toEqual([
+      'auth:connectGitHubFromCLI',
+      'auth:getAuthStatus',
+      'auth:listGitHubRepos',
+      'auth:logout',
+    ]);
   });
 
   it('matches the frozen channel → RPC mapping', () => {

@@ -246,6 +246,145 @@ export interface ProgressPayload {
   message: string;
 }
 
+// --- Auth wire types (mirror libs/contracts/gen/ts/auth.ts) ----------------
+
+/** AuthSource enumerates how the token was obtained (proto enum as strings). */
+export type AuthSource =
+  | 'AUTH_SOURCE_UNSPECIFIED'
+  | 'AUTH_SOURCE_NONE'
+  | 'AUTH_SOURCE_GITHUB_CLI'
+  | 'AUTH_SOURCE_OAUTH'
+  | 'UNRECOGNIZED';
+
+export interface RateLimit {
+  /** "core" | "search" | ... */
+  resource: string;
+  limit: number;
+  remaining: number;
+  /** epoch seconds (X-RateLimit-Reset) */
+  reset: number;
+  /** RFC3339 */
+  resetAt: string;
+}
+
+export interface AuthStatus {
+  authenticated: boolean;
+  source: AuthSource;
+  accountLogin: string;
+  name: string;
+  avatarUrl: string;
+  /** MAY BE EMPTY: gh token scopes may omit read:user */
+  email: string;
+  scopes: string[];
+  rateLimit: RateLimit | undefined;
+}
+
+export interface GitHubUser {
+  id: number;
+  login: string;
+  name: string;
+  avatarUrl: string;
+  email: string;
+  htmlUrl: string;
+}
+
+/** Pagination metadata derived from the GitHub `Link` header (rel="next"). */
+export interface PageInfo {
+  page: number;
+  perPage: number;
+  /** 0 == no Link rel="next" */
+  nextPage: number;
+  hasMore: boolean;
+  /** best-effort; 0 when GitHub omits it (/user/repos) */
+  total: number;
+}
+
+export interface GitHubRepo {
+  id: number;
+  name: string;
+  fullName: string;
+  private: boolean;
+  htmlUrl: string;
+  description: string;
+  language: string;
+  stargazersCount: number;
+  updatedAt: string;
+  nodeId: string;
+  defaultBranch: string;
+  ownerLogin: string;
+  ownerAvatarUrl: string;
+  /** "public" | "private" | "internal" */
+  visibility: string;
+  fork: boolean;
+  archived: boolean;
+  disabled: boolean;
+  cloneUrl: string;
+  sshUrl: string;
+  gitUrl: string;
+  pushedAt: string;
+  createdAt: string;
+  forksCount: number;
+  openIssuesCount: number;
+  topics: string[];
+  licenseSpdxId: string;
+  isTemplate: boolean;
+  homepage: string;
+}
+
+export interface GetAuthStatusRequest {
+  // empty
+}
+
+export interface GetAuthStatusResponse {
+  authenticated: boolean;
+  /** empty if not authenticated */
+  login: string;
+  status: AuthStatus | undefined;
+}
+
+export interface ConnectGitHubFromCLIRequest {
+  /** empty -> resolve "gh" on PATH */
+  ghBinary: string;
+  /** true -> call GET /user to validate the token */
+  verify: boolean;
+}
+
+export interface ConnectGitHubFromCLIResponse {
+  status: AuthStatus | undefined;
+  /** populated when verify=true */
+  user: GitHubUser | undefined;
+}
+
+export interface ListGitHubReposRequest {
+  /** default 30 */
+  perPage: number;
+  page: number;
+  /** "updated" | "pushed" | "created" | "full_name" */
+  sort: string;
+  /** "asc" | "desc" */
+  direction: string;
+  /** "owner,collaborator,organization_member" */
+  affiliation: string;
+  /** "all" | "public" | "private" */
+  visibility: string;
+  /** "all" | "owner" | "public" | "private" | "member" */
+  type: string;
+}
+
+export interface ListGitHubReposResponse {
+  repos: GitHubRepo[];
+  pageInfo: PageInfo | undefined;
+  rateLimit: RateLimit | undefined;
+}
+
+export interface LogoutRequest {
+  // empty
+}
+
+export interface LogoutResponse {
+  // empty
+}
+
 // --- Bridge surface --------------------------------------------------------
 
 export interface GitClientApi {
@@ -269,6 +408,12 @@ export interface GitClientApi {
   push: (req: PushRequest) => Promise<void>;
   openRepository: (req: OpenRepositoryRequest) => Promise<Repository>;
   listRepositories: (req: ListRepositoriesRequest) => Promise<ListRepositoriesResponse>;
+  getAuthStatus: (req: GetAuthStatusRequest) => Promise<GetAuthStatusResponse>;
+  connectGitHubFromCLI: (
+    req: ConnectGitHubFromCLIRequest,
+  ) => Promise<ConnectGitHubFromCLIResponse>;
+  listGitHubRepos: (req: ListGitHubReposRequest) => Promise<ListGitHubReposResponse>;
+  logout: (req: LogoutRequest) => Promise<LogoutResponse>;
   onRepoChanged: (cb: (payload: RepoChangedPayload) => void) => () => void;
   onFsChanged: (cb: (payload: FsChangedPayload) => void) => () => void;
   onProgress: (cb: (payload: ProgressPayload) => void) => () => void;
@@ -291,6 +436,10 @@ const api: GitClientApi = {
   push: (req) => ipcRenderer.invoke('git:push', req),
   openRepository: (req) => ipcRenderer.invoke('git:openRepository', req),
   listRepositories: (req) => ipcRenderer.invoke('git:listRepositories', req),
+  getAuthStatus: (req) => ipcRenderer.invoke('auth:getAuthStatus', req),
+  connectGitHubFromCLI: (req) => ipcRenderer.invoke('auth:connectGitHubFromCLI', req),
+  listGitHubRepos: (req) => ipcRenderer.invoke('auth:listGitHubRepos', req),
+  logout: (req) => ipcRenderer.invoke('auth:logout', req),
   // Each subscription returns an unsubscribe that removes ONLY its own handler
   // (`removeAllListeners` would detach every other subscriber on the channel).
   onRepoChanged: (cb) => {

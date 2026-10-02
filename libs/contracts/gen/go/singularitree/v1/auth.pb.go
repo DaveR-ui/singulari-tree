@@ -21,6 +21,59 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// AuthSource identifies how the token was obtained.
+type AuthSource int32
+
+const (
+	AuthSource_AUTH_SOURCE_UNSPECIFIED AuthSource = 0
+	AuthSource_AUTH_SOURCE_NONE        AuthSource = 1
+	AuthSource_AUTH_SOURCE_GITHUB_CLI  AuthSource = 2
+	AuthSource_AUTH_SOURCE_OAUTH       AuthSource = 3 // future evolution
+)
+
+// Enum value maps for AuthSource.
+var (
+	AuthSource_name = map[int32]string{
+		0: "AUTH_SOURCE_UNSPECIFIED",
+		1: "AUTH_SOURCE_NONE",
+		2: "AUTH_SOURCE_GITHUB_CLI",
+		3: "AUTH_SOURCE_OAUTH",
+	}
+	AuthSource_value = map[string]int32{
+		"AUTH_SOURCE_UNSPECIFIED": 0,
+		"AUTH_SOURCE_NONE":        1,
+		"AUTH_SOURCE_GITHUB_CLI":  2,
+		"AUTH_SOURCE_OAUTH":       3,
+	}
+)
+
+func (x AuthSource) Enum() *AuthSource {
+	p := new(AuthSource)
+	*p = x
+	return p
+}
+
+func (x AuthSource) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (AuthSource) Descriptor() protoreflect.EnumDescriptor {
+	return file_auth_proto_enumTypes[0].Descriptor()
+}
+
+func (AuthSource) Type() protoreflect.EnumType {
+	return &file_auth_proto_enumTypes[0]
+}
+
+func (x AuthSource) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use AuthSource.Descriptor instead.
+func (AuthSource) EnumDescriptor() ([]byte, []int) {
+	return file_auth_proto_rawDescGZIP(), []int{0}
+}
+
 type GetAuthStatusRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -60,7 +113,8 @@ func (*GetAuthStatusRequest) Descriptor() ([]byte, []int) {
 type GetAuthStatusResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Authenticated bool                   `protobuf:"varint,1,opt,name=authenticated,proto3" json:"authenticated,omitempty"`
-	Login         string                 `protobuf:"bytes,2,opt,name=login,proto3" json:"login,omitempty"` // empty if not authenticated
+	Login         string                 `protobuf:"bytes,2,opt,name=login,proto3" json:"login,omitempty"`   // empty if not authenticated
+	Status        *AuthStatus            `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"` // additive: source, account, scopes, rate limit
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -107,6 +161,13 @@ func (x *GetAuthStatusResponse) GetLogin() string {
 		return x.Login
 	}
 	return ""
+}
+
+func (x *GetAuthStatusResponse) GetStatus() *AuthStatus {
+	if x != nil {
+		return x.Status
+	}
+	return nil
 }
 
 type StartGitHubOAuthRequest struct {
@@ -433,6 +494,11 @@ type ListGitHubReposRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PerPage       uint32                 `protobuf:"varint,1,opt,name=per_page,json=perPage,proto3" json:"per_page,omitempty"` // default 30
 	Page          uint32                 `protobuf:"varint,2,opt,name=page,proto3" json:"page,omitempty"`
+	Sort          string                 `protobuf:"bytes,3,opt,name=sort,proto3" json:"sort,omitempty"`               // "updated" | "pushed" | "created" | "full_name"
+	Direction     string                 `protobuf:"bytes,4,opt,name=direction,proto3" json:"direction,omitempty"`     // "asc" | "desc"
+	Affiliation   string                 `protobuf:"bytes,5,opt,name=affiliation,proto3" json:"affiliation,omitempty"` // "owner,collaborator,organization_member"
+	Visibility    string                 `protobuf:"bytes,6,opt,name=visibility,proto3" json:"visibility,omitempty"`   // "all" | "public" | "private"
+	Type          string                 `protobuf:"bytes,7,opt,name=type,proto3" json:"type,omitempty"`               // "all" | "owner" | "public" | "private" | "member"
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -481,9 +547,46 @@ func (x *ListGitHubReposRequest) GetPage() uint32 {
 	return 0
 }
 
+func (x *ListGitHubReposRequest) GetSort() string {
+	if x != nil {
+		return x.Sort
+	}
+	return ""
+}
+
+func (x *ListGitHubReposRequest) GetDirection() string {
+	if x != nil {
+		return x.Direction
+	}
+	return ""
+}
+
+func (x *ListGitHubReposRequest) GetAffiliation() string {
+	if x != nil {
+		return x.Affiliation
+	}
+	return ""
+}
+
+func (x *ListGitHubReposRequest) GetVisibility() string {
+	if x != nil {
+		return x.Visibility
+	}
+	return ""
+}
+
+func (x *ListGitHubReposRequest) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
 type ListGitHubReposResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Repos         []*GitHubRepo          `protobuf:"bytes,1,rep,name=repos,proto3" json:"repos,omitempty"`
+	PageInfo      *PageInfo              `protobuf:"bytes,2,opt,name=page_info,json=pageInfo,proto3" json:"page_info,omitempty"`
+	RateLimit     *RateLimit             `protobuf:"bytes,3,opt,name=rate_limit,json=rateLimit,proto3" json:"rate_limit,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -525,6 +628,20 @@ func (x *ListGitHubReposResponse) GetRepos() []*GitHubRepo {
 	return nil
 }
 
+func (x *ListGitHubReposResponse) GetPageInfo() *PageInfo {
+	if x != nil {
+		return x.PageInfo
+	}
+	return nil
+}
+
+func (x *ListGitHubReposResponse) GetRateLimit() *RateLimit {
+	if x != nil {
+		return x.RateLimit
+	}
+	return nil
+}
+
 type GitHubRepo struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Id              int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -536,6 +653,25 @@ type GitHubRepo struct {
 	Language        string                 `protobuf:"bytes,7,opt,name=language,proto3" json:"language,omitempty"`
 	StargazersCount int32                  `protobuf:"varint,8,opt,name=stargazers_count,json=stargazersCount,proto3" json:"stargazers_count,omitempty"`
 	UpdatedAt       string                 `protobuf:"bytes,9,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	NodeId          string                 `protobuf:"bytes,10,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	DefaultBranch   string                 `protobuf:"bytes,11,opt,name=default_branch,json=defaultBranch,proto3" json:"default_branch,omitempty"`
+	OwnerLogin      string                 `protobuf:"bytes,12,opt,name=owner_login,json=ownerLogin,proto3" json:"owner_login,omitempty"`
+	OwnerAvatarUrl  string                 `protobuf:"bytes,13,opt,name=owner_avatar_url,json=ownerAvatarUrl,proto3" json:"owner_avatar_url,omitempty"`
+	Visibility      string                 `protobuf:"bytes,14,opt,name=visibility,proto3" json:"visibility,omitempty"` // "public" | "private" | "internal"
+	Fork            bool                   `protobuf:"varint,15,opt,name=fork,proto3" json:"fork,omitempty"`
+	Archived        bool                   `protobuf:"varint,16,opt,name=archived,proto3" json:"archived,omitempty"`
+	Disabled        bool                   `protobuf:"varint,17,opt,name=disabled,proto3" json:"disabled,omitempty"`
+	CloneUrl        string                 `protobuf:"bytes,18,opt,name=clone_url,json=cloneUrl,proto3" json:"clone_url,omitempty"`
+	SshUrl          string                 `protobuf:"bytes,19,opt,name=ssh_url,json=sshUrl,proto3" json:"ssh_url,omitempty"`
+	GitUrl          string                 `protobuf:"bytes,20,opt,name=git_url,json=gitUrl,proto3" json:"git_url,omitempty"`
+	PushedAt        string                 `protobuf:"bytes,21,opt,name=pushed_at,json=pushedAt,proto3" json:"pushed_at,omitempty"`
+	CreatedAt       string                 `protobuf:"bytes,22,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	ForksCount      int32                  `protobuf:"varint,23,opt,name=forks_count,json=forksCount,proto3" json:"forks_count,omitempty"`
+	OpenIssuesCount int32                  `protobuf:"varint,24,opt,name=open_issues_count,json=openIssuesCount,proto3" json:"open_issues_count,omitempty"`
+	Topics          []string               `protobuf:"bytes,25,rep,name=topics,proto3" json:"topics,omitempty"`
+	LicenseSpdxId   string                 `protobuf:"bytes,26,opt,name=license_spdx_id,json=licenseSpdxId,proto3" json:"license_spdx_id,omitempty"`
+	IsTemplate      bool                   `protobuf:"varint,27,opt,name=is_template,json=isTemplate,proto3" json:"is_template,omitempty"`
+	Homepage        string                 `protobuf:"bytes,28,opt,name=homepage,proto3" json:"homepage,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -633,6 +769,139 @@ func (x *GitHubRepo) GetUpdatedAt() string {
 	return ""
 }
 
+func (x *GitHubRepo) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *GitHubRepo) GetDefaultBranch() string {
+	if x != nil {
+		return x.DefaultBranch
+	}
+	return ""
+}
+
+func (x *GitHubRepo) GetOwnerLogin() string {
+	if x != nil {
+		return x.OwnerLogin
+	}
+	return ""
+}
+
+func (x *GitHubRepo) GetOwnerAvatarUrl() string {
+	if x != nil {
+		return x.OwnerAvatarUrl
+	}
+	return ""
+}
+
+func (x *GitHubRepo) GetVisibility() string {
+	if x != nil {
+		return x.Visibility
+	}
+	return ""
+}
+
+func (x *GitHubRepo) GetFork() bool {
+	if x != nil {
+		return x.Fork
+	}
+	return false
+}
+
+func (x *GitHubRepo) GetArchived() bool {
+	if x != nil {
+		return x.Archived
+	}
+	return false
+}
+
+func (x *GitHubRepo) GetDisabled() bool {
+	if x != nil {
+		return x.Disabled
+	}
+	return false
+}
+
+func (x *GitHubRepo) GetCloneUrl() string {
+	if x != nil {
+		return x.CloneUrl
+	}
+	return ""
+}
+
+func (x *GitHubRepo) GetSshUrl() string {
+	if x != nil {
+		return x.SshUrl
+	}
+	return ""
+}
+
+func (x *GitHubRepo) GetGitUrl() string {
+	if x != nil {
+		return x.GitUrl
+	}
+	return ""
+}
+
+func (x *GitHubRepo) GetPushedAt() string {
+	if x != nil {
+		return x.PushedAt
+	}
+	return ""
+}
+
+func (x *GitHubRepo) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
+func (x *GitHubRepo) GetForksCount() int32 {
+	if x != nil {
+		return x.ForksCount
+	}
+	return 0
+}
+
+func (x *GitHubRepo) GetOpenIssuesCount() int32 {
+	if x != nil {
+		return x.OpenIssuesCount
+	}
+	return 0
+}
+
+func (x *GitHubRepo) GetTopics() []string {
+	if x != nil {
+		return x.Topics
+	}
+	return nil
+}
+
+func (x *GitHubRepo) GetLicenseSpdxId() string {
+	if x != nil {
+		return x.LicenseSpdxId
+	}
+	return ""
+}
+
+func (x *GitHubRepo) GetIsTemplate() bool {
+	if x != nil {
+		return x.IsTemplate
+	}
+	return false
+}
+
+func (x *GitHubRepo) GetHomepage() string {
+	if x != nil {
+		return x.Homepage
+	}
+	return ""
+}
+
 type LogoutRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -705,16 +974,375 @@ func (*LogoutResponse) Descriptor() ([]byte, []int) {
 	return file_auth_proto_rawDescGZIP(), []int{12}
 }
 
+type AuthStatus struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Authenticated bool                   `protobuf:"varint,1,opt,name=authenticated,proto3" json:"authenticated,omitempty"`
+	Source        AuthSource             `protobuf:"varint,2,opt,name=source,proto3,enum=singularitree.v1.AuthSource" json:"source,omitempty"`
+	AccountLogin  string                 `protobuf:"bytes,3,opt,name=account_login,json=accountLogin,proto3" json:"account_login,omitempty"` // gh account, e.g. "DaveR-ui"
+	Name          string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
+	AvatarUrl     string                 `protobuf:"bytes,5,opt,name=avatar_url,json=avatarUrl,proto3" json:"avatar_url,omitempty"`
+	Email         string                 `protobuf:"bytes,6,opt,name=email,proto3" json:"email,omitempty"`   // MAY BE EMPTY: gh token scopes may omit read:user
+	Scopes        []string               `protobuf:"bytes,7,rep,name=scopes,proto3" json:"scopes,omitempty"` // e.g. ["gist","read:org","repo","workflow"]
+	RateLimit     *RateLimit             `protobuf:"bytes,8,opt,name=rate_limit,json=rateLimit,proto3" json:"rate_limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AuthStatus) Reset() {
+	*x = AuthStatus{}
+	mi := &file_auth_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuthStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuthStatus) ProtoMessage() {}
+
+func (x *AuthStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuthStatus.ProtoReflect.Descriptor instead.
+func (*AuthStatus) Descriptor() ([]byte, []int) {
+	return file_auth_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *AuthStatus) GetAuthenticated() bool {
+	if x != nil {
+		return x.Authenticated
+	}
+	return false
+}
+
+func (x *AuthStatus) GetSource() AuthSource {
+	if x != nil {
+		return x.Source
+	}
+	return AuthSource_AUTH_SOURCE_UNSPECIFIED
+}
+
+func (x *AuthStatus) GetAccountLogin() string {
+	if x != nil {
+		return x.AccountLogin
+	}
+	return ""
+}
+
+func (x *AuthStatus) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *AuthStatus) GetAvatarUrl() string {
+	if x != nil {
+		return x.AvatarUrl
+	}
+	return ""
+}
+
+func (x *AuthStatus) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+func (x *AuthStatus) GetScopes() []string {
+	if x != nil {
+		return x.Scopes
+	}
+	return nil
+}
+
+func (x *AuthStatus) GetRateLimit() *RateLimit {
+	if x != nil {
+		return x.RateLimit
+	}
+	return nil
+}
+
+type ConnectGitHubFromCLIRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	GhBinary      string                 `protobuf:"bytes,1,opt,name=gh_binary,json=ghBinary,proto3" json:"gh_binary,omitempty"` // empty -> resolve "gh" on PATH
+	Verify        bool                   `protobuf:"varint,2,opt,name=verify,proto3" json:"verify,omitempty"`                    // true -> call GET /user to validate the token
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConnectGitHubFromCLIRequest) Reset() {
+	*x = ConnectGitHubFromCLIRequest{}
+	mi := &file_auth_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConnectGitHubFromCLIRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConnectGitHubFromCLIRequest) ProtoMessage() {}
+
+func (x *ConnectGitHubFromCLIRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConnectGitHubFromCLIRequest.ProtoReflect.Descriptor instead.
+func (*ConnectGitHubFromCLIRequest) Descriptor() ([]byte, []int) {
+	return file_auth_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ConnectGitHubFromCLIRequest) GetGhBinary() string {
+	if x != nil {
+		return x.GhBinary
+	}
+	return ""
+}
+
+func (x *ConnectGitHubFromCLIRequest) GetVerify() bool {
+	if x != nil {
+		return x.Verify
+	}
+	return false
+}
+
+type ConnectGitHubFromCLIResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Status        *AuthStatus            `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	User          *GitHubUser            `protobuf:"bytes,2,opt,name=user,proto3" json:"user,omitempty"` // populated when verify=true
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConnectGitHubFromCLIResponse) Reset() {
+	*x = ConnectGitHubFromCLIResponse{}
+	mi := &file_auth_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConnectGitHubFromCLIResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConnectGitHubFromCLIResponse) ProtoMessage() {}
+
+func (x *ConnectGitHubFromCLIResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConnectGitHubFromCLIResponse.ProtoReflect.Descriptor instead.
+func (*ConnectGitHubFromCLIResponse) Descriptor() ([]byte, []int) {
+	return file_auth_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *ConnectGitHubFromCLIResponse) GetStatus() *AuthStatus {
+	if x != nil {
+		return x.Status
+	}
+	return nil
+}
+
+func (x *ConnectGitHubFromCLIResponse) GetUser() *GitHubUser {
+	if x != nil {
+		return x.User
+	}
+	return nil
+}
+
+// Pagination metadata derived from the GitHub `Link` header (rel="next").
+type PageInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Page          uint32                 `protobuf:"varint,1,opt,name=page,proto3" json:"page,omitempty"`
+	PerPage       uint32                 `protobuf:"varint,2,opt,name=per_page,json=perPage,proto3" json:"per_page,omitempty"`
+	NextPage      uint32                 `protobuf:"varint,3,opt,name=next_page,json=nextPage,proto3" json:"next_page,omitempty"` // 0 == no Link rel="next"
+	HasMore       bool                   `protobuf:"varint,4,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
+	Total         uint32                 `protobuf:"varint,5,opt,name=total,proto3" json:"total,omitempty"` // best-effort; 0 when GitHub omits it (/user/repos)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PageInfo) Reset() {
+	*x = PageInfo{}
+	mi := &file_auth_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PageInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PageInfo) ProtoMessage() {}
+
+func (x *PageInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PageInfo.ProtoReflect.Descriptor instead.
+func (*PageInfo) Descriptor() ([]byte, []int) {
+	return file_auth_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *PageInfo) GetPage() uint32 {
+	if x != nil {
+		return x.Page
+	}
+	return 0
+}
+
+func (x *PageInfo) GetPerPage() uint32 {
+	if x != nil {
+		return x.PerPage
+	}
+	return 0
+}
+
+func (x *PageInfo) GetNextPage() uint32 {
+	if x != nil {
+		return x.NextPage
+	}
+	return 0
+}
+
+func (x *PageInfo) GetHasMore() bool {
+	if x != nil {
+		return x.HasMore
+	}
+	return false
+}
+
+func (x *PageInfo) GetTotal() uint32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+// GitHub REST rate-limit metadata (X-RateLimit-* headers / GET /rate_limit).
+type RateLimit struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Resource      string                 `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource,omitempty"` // "core" | "search" | ...
+	Limit         uint32                 `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	Remaining     uint32                 `protobuf:"varint,3,opt,name=remaining,proto3" json:"remaining,omitempty"`
+	Reset_        int64                  `protobuf:"varint,4,opt,name=reset,proto3" json:"reset,omitempty"`                   // epoch seconds (X-RateLimit-Reset)
+	ResetAt       string                 `protobuf:"bytes,5,opt,name=reset_at,json=resetAt,proto3" json:"reset_at,omitempty"` // RFC3339
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RateLimit) Reset() {
+	*x = RateLimit{}
+	mi := &file_auth_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RateLimit) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RateLimit) ProtoMessage() {}
+
+func (x *RateLimit) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RateLimit.ProtoReflect.Descriptor instead.
+func (*RateLimit) Descriptor() ([]byte, []int) {
+	return file_auth_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *RateLimit) GetResource() string {
+	if x != nil {
+		return x.Resource
+	}
+	return ""
+}
+
+func (x *RateLimit) GetLimit() uint32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *RateLimit) GetRemaining() uint32 {
+	if x != nil {
+		return x.Remaining
+	}
+	return 0
+}
+
+func (x *RateLimit) GetReset_() int64 {
+	if x != nil {
+		return x.Reset_
+	}
+	return 0
+}
+
+func (x *RateLimit) GetResetAt() string {
+	if x != nil {
+		return x.ResetAt
+	}
+	return ""
+}
+
 var File_auth_proto protoreflect.FileDescriptor
 
 const file_auth_proto_rawDesc = "" +
 	"\n" +
 	"\n" +
 	"auth.proto\x12\x10singularitree.v1\"\x16\n" +
-	"\x14GetAuthStatusRequest\"S\n" +
+	"\x14GetAuthStatusRequest\"\x89\x01\n" +
 	"\x15GetAuthStatusResponse\x12$\n" +
 	"\rauthenticated\x18\x01 \x01(\bR\rauthenticated\x12\x14\n" +
-	"\x05login\x18\x02 \x01(\tR\x05login\"/\n" +
+	"\x05login\x18\x02 \x01(\tR\x05login\x124\n" +
+	"\x06status\x18\x03 \x01(\v2\x1c.singularitree.v1.AuthStatusR\x06status\"/\n" +
 	"\x17StartGitHubOAuthRequest\x12\x14\n" +
 	"\x05state\x18\x01 \x01(\tR\x05state\"K\n" +
 	"\x18StartGitHubOAuthResponse\x12\x19\n" +
@@ -735,12 +1363,22 @@ const file_auth_proto_rawDesc = "" +
 	"\n" +
 	"avatar_url\x18\x04 \x01(\tR\tavatarUrl\x12\x14\n" +
 	"\x05email\x18\x05 \x01(\tR\x05email\x12\x19\n" +
-	"\bhtml_url\x18\x06 \x01(\tR\ahtmlUrl\"G\n" +
+	"\bhtml_url\x18\x06 \x01(\tR\ahtmlUrl\"\xcf\x01\n" +
 	"\x16ListGitHubReposRequest\x12\x19\n" +
 	"\bper_page\x18\x01 \x01(\rR\aperPage\x12\x12\n" +
-	"\x04page\x18\x02 \x01(\rR\x04page\"M\n" +
+	"\x04page\x18\x02 \x01(\rR\x04page\x12\x12\n" +
+	"\x04sort\x18\x03 \x01(\tR\x04sort\x12\x1c\n" +
+	"\tdirection\x18\x04 \x01(\tR\tdirection\x12 \n" +
+	"\vaffiliation\x18\x05 \x01(\tR\vaffiliation\x12\x1e\n" +
+	"\n" +
+	"visibility\x18\x06 \x01(\tR\n" +
+	"visibility\x12\x12\n" +
+	"\x04type\x18\a \x01(\tR\x04type\"\xc2\x01\n" +
 	"\x17ListGitHubReposResponse\x122\n" +
-	"\x05repos\x18\x01 \x03(\v2\x1c.singularitree.v1.GitHubRepoR\x05repos\"\x8a\x02\n" +
+	"\x05repos\x18\x01 \x03(\v2\x1c.singularitree.v1.GitHubRepoR\x05repos\x127\n" +
+	"\tpage_info\x18\x02 \x01(\v2\x1a.singularitree.v1.PageInfoR\bpageInfo\x12:\n" +
+	"\n" +
+	"rate_limit\x18\x03 \x01(\v2\x1b.singularitree.v1.RateLimitR\trateLimit\"\xd6\x06\n" +
 	"\n" +
 	"GitHubRepo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
@@ -752,16 +1390,79 @@ const file_auth_proto_rawDesc = "" +
 	"\blanguage\x18\a \x01(\tR\blanguage\x12)\n" +
 	"\x10stargazers_count\x18\b \x01(\x05R\x0fstargazersCount\x12\x1d\n" +
 	"\n" +
-	"updated_at\x18\t \x01(\tR\tupdatedAt\"\x0f\n" +
+	"updated_at\x18\t \x01(\tR\tupdatedAt\x12\x17\n" +
+	"\anode_id\x18\n" +
+	" \x01(\tR\x06nodeId\x12%\n" +
+	"\x0edefault_branch\x18\v \x01(\tR\rdefaultBranch\x12\x1f\n" +
+	"\vowner_login\x18\f \x01(\tR\n" +
+	"ownerLogin\x12(\n" +
+	"\x10owner_avatar_url\x18\r \x01(\tR\x0eownerAvatarUrl\x12\x1e\n" +
+	"\n" +
+	"visibility\x18\x0e \x01(\tR\n" +
+	"visibility\x12\x12\n" +
+	"\x04fork\x18\x0f \x01(\bR\x04fork\x12\x1a\n" +
+	"\barchived\x18\x10 \x01(\bR\barchived\x12\x1a\n" +
+	"\bdisabled\x18\x11 \x01(\bR\bdisabled\x12\x1b\n" +
+	"\tclone_url\x18\x12 \x01(\tR\bcloneUrl\x12\x17\n" +
+	"\assh_url\x18\x13 \x01(\tR\x06sshUrl\x12\x17\n" +
+	"\agit_url\x18\x14 \x01(\tR\x06gitUrl\x12\x1b\n" +
+	"\tpushed_at\x18\x15 \x01(\tR\bpushedAt\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x16 \x01(\tR\tcreatedAt\x12\x1f\n" +
+	"\vforks_count\x18\x17 \x01(\x05R\n" +
+	"forksCount\x12*\n" +
+	"\x11open_issues_count\x18\x18 \x01(\x05R\x0fopenIssuesCount\x12\x16\n" +
+	"\x06topics\x18\x19 \x03(\tR\x06topics\x12&\n" +
+	"\x0flicense_spdx_id\x18\x1a \x01(\tR\rlicenseSpdxId\x12\x1f\n" +
+	"\vis_template\x18\x1b \x01(\bR\n" +
+	"isTemplate\x12\x1a\n" +
+	"\bhomepage\x18\x1c \x01(\tR\bhomepage\"\x0f\n" +
 	"\rLogoutRequest\"\x10\n" +
-	"\x0eLogoutResponse2\xbe\x04\n" +
+	"\x0eLogoutResponse\"\xaa\x02\n" +
+	"\n" +
+	"AuthStatus\x12$\n" +
+	"\rauthenticated\x18\x01 \x01(\bR\rauthenticated\x124\n" +
+	"\x06source\x18\x02 \x01(\x0e2\x1c.singularitree.v1.AuthSourceR\x06source\x12#\n" +
+	"\raccount_login\x18\x03 \x01(\tR\faccountLogin\x12\x12\n" +
+	"\x04name\x18\x04 \x01(\tR\x04name\x12\x1d\n" +
+	"\n" +
+	"avatar_url\x18\x05 \x01(\tR\tavatarUrl\x12\x14\n" +
+	"\x05email\x18\x06 \x01(\tR\x05email\x12\x16\n" +
+	"\x06scopes\x18\a \x03(\tR\x06scopes\x12:\n" +
+	"\n" +
+	"rate_limit\x18\b \x01(\v2\x1b.singularitree.v1.RateLimitR\trateLimit\"R\n" +
+	"\x1bConnectGitHubFromCLIRequest\x12\x1b\n" +
+	"\tgh_binary\x18\x01 \x01(\tR\bghBinary\x12\x16\n" +
+	"\x06verify\x18\x02 \x01(\bR\x06verify\"\x86\x01\n" +
+	"\x1cConnectGitHubFromCLIResponse\x124\n" +
+	"\x06status\x18\x01 \x01(\v2\x1c.singularitree.v1.AuthStatusR\x06status\x120\n" +
+	"\x04user\x18\x02 \x01(\v2\x1c.singularitree.v1.GitHubUserR\x04user\"\x87\x01\n" +
+	"\bPageInfo\x12\x12\n" +
+	"\x04page\x18\x01 \x01(\rR\x04page\x12\x19\n" +
+	"\bper_page\x18\x02 \x01(\rR\aperPage\x12\x1b\n" +
+	"\tnext_page\x18\x03 \x01(\rR\bnextPage\x12\x19\n" +
+	"\bhas_more\x18\x04 \x01(\bR\ahasMore\x12\x14\n" +
+	"\x05total\x18\x05 \x01(\rR\x05total\"\x8c\x01\n" +
+	"\tRateLimit\x12\x1a\n" +
+	"\bresource\x18\x01 \x01(\tR\bresource\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\rR\x05limit\x12\x1c\n" +
+	"\tremaining\x18\x03 \x01(\rR\tremaining\x12\x14\n" +
+	"\x05reset\x18\x04 \x01(\x03R\x05reset\x12\x19\n" +
+	"\breset_at\x18\x05 \x01(\tR\aresetAt*r\n" +
+	"\n" +
+	"AuthSource\x12\x1b\n" +
+	"\x17AUTH_SOURCE_UNSPECIFIED\x10\x00\x12\x14\n" +
+	"\x10AUTH_SOURCE_NONE\x10\x01\x12\x1a\n" +
+	"\x16AUTH_SOURCE_GITHUB_CLI\x10\x02\x12\x15\n" +
+	"\x11AUTH_SOURCE_OAUTH\x10\x032\xb5\x05\n" +
 	"\x04Auth\x12`\n" +
 	"\rGetAuthStatus\x12&.singularitree.v1.GetAuthStatusRequest\x1a'.singularitree.v1.GetAuthStatusResponse\x12i\n" +
 	"\x10StartGitHubOAuth\x12).singularitree.v1.StartGitHubOAuthRequest\x1a*.singularitree.v1.StartGitHubOAuthResponse\x12]\n" +
 	"\fExchangeCode\x12%.singularitree.v1.ExchangeCodeRequest\x1a&.singularitree.v1.ExchangeCodeResponse\x12U\n" +
 	"\rGetGitHubUser\x12&.singularitree.v1.GetGitHubUserRequest\x1a\x1c.singularitree.v1.GitHubUser\x12f\n" +
 	"\x0fListGitHubRepos\x12(.singularitree.v1.ListGitHubReposRequest\x1a).singularitree.v1.ListGitHubReposResponse\x12K\n" +
-	"\x06Logout\x12\x1f.singularitree.v1.LogoutRequest\x1a .singularitree.v1.LogoutResponseBJZHgithub.com/SingulariTree/go-core/gen/go/singularitree/v1;singularitreev1b\x06proto3"
+	"\x06Logout\x12\x1f.singularitree.v1.LogoutRequest\x1a .singularitree.v1.LogoutResponse\x12u\n" +
+	"\x14ConnectGitHubFromCLI\x12-.singularitree.v1.ConnectGitHubFromCLIRequest\x1a..singularitree.v1.ConnectGitHubFromCLIResponseBJZHgithub.com/SingulariTree/go-core/gen/go/singularitree/v1;singularitreev1b\x06proto3"
 
 var (
 	file_auth_proto_rawDescOnce sync.Once
@@ -775,42 +1476,58 @@ func file_auth_proto_rawDescGZIP() []byte {
 	return file_auth_proto_rawDescData
 }
 
-var file_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_auth_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_auth_proto_goTypes = []any{
-	(*GetAuthStatusRequest)(nil),     // 0: singularitree.v1.GetAuthStatusRequest
-	(*GetAuthStatusResponse)(nil),    // 1: singularitree.v1.GetAuthStatusResponse
-	(*StartGitHubOAuthRequest)(nil),  // 2: singularitree.v1.StartGitHubOAuthRequest
-	(*StartGitHubOAuthResponse)(nil), // 3: singularitree.v1.StartGitHubOAuthResponse
-	(*ExchangeCodeRequest)(nil),      // 4: singularitree.v1.ExchangeCodeRequest
-	(*ExchangeCodeResponse)(nil),     // 5: singularitree.v1.ExchangeCodeResponse
-	(*GetGitHubUserRequest)(nil),     // 6: singularitree.v1.GetGitHubUserRequest
-	(*GitHubUser)(nil),               // 7: singularitree.v1.GitHubUser
-	(*ListGitHubReposRequest)(nil),   // 8: singularitree.v1.ListGitHubReposRequest
-	(*ListGitHubReposResponse)(nil),  // 9: singularitree.v1.ListGitHubReposResponse
-	(*GitHubRepo)(nil),               // 10: singularitree.v1.GitHubRepo
-	(*LogoutRequest)(nil),            // 11: singularitree.v1.LogoutRequest
-	(*LogoutResponse)(nil),           // 12: singularitree.v1.LogoutResponse
+	(AuthSource)(0),                      // 0: singularitree.v1.AuthSource
+	(*GetAuthStatusRequest)(nil),         // 1: singularitree.v1.GetAuthStatusRequest
+	(*GetAuthStatusResponse)(nil),        // 2: singularitree.v1.GetAuthStatusResponse
+	(*StartGitHubOAuthRequest)(nil),      // 3: singularitree.v1.StartGitHubOAuthRequest
+	(*StartGitHubOAuthResponse)(nil),     // 4: singularitree.v1.StartGitHubOAuthResponse
+	(*ExchangeCodeRequest)(nil),          // 5: singularitree.v1.ExchangeCodeRequest
+	(*ExchangeCodeResponse)(nil),         // 6: singularitree.v1.ExchangeCodeResponse
+	(*GetGitHubUserRequest)(nil),         // 7: singularitree.v1.GetGitHubUserRequest
+	(*GitHubUser)(nil),                   // 8: singularitree.v1.GitHubUser
+	(*ListGitHubReposRequest)(nil),       // 9: singularitree.v1.ListGitHubReposRequest
+	(*ListGitHubReposResponse)(nil),      // 10: singularitree.v1.ListGitHubReposResponse
+	(*GitHubRepo)(nil),                   // 11: singularitree.v1.GitHubRepo
+	(*LogoutRequest)(nil),                // 12: singularitree.v1.LogoutRequest
+	(*LogoutResponse)(nil),               // 13: singularitree.v1.LogoutResponse
+	(*AuthStatus)(nil),                   // 14: singularitree.v1.AuthStatus
+	(*ConnectGitHubFromCLIRequest)(nil),  // 15: singularitree.v1.ConnectGitHubFromCLIRequest
+	(*ConnectGitHubFromCLIResponse)(nil), // 16: singularitree.v1.ConnectGitHubFromCLIResponse
+	(*PageInfo)(nil),                     // 17: singularitree.v1.PageInfo
+	(*RateLimit)(nil),                    // 18: singularitree.v1.RateLimit
 }
 var file_auth_proto_depIdxs = []int32{
-	7,  // 0: singularitree.v1.ExchangeCodeResponse.user:type_name -> singularitree.v1.GitHubUser
-	10, // 1: singularitree.v1.ListGitHubReposResponse.repos:type_name -> singularitree.v1.GitHubRepo
-	0,  // 2: singularitree.v1.Auth.GetAuthStatus:input_type -> singularitree.v1.GetAuthStatusRequest
-	2,  // 3: singularitree.v1.Auth.StartGitHubOAuth:input_type -> singularitree.v1.StartGitHubOAuthRequest
-	4,  // 4: singularitree.v1.Auth.ExchangeCode:input_type -> singularitree.v1.ExchangeCodeRequest
-	6,  // 5: singularitree.v1.Auth.GetGitHubUser:input_type -> singularitree.v1.GetGitHubUserRequest
-	8,  // 6: singularitree.v1.Auth.ListGitHubRepos:input_type -> singularitree.v1.ListGitHubReposRequest
-	11, // 7: singularitree.v1.Auth.Logout:input_type -> singularitree.v1.LogoutRequest
-	1,  // 8: singularitree.v1.Auth.GetAuthStatus:output_type -> singularitree.v1.GetAuthStatusResponse
-	3,  // 9: singularitree.v1.Auth.StartGitHubOAuth:output_type -> singularitree.v1.StartGitHubOAuthResponse
-	5,  // 10: singularitree.v1.Auth.ExchangeCode:output_type -> singularitree.v1.ExchangeCodeResponse
-	7,  // 11: singularitree.v1.Auth.GetGitHubUser:output_type -> singularitree.v1.GitHubUser
-	9,  // 12: singularitree.v1.Auth.ListGitHubRepos:output_type -> singularitree.v1.ListGitHubReposResponse
-	12, // 13: singularitree.v1.Auth.Logout:output_type -> singularitree.v1.LogoutResponse
-	8,  // [8:14] is the sub-list for method output_type
-	2,  // [2:8] is the sub-list for method input_type
-	2,  // [2:2] is the sub-list for extension type_name
-	2,  // [2:2] is the sub-list for extension extendee
-	0,  // [0:2] is the sub-list for field type_name
+	14, // 0: singularitree.v1.GetAuthStatusResponse.status:type_name -> singularitree.v1.AuthStatus
+	8,  // 1: singularitree.v1.ExchangeCodeResponse.user:type_name -> singularitree.v1.GitHubUser
+	11, // 2: singularitree.v1.ListGitHubReposResponse.repos:type_name -> singularitree.v1.GitHubRepo
+	17, // 3: singularitree.v1.ListGitHubReposResponse.page_info:type_name -> singularitree.v1.PageInfo
+	18, // 4: singularitree.v1.ListGitHubReposResponse.rate_limit:type_name -> singularitree.v1.RateLimit
+	0,  // 5: singularitree.v1.AuthStatus.source:type_name -> singularitree.v1.AuthSource
+	18, // 6: singularitree.v1.AuthStatus.rate_limit:type_name -> singularitree.v1.RateLimit
+	14, // 7: singularitree.v1.ConnectGitHubFromCLIResponse.status:type_name -> singularitree.v1.AuthStatus
+	8,  // 8: singularitree.v1.ConnectGitHubFromCLIResponse.user:type_name -> singularitree.v1.GitHubUser
+	1,  // 9: singularitree.v1.Auth.GetAuthStatus:input_type -> singularitree.v1.GetAuthStatusRequest
+	3,  // 10: singularitree.v1.Auth.StartGitHubOAuth:input_type -> singularitree.v1.StartGitHubOAuthRequest
+	5,  // 11: singularitree.v1.Auth.ExchangeCode:input_type -> singularitree.v1.ExchangeCodeRequest
+	7,  // 12: singularitree.v1.Auth.GetGitHubUser:input_type -> singularitree.v1.GetGitHubUserRequest
+	9,  // 13: singularitree.v1.Auth.ListGitHubRepos:input_type -> singularitree.v1.ListGitHubReposRequest
+	12, // 14: singularitree.v1.Auth.Logout:input_type -> singularitree.v1.LogoutRequest
+	15, // 15: singularitree.v1.Auth.ConnectGitHubFromCLI:input_type -> singularitree.v1.ConnectGitHubFromCLIRequest
+	2,  // 16: singularitree.v1.Auth.GetAuthStatus:output_type -> singularitree.v1.GetAuthStatusResponse
+	4,  // 17: singularitree.v1.Auth.StartGitHubOAuth:output_type -> singularitree.v1.StartGitHubOAuthResponse
+	6,  // 18: singularitree.v1.Auth.ExchangeCode:output_type -> singularitree.v1.ExchangeCodeResponse
+	8,  // 19: singularitree.v1.Auth.GetGitHubUser:output_type -> singularitree.v1.GitHubUser
+	10, // 20: singularitree.v1.Auth.ListGitHubRepos:output_type -> singularitree.v1.ListGitHubReposResponse
+	13, // 21: singularitree.v1.Auth.Logout:output_type -> singularitree.v1.LogoutResponse
+	16, // 22: singularitree.v1.Auth.ConnectGitHubFromCLI:output_type -> singularitree.v1.ConnectGitHubFromCLIResponse
+	16, // [16:23] is the sub-list for method output_type
+	9,  // [9:16] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_auth_proto_init() }
@@ -823,13 +1540,14 @@ func file_auth_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_auth_proto_rawDesc), len(file_auth_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   13,
+			NumEnums:      1,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_auth_proto_goTypes,
 		DependencyIndexes: file_auth_proto_depIdxs,
+		EnumInfos:         file_auth_proto_enumTypes,
 		MessageInfos:      file_auth_proto_msgTypes,
 	}.Build()
 	File_auth_proto = out.File

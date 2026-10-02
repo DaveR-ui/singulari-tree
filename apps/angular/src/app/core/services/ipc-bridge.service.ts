@@ -1,4 +1,14 @@
 import { Injectable } from '@angular/core';
+import type {
+  ConnectGitHubFromCLIRequest,
+  ConnectGitHubFromCLIResponse,
+  GetAuthStatusRequest,
+  GetAuthStatusResponse,
+  ListGitHubReposRequest,
+  ListGitHubReposResponse,
+  LogoutRequest,
+  LogoutResponse,
+} from '@contracts/auth';
 import type { Commit, Diff, Repository } from '@contracts/domain';
 import type {
   CheckoutRequest,
@@ -52,6 +62,10 @@ export interface GitClientApi {
   fetch: (req: FetchRequest) => Promise<void>;
   pull: (req: PullRequest) => Promise<void>;
   push: (req: PushRequest) => Promise<void>;
+  getAuthStatus: (req: GetAuthStatusRequest) => Promise<GetAuthStatusResponse>;
+  connectGitHubFromCLI: (req: ConnectGitHubFromCLIRequest) => Promise<ConnectGitHubFromCLIResponse>;
+  listGitHubRepos: (req: ListGitHubReposRequest) => Promise<ListGitHubReposResponse>;
+  logout: (req: LogoutRequest) => Promise<LogoutResponse>;
   onRepoChanged: (cb: (payload: Repository) => void) => () => void;
   onFsChanged: (cb: (payload: FsChangedEvent) => void) => () => void;
   onProgress: (cb: (payload: Progress) => void) => () => void;
@@ -60,7 +74,7 @@ export interface GitClientApi {
 export interface AppError {
   code: string;
   message: string;
-  details?: Record<string, string>;
+  details?: Record<string, unknown>;
 }
 
 function getApi(): GitClientApi | undefined {

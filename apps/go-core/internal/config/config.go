@@ -14,6 +14,9 @@ type Config struct {
 	DbPath   string
 	Token    string
 	LogLevel string
+	// GhPath is a list of directories (os.PathListSeparator) prepended to PATH
+	// when resolving and running the `gh` CLI (SINGULARITREE_GH_PATH).
+	GhPath string
 	// GitHub OAuth prototype (env GITHUB_*)
 	GithubClientID     string
 	GithubClientSecret string
@@ -30,6 +33,7 @@ func Load() Config {
 		DbPath:             getEnv("SINGULARITREE_DB_PATH", defaultDbPath()),
 		Token:              os.Getenv("SINGULARITREE_TOKEN"),
 		LogLevel:           getEnv("SINGULARITREE_LOG_LEVEL", "info"),
+		GhPath:             getEnv("SINGULARITREE_GH_PATH", ""),
 		GithubClientID:     os.Getenv("GITHUB_CLIENT_ID"),
 		GithubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
 		GithubRedirectPort: getEnv("GITHUB_REDIRECT_PORT", "53682"),

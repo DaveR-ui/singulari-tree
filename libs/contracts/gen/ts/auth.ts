@@ -8,6 +8,16 @@
 
 export const protobufPackage = "singularitree.v1";
 
+/** AuthSource identifies how the token was obtained. */
+export enum AuthSource {
+  AUTH_SOURCE_UNSPECIFIED = 0,
+  AUTH_SOURCE_NONE = 1,
+  AUTH_SOURCE_GITHUB_CLI = 2,
+  /** AUTH_SOURCE_OAUTH - future evolution */
+  AUTH_SOURCE_OAUTH = 3,
+  UNRECOGNIZED = -1,
+}
+
 export interface GetAuthStatusRequest {
 }
 
@@ -15,6 +25,8 @@ export interface GetAuthStatusResponse {
   authenticated: boolean;
   /** empty if not authenticated */
   login: string;
+  /** additive: source, account, scopes, rate limit */
+  status: AuthStatus | undefined;
 }
 
 export interface StartGitHubOAuthRequest {
@@ -54,10 +66,22 @@ export interface ListGitHubReposRequest {
   /** default 30 */
   perPage: number;
   page: number;
+  /** "updated" | "pushed" | "created" | "full_name" */
+  sort: string;
+  /** "asc" | "desc" */
+  direction: string;
+  /** "owner,collaborator,organization_member" */
+  affiliation: string;
+  /** "all" | "public" | "private" */
+  visibility: string;
+  /** "all" | "owner" | "public" | "private" | "member" */
+  type: string;
 }
 
 export interface ListGitHubReposResponse {
   repos: GitHubRepo[];
+  pageInfo: PageInfo | undefined;
+  rateLimit: RateLimit | undefined;
 }
 
 export interface GitHubRepo {
@@ -70,10 +94,82 @@ export interface GitHubRepo {
   language: string;
   stargazersCount: number;
   updatedAt: string;
+  nodeId: string;
+  defaultBranch: string;
+  ownerLogin: string;
+  ownerAvatarUrl: string;
+  /** "public" | "private" | "internal" */
+  visibility: string;
+  fork: boolean;
+  archived: boolean;
+  disabled: boolean;
+  cloneUrl: string;
+  sshUrl: string;
+  gitUrl: string;
+  pushedAt: string;
+  createdAt: string;
+  forksCount: number;
+  openIssuesCount: number;
+  topics: string[];
+  licenseSpdxId: string;
+  isTemplate: boolean;
+  homepage: string;
 }
 
 export interface LogoutRequest {
 }
 
 export interface LogoutResponse {
+}
+
+export interface AuthStatus {
+  authenticated: boolean;
+  source: AuthSource;
+  /** gh account, e.g. "DaveR-ui" */
+  accountLogin: string;
+  name: string;
+  avatarUrl: string;
+  /** MAY BE EMPTY: gh token scopes may omit read:user */
+  email: string;
+  /** e.g. ["gist","read:org","repo","workflow"] */
+  scopes: string[];
+  rateLimit: RateLimit | undefined;
+}
+
+export interface ConnectGitHubFromCLIRequest {
+  /** empty -> resolve "gh" on PATH */
+  ghBinary: string;
+  /** true -> call GET /user to validate the token */
+  verify: boolean;
+}
+
+export interface ConnectGitHubFromCLIResponse {
+  status:
+    | AuthStatus
+    | undefined;
+  /** populated when verify=true */
+  user: GitHubUser | undefined;
+}
+
+/** Pagination metadata derived from the GitHub `Link` header (rel="next"). */
+export interface PageInfo {
+  page: number;
+  perPage: number;
+  /** 0 == no Link rel="next" */
+  nextPage: number;
+  hasMore: boolean;
+  /** best-effort; 0 when GitHub omits it (/user/repos) */
+  total: number;
+}
+
+/** GitHub REST rate-limit metadata (X-RateLimit-* headers / GET /rate_limit). */
+export interface RateLimit {
+  /** "core" | "search" | ... */
+  resource: string;
+  limit: number;
+  remaining: number;
+  /** epoch seconds (X-RateLimit-Reset) */
+  reset: number;
+  /** RFC3339 */
+  resetAt: string;
 }
