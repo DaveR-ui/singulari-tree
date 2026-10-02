@@ -7,9 +7,9 @@ import {
 import type { AppError } from '@core/services/ipc-bridge.service';
 
 /**
- * Dumb right drawer: repository list with search, pin/close chrome and a resize
- * handle. Data is supplied by the shell (GitHub account repos); the component
- * only filters locally and tracks highlight state.
+ * Dumb right drawer: local repository list with search, a close control and a
+ * resize handle. Data is supplied by the shell from the LOCAL `RepoState`; the
+ * component only filters locally and emits selection / add intents.
  */
 @Component({
   selector: 'st-repo-drawer',
@@ -29,17 +29,8 @@ import type { AppError } from '@core/services/ipc-bridge.service';
       <div class="st-right__resize" (mousedown)="resizeStart.emit($event)" title="Drag to resize"></div>
     }
     <div class="st-right__head">
-      <span class="st-right__title">Repositories</span>
+      <span class="st-right__title">Local repositories</span>
       <span class="st-right__spacer"></span>
-      <button
-        class="st-icon-btn st-icon-btn--sm"
-        type="button"
-        (click)="togglePin.emit()"
-        [title]="pinned() ? 'Unpin (overlay)' : 'Pin (push)'"
-        [attr.aria-pressed]="pinned()"
-      >
-        {{ pinned() ? '📌' : '📍' }}
-      </button>
       <button
         class="st-icon-btn st-icon-btn--sm"
         type="button"
@@ -48,7 +39,6 @@ import type { AppError } from '@core/services/ipc-bridge.service';
       >
         ✕
       </button>
-      <button class="st-icon-btn st-icon-btn--sm" type="button" title="Menu">☰</button>
     </div>
     <div class="st-right__search">
       <input
@@ -73,22 +63,15 @@ import type { AppError } from '@core/services/ipc-bridge.service';
         <st-empty-state
           icon="🔌"
           title="Desktop app required"
-          message="GitHub core offline — run inside the desktop app."
+          message="Git core offline — run inside the desktop app."
           data-testid="repo-drawer-offline"
-        />
-      } @else if (!authenticated()) {
-        <st-empty-state
-          icon="🐙"
-          title="Not connected"
-          message="Connect a GitHub account to see repositories."
-          data-testid="repo-drawer-empty"
         />
       } @else if (filteredRepos().length === 0) {
         @if (search().trim() === '') {
           <st-empty-state
             icon="📭"
             title="No repositories"
-            message="This account has no repositories."
+            message="No local repositories yet. Add one to get started."
             data-testid="repo-drawer-no-repos"
           />
         } @else {
@@ -105,7 +88,9 @@ import type { AppError } from '@core/services/ipc-bridge.service';
           }
         </div>
       }
-      <button class="st-right__add" type="button">+ Add repository</button>
+      <button class="st-right__add" type="button" (click)="addRequested.emit()">
+        + Add repository
+      </button>
     </div>
   `,
   styles: `
@@ -260,19 +245,19 @@ export class RepoDrawer {
   readonly repos = input<readonly RepoCardView[]>([]);
   readonly collapsed = input(false);
   readonly overlay = input(false);
-  readonly pinned = input(true);
   readonly width = input<number | null>(null);
   readonly loading = input(false);
   readonly offline = input(false);
-  readonly authenticated = input(false);
   readonly error = input<AppError | null>(null);
+  /** Controlled by the parent; this component never mutates the highlight locally. */
+  readonly selectedId = input<string | null>(null);
 
   readonly toggleRight = output<void>();
-  readonly togglePin = output<void>();
   readonly resizeStart = output<MouseEvent>();
+  readonly repoSelected = output<string>();
+  readonly addRequested = output<void>();
 
   readonly search = signal('');
-  readonly selectedId = signal<string | null>(null);
 
   readonly filteredRepos = computed<readonly RepoCardView[]>(() => {
     const term = this.search().trim().toLowerCase();
@@ -289,6 +274,6 @@ export class RepoDrawer {
   }
 
   select(id: string): void {
-    this.selectedId.set(id);
+    this.repoSelected.emit(id);
   }
 }

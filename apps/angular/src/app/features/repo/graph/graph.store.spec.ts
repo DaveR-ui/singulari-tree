@@ -161,7 +161,7 @@ describe('GraphStore', () => {
 
     await store.loadWindow(0);
 
-    expect(store.error()).toEqual({ code: 'GIT_FAILED', message: 'boom' });
+    expect(store.error()).toEqual({ code: 'GIT_FAILED', message: 'boom', details: {} });
     expect(store.offline()).toBe(false);
   });
 
@@ -212,7 +212,7 @@ describe('GraphStore', () => {
 
     await store.loadRecentRepos();
 
-    expect(store.error()).toEqual({ code: 'GIT_FAILED', message: 'boom' });
+    expect(store.error()).toEqual({ code: 'GIT_FAILED', message: 'boom', details: {} });
     expect(store.offline()).toBe(false);
   });
 

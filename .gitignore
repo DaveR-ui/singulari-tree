@@ -23,7 +23,9 @@ data/sqlite/*.sqlite-shm
 # Keep them versioned; buf generate will overwrite.
 
 # Container / compose local data (bind-mounted gRPC socket dir + local DBs)
-ipc/
+# Anchored to the repo root so it does NOT swallow source dirs like
+# apps/electron/src/ipc/.
+/ipc/
 .data/
 
 # Env and secrets

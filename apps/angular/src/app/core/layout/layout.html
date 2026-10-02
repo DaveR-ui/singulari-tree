@@ -15,9 +15,12 @@
     <st-sidebar-left
       [collapsed]="leftCollapsed()"
       [activeWorkspace]="activeWorkspace()"
-      [branches]="[]"
-      [tags]="[]"
-      [remotes]="[]"
+      [branches]="repoState.branches()"
+      [tags]="repoState.tags()"
+      [remotes]="repoState.remotes()"
+      [loading]="repoState.refsLoading()"
+      [offline]="repoState.refsOffline()"
+      [error]="repoState.refsError()"
       (collapseToggle)="toggleLeft()"
       (workspaceSelected)="activeWorkspace.set($event)"
     />
@@ -34,15 +37,15 @@
       [repos]="repoCards()"
       [collapsed]="rightCollapsed()"
       [overlay]="isOverlay()"
-      [pinned]="rightPinned()"
       [width]="isOverlay() || rightCollapsed() ? null : rightWidth()"
-      [loading]="gh.loading()"
-      [offline]="gh.offline()"
-      [authenticated]="gh.authenticated()"
-      [error]="gh.error()"
+      [selectedId]="repoState.activeId()"
+      [loading]="repoState.reposLoading()"
+      [offline]="repoState.reposOffline()"
+      [error]="repoState.reposError()"
       (toggleRight)="toggleRight()"
-      (togglePin)="togglePin()"
       (resizeStart)="onDragStart($event)"
+      (repoSelected)="onRepoSelected($event)"
+      (addRequested)="onAddRepository()"
     />
   </div>
   <!-- /st-body -->

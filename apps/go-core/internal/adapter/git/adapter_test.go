@@ -316,3 +316,238 @@ func TestUnimplementedReturnsTypedError(t *testing.T) {
 		t.Fatalf("Stage err = %v, want NOT_IMPLEMENTED", err)
 	}
 }
+
+func TestBranchList(t *testing.T) {
+	dir := initRepo(t)
+	gitRun(t, dir, "branch", "-M", "main")
+	gitRun(t, dir, "branch", "feature")
+	head := gitRun(t, dir, "rev-parse", "HEAD")
+
+	repoID := domain.RepositoryId("repo-1")
+	a := NewAdapter(&fakeRepoPort{fsPath: dir})
+
+	branches, err := a.BranchList(context.Background(), repoID)
+	if err != nil {
+		t.Fatalf("BranchList: %v", err)
+	}
+	if len(branches) != 2 {
+		t.Fatalf("len(branches) = %d, want 2 (%+v)", len(branches), branches)
+	}
+
+	byName := map[string]domain.Branch{}
+	for _, b := range branches {
+		byName[b.Name] = b
+	}
+	main, ok := byName["main"]
+	if !ok {
+		t.Fatalf("missing main branch in %+v", branches)
+	}
+	feature, ok := byName["feature"]
+	if !ok {
+		t.Fatalf("missing feature branch in %+v", branches)
+	}
+
+	if !main.IsCurrent {
+		t.Errorf("main.IsCurrent = false, want true")
+	}
+	if feature.IsCurrent {
+		t.Errorf("feature.IsCurrent = true, want false")
+	}
+	if main.RefName.Raw != "refs/heads/main" {
+		t.Errorf("main.RefName.Raw = %q, want refs/heads/main", main.RefName.Raw)
+	}
+	if main.Tip.Hex != head || feature.Tip.Hex != head {
+		t.Errorf("tips = %s/%s, want %s", main.Tip.Hex, feature.Tip.Hex, head)
+	}
+	if main.IsRemote || feature.IsRemote {
+		t.Errorf("IsRemote = %v/%v, want false/false", main.IsRemote, feature.IsRemote)
+	}
+	if main.Upstream != nil {
+		t.Errorf("main.Upstream = %+v, want nil", main.Upstream)
+	}
+}
+
+func TestBranchListDetachedHead(t *testing.T) {
+	dir := initRepo(t)
+	gitRun(t, dir, "branch", "-M", "main")
+	gitRun(t, dir, "checkout", "-q", "--detach")
+
+	repoID := domain.RepositoryId("repo-1")
+	a := NewAdapter(&fakeRepoPort{fsPath: dir})
+
+	branches, err := a.BranchList(context.Background(), repoID)
+	if err != nil {
+		t.Fatalf("BranchList: %v", err)
+	}
+	if len(branches) != 1 {
+		t.Fatalf("len(branches) = %d, want 1", len(branches))
+	}
+	if branches[0].IsCurrent {
+		t.Errorf("detached HEAD marked %q as current, want none current", branches[0].Name)
+	}
+}
+
+func TestRemoteList(t *testing.T) {
+	dir := initRepo(t)
+	gitRun(t, dir, "remote", "add", "origin", "https://example.com/repo.git")
+	gitRun(t, dir, "remote", "set-url", "--add", "origin", "git@example.com:repo.git")
+
+	repoID := domain.RepositoryId("repo-1")
+	a := NewAdapter(&fakeRepoPort{fsPath: dir})
+
+	remotes, err := a.RemoteList(context.Background(), repoID)
+	if err != nil {
+		t.Fatalf("RemoteList: %v", err)
+	}
+	if len(remotes) != 1 {
+		t.Fatalf("len(remotes) = %d, want 1 (%+v)", len(remotes), remotes)
+	}
+	r := remotes[0]
+	if r.Name != "origin" {
+		t.Errorf("Name = %q, want origin", r.Name)
+	}
+	if len(r.Urls) != 2 || r.Urls[0] != "https://example.com/repo.git" || r.Urls[1] != "git@example.com:repo.git" {
+		t.Errorf("Urls = %v, want the two configured urls", r.Urls)
+	}
+	wantFetch := "+refs/heads/*:refs/remotes/origin/*"
+	if len(r.FetchSpecs) != 1 || r.FetchSpecs[0] != wantFetch {
+		t.Errorf("FetchSpecs = %v, want [%s]", r.FetchSpecs, wantFetch)
+	}
+}
+
+func TestTagList(t *testing.T) {
+	dir := initRepo(t)
+	head := gitRun(t, dir, "rev-parse", "HEAD")
+	gitRun(t, dir, "tag", "light")
+	gitRun(t, dir, "tag", "-a", "annotated", "-m", "release one")
+
+	repoID := domain.RepositoryId("repo-1")
+	a := NewAdapter(&fakeRepoPort{fsPath: dir})
+
+	tags, err := a.TagList(context.Background(), repoID)
+	if err != nil {
+		t.Fatalf("TagList: %v", err)
+	}
+	if len(tags) != 2 {
+		t.Fatalf("len(tags) = %d, want 2 (%+v)", len(tags), tags)
+	}
+
+	byName := map[string]domain.Tag{}
+	for _, tag := range tags {
+		byName[tag.Name] = tag
+	}
+
+	light, ok := byName["light"]
+	if !ok {
+		t.Fatalf("missing light tag in %+v", tags)
+	}
+	if light.Annotated {
+		t.Errorf("light.Annotated = true, want false")
+	}
+	if light.Target.Hex != head {
+		t.Errorf("light.Target = %s, want HEAD %s", light.Target.Hex, head)
+	}
+	if light.RefName.Raw != "refs/tags/light" {
+		t.Errorf("light.RefName.Raw = %q, want refs/tags/light", light.RefName.Raw)
+	}
+	if light.Message != nil || light.Tagger != nil {
+		t.Errorf("lightweight tag should have no message/tagger, got %+v", light)
+	}
+
+	annotated, ok := byName["annotated"]
+	if !ok {
+		t.Fatalf("missing annotated tag in %+v", tags)
+	}
+	if !annotated.Annotated {
+		t.Errorf("annotated.Annotated = false, want true")
+	}
+	// Annotated tags point at a tag object; Target must be the dereferenced commit.
+	if annotated.Target.Hex != head {
+		t.Errorf("annotated.Target = %s, want dereferenced HEAD %s", annotated.Target.Hex, head)
+	}
+	if annotated.Message == nil || !strings.Contains(*annotated.Message, "release one") {
+		t.Errorf("annotated.Message = %v, want subject containing %q", annotated.Message, "release one")
+	}
+	if annotated.Tagger == nil {
+		t.Fatalf("annotated.Tagger = nil, want Alice <alice@example.com>")
+	}
+	if annotated.Tagger.Name != "Alice" || annotated.Tagger.Email != "alice@example.com" {
+		t.Errorf("annotated.Tagger = %+v, want Alice <alice@example.com>", annotated.Tagger)
+	}
+	if annotated.Tagger.When.IsZero() {
+		t.Errorf("annotated.Tagger.When is zero")
+	}
+}
+
+func TestListReadsEmptyRepo(t *testing.T) {
+	dir := t.TempDir()
+	gitRun(t, dir, "init", "-q")
+
+	repoID := domain.RepositoryId("repo-1")
+	a := NewAdapter(&fakeRepoPort{fsPath: dir})
+	ctx := context.Background()
+
+	branches, err := a.BranchList(ctx, repoID)
+	if err != nil {
+		t.Fatalf("BranchList on empty repo: %v", err)
+	}
+	if len(branches) != 0 {
+		t.Errorf("branches = %+v, want empty", branches)
+	}
+
+	remotes, err := a.RemoteList(ctx, repoID)
+	if err != nil {
+		t.Fatalf("RemoteList on empty repo: %v", err)
+	}
+	if len(remotes) != 0 {
+		t.Errorf("remotes = %+v, want empty", remotes)
+	}
+
+	tags, err := a.TagList(ctx, repoID)
+	if err != nil {
+		t.Fatalf("TagList on empty repo: %v", err)
+	}
+	if len(tags) != 0 {
+		t.Errorf("tags = %+v, want empty", tags)
+	}
+}
+
+func TestParseRemotesAllowsDottedNames(t *testing.T) {
+	out := strings.Join([]string{
+		"remote.my.origin.url https://example.com/a.git",
+		"remote.my.origin.fetch +refs/heads/*:refs/remotes/my.origin/*",
+	}, "\n")
+	remotes := parseRemotes(out)
+	if len(remotes) != 1 {
+		t.Fatalf("len(remotes) = %d, want 1 (%+v)", len(remotes), remotes)
+	}
+	if remotes[0].Name != "my.origin" {
+		t.Errorf("Name = %q, want my.origin", remotes[0].Name)
+	}
+	if len(remotes[0].Urls) != 1 || len(remotes[0].FetchSpecs) != 1 {
+		t.Errorf("urls/fetch = %v/%v, want one each", remotes[0].Urls, remotes[0].FetchSpecs)
+	}
+}
+
+func TestParseBranchesCurrent(t *testing.T) {
+	out := strings.Join([]string{
+		"refs/heads/main" + unitSep + strings.Repeat("a", 40) + unitSep + "origin/main" + unitSep + "refs/remotes/origin/main" + recordSep,
+		"refs/heads/other" + unitSep + strings.Repeat("b", 40) + unitSep + "" + unitSep + "" + recordSep,
+	}, "")
+	branches := parseBranches(out, "main")
+	if len(branches) != 2 {
+		t.Fatalf("len(branches) = %d, want 2", len(branches))
+	}
+	if !branches[0].IsCurrent {
+		t.Errorf("main.IsCurrent = false, want true")
+	}
+	if branches[0].Upstream == nil || branches[0].Upstream.Raw != "refs/remotes/origin/main" {
+		t.Errorf("main.Upstream = %+v, want refs/remotes/origin/main", branches[0].Upstream)
+	}
+	if branches[1].IsCurrent {
+		t.Errorf("other.IsCurrent = true, want false")
+	}
+	if branches[1].Upstream != nil {
+		t.Errorf("other.Upstream = %+v, want nil", branches[1].Upstream)
+	}
+}

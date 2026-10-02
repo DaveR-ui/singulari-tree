@@ -400,7 +400,7 @@ function parseErrorDetails(metadata: grpc.Metadata | undefined): Record<string, 
   return {};
 }
 
-function normalizeGrpcError(err: grpc.ServiceError): AppError {
+export function normalizeGrpcError(err: grpc.ServiceError): AppError {
   const statusByName = grpc.status as unknown as Record<number, string>;
   const codeName =
     typeof err.code === 'number' ? statusByName[err.code] : undefined;

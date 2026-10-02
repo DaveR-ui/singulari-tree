@@ -301,7 +301,7 @@ describe('GithubAccountStore', () => {
 
     await store.loadRepos();
 
-    expect(store.error()).toEqual({ code: 'GITHUB_API_ERROR', message: 'boom' });
+    expect(store.error()).toEqual({ code: 'GITHUB_API_ERROR', message: 'boom', details: {} });
     expect(store.offline()).toBe(false);
   });
 

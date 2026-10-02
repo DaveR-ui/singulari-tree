@@ -71,6 +71,58 @@ func laneToProto(l domain.Lane) *singularitreev1.Lane {
 	}
 }
 
+// branchToProto maps a domain branch to its wire form. The tip is omitted when
+// unset so the optional Oid field stays absent.
+func branchToProto(b domain.Branch) *singularitreev1.Branch {
+	out := &singularitreev1.Branch{
+		Name:      b.Name,
+		RefName:   b.RefName.Raw,
+		IsCurrent: b.IsCurrent,
+		IsRemote:  b.IsRemote,
+	}
+	if b.Tip.Hex != "" {
+		out.Tip = oidToProto(b.Tip)
+	}
+	if b.Upstream != nil {
+		out.Upstream = b.Upstream.Raw
+	}
+	return out
+}
+
+// remoteToProto maps a domain remote to its wire form. Slices are always
+// non-nil so an empty remote serializes as an empty repeated field.
+func remoteToProto(r domain.Remote) *singularitreev1.Remote {
+	urls := make([]string, 0, len(r.Urls))
+	urls = append(urls, r.Urls...)
+	fetchSpecs := make([]string, 0, len(r.FetchSpecs))
+	fetchSpecs = append(fetchSpecs, r.FetchSpecs...)
+	return &singularitreev1.Remote{
+		Name:       r.Name,
+		Urls:       urls,
+		FetchSpecs: fetchSpecs,
+	}
+}
+
+// tagToProto maps a domain tag to its wire form. Tagger and message are
+// optional and only set for annotated tags.
+func tagToProto(t domain.Tag) *singularitreev1.Tag {
+	out := &singularitreev1.Tag{
+		Name:      t.Name,
+		RefName:   t.RefName.Raw,
+		Annotated: t.Annotated,
+	}
+	if t.Target.Hex != "" {
+		out.Target = oidToProto(t.Target)
+	}
+	if t.Tagger != nil {
+		out.Tagger = signatureToProto(*t.Tagger)
+	}
+	if t.Message != nil {
+		out.Message = *t.Message
+	}
+	return out
+}
+
 func repositoryToProto(r *domain.Repository) *singularitreev1.Repository {
 	if r == nil {
 		return nil

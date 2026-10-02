@@ -77,6 +77,91 @@ export interface AppError {
   details?: Record<string, unknown>;
 }
 
+/**
+ * Stable prefix of the frozen IPC error envelope. The Electron main process
+ * normalizes every IPC failure into a real `Error` whose `.message` is this
+ * prefix followed by `JSON.stringify({code,message,details})`; Electron may
+ * prepend `Error invoking remote method '…': Error: ` before it.
+ */
+const APP_ERROR_PREFIX = 'ST_APP_ERROR:';
+
+/** True only for plain objects (not class instances such as `Error` or arrays). */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object') return false;
+  if (Array.isArray(value)) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+/** `String()` that never throws (guards against hostile `toString`). */
+function stringifySafely(value: unknown): string {
+  try {
+    return String(value);
+  } catch {
+    return 'Unknown error';
+  }
+}
+
+/**
+ * Normalize any thrown/rejected value into a usable {@link AppError}.
+ *
+ * Recovers the frozen envelope (`ST_APP_ERROR:` + JSON) from an `Error.message`
+ * (searching anywhere, since Electron wraps it), accepts already-shaped plain
+ * objects from mocked bridges, and never throws. Always yields a string
+ * `message`, so `[object Object]` can never reach the UI.
+ */
+export function toAppError(err: unknown): AppError {
+  try {
+    // Error instance: prefer a decodable envelope embedded in its message.
+    if (err instanceof Error) {
+      const prefixIndex = err.message.indexOf(APP_ERROR_PREFIX);
+      if (prefixIndex !== -1) {
+        const json = err.message.slice(prefixIndex + APP_ERROR_PREFIX.length);
+        const parsed: unknown = JSON.parse(json);
+        if (
+          isPlainObject(parsed) &&
+          typeof parsed['code'] === 'string' &&
+          typeof parsed['message'] === 'string'
+        ) {
+          return {
+            code: parsed['code'],
+            message: parsed['message'],
+            details: isPlainObject(parsed['details']) ? parsed['details'] : {},
+          };
+        }
+        // Parsed but not a valid payload: keep the original message for context.
+        return { code: 'UNKNOWN', message: err.message, details: {} };
+      }
+
+      const coded = err as unknown as { code?: unknown; details?: unknown };
+      return {
+        code: typeof coded.code === 'string' ? coded.code : 'UNKNOWN',
+        message: err.message || stringifySafely(err),
+        details: isPlainObject(coded.details) ? coded.details : {},
+      };
+    }
+
+    // Plain object (e.g. a mocked bridge rejecting `{code, message, details}`).
+    if (isPlainObject(err)) {
+      return {
+        code: typeof err['code'] === 'string' ? err['code'] : 'UNKNOWN',
+        message: typeof err['message'] === 'string' ? err['message'] : 'Unknown error',
+        details: isPlainObject(err['details']) ? err['details'] : {},
+      };
+    }
+
+    // Primitives / null / undefined.
+    return { code: 'UNKNOWN', message: stringifySafely(err), details: {} };
+  } catch {
+    // JSON.parse failure or any unexpected error: never throw from a normalizer.
+    return {
+      code: 'UNKNOWN',
+      message: err instanceof Error ? err.message : stringifySafely(err),
+      details: {},
+    };
+  }
+}
+
 function getApi(): GitClientApi | undefined {
   return (window as unknown as { gitClientApi?: GitClientApi }).gitClientApi;
 }
@@ -99,7 +184,19 @@ export class IpcBridge {
     if (typeof fn !== 'function') {
       throw { code: 'IPC_UNAVAILABLE', message: `Method ${String(method)} not available on gitClientApi` } as AppError;
     }
-    return fn(req);
+
+    // Normalize rejections centrally so every caller sees a usable AppError
+    // (the preload normally rejects with the frozen `ST_APP_ERROR:` envelope).
+    // The synchronous IPC_UNAVAILABLE throws above stay intact.
+    let result: ReturnType<GitClientApi[K]>;
+    try {
+      result = fn(req);
+    } catch (err) {
+      throw toAppError(err);
+    }
+    return Promise.resolve(result).catch((err: unknown): never => {
+      throw toAppError(err);
+    }) as unknown as ReturnType<GitClientApi[K]>;
   }
 
   onRepoChanged(cb: (payload: Repository) => void): () => void {

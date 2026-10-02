@@ -9,7 +9,8 @@ import { GoCoreClient } from '../src/main/go-core-client';
 /**
  * Real end-to-end acceptance for the Phase 0 spine:
  *   git fixture repo → real go-core (gRPC) → GoCoreClient
- *     Ping → OpenRepository → GetCommits (asserts fixture messages & oids).
+ *     Ping → OpenRepository → GetCommits (asserts fixture messages & oids)
+ *     GetBranches → GetRemotes → GetTags (refs read path) + domain error codes.
  *
  * Spawns `go run ./apps/go-core/cmd/go-core --headless ...` from the repo root
  * (or `dist/go-core` when already built). Skipped only if no Go toolchain.
@@ -34,6 +35,7 @@ const goVersion = (goVersionProbe.stdout ?? '').trim() || 'unavailable';
 
 interface Fixture {
   dir: string;
+  branch: string;
   first: string;
   head: string;
 }
@@ -63,7 +65,14 @@ function createFixtureRepo(): Fixture {
   git(['add', '.']);
   git(['commit', '-q', '-m', 'second commit']);
   const head = git(['rev-parse', 'HEAD']).trim();
-  return { dir, first, head };
+  // Current branch name (works whether git defaults to main or master).
+  const branch = git(['symbolic-ref', '--short', 'HEAD']).trim();
+  // Offline/local refs so GetRemotes/GetTags exercise the non-empty mapping
+  // path: a local-path remote (no network) plus both tag kinds.
+  git(['remote', 'add', 'origin', dir]);
+  git(['tag', '-a', 'v1.0.0', '-m', 'annotated release', first]);
+  git(['tag', 'lightweight', head]);
+  return { dir, branch, first, head };
 }
 
 function spawnGoCore(dbPath: string): ChildProcessWithoutNullStreams {
@@ -226,6 +235,38 @@ describe.skipIf(!goAvailable)(
       expect(oids).toContain(fixture.head);
       expect(oids).toContain(fixture.first);
       expect(result.total).toBeGreaterThanOrEqual(2);
+    });
+
+    it('round-trips GetBranches → GetRemotes → GetTags and preserves REPO_NOT_FOUND', async () => {
+      if (!client) throw new Error('client not initialised');
+
+      const repo = await client.openRepository({ fsPath: fixture.dir });
+
+      const { branches } = await client.getBranches({ repoId: repo.id });
+      const current = branches.find((b) => b.isCurrent);
+      expect(current, 'fixture must expose its current branch').toBeDefined();
+      expect(current?.name).toBe(fixture.branch);
+      expect(current?.tip?.hex).toBe(fixture.head);
+      expect(branches.every((b) => b.isRemote === false)).toBe(true);
+
+      const { remotes } = await client.getRemotes({ repoId: repo.id });
+      expect(remotes.map((r) => r.name)).toContain('origin');
+      const origin = remotes.find((r) => r.name === 'origin');
+      expect(origin?.urls).toContain(fixture.dir);
+
+      const { tags } = await client.getTags({ repoId: repo.id });
+      const annotated = tags.find((t) => t.name === 'v1.0.0');
+      const lightweight = tags.find((t) => t.name === 'lightweight');
+      expect(annotated?.annotated).toBe(true);
+      expect(annotated?.target?.hex).toBe(fixture.first);
+      expect(lightweight?.annotated).toBe(false);
+      expect(lightweight?.target?.hex).toBe(fixture.head);
+
+      // Unknown repo id → domain REPO_NOT_FOUND crosses the wire via the
+      // x-app-error-code trailer (proves the handler routes through the service).
+      await expect(
+        client.getBranches({ repoId: '00000000-0000-0000-0000-000000000000' }),
+      ).rejects.toMatchObject({ code: 'REPO_NOT_FOUND' });
     });
 
     it('preserves the domain error code NOT_A_GIT_REPO across the wire', async () => {

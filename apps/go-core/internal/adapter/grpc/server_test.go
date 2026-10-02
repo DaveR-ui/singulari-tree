@@ -58,6 +58,18 @@ func initFixtureRepo(t *testing.T) string {
 	return dir
 }
 
+// initUnbornRepo creates a real git repo with no commits (unborn HEAD),
+// mirroring initFixtureRepo's setup but skipping the commit step.
+func initUnbornRepo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	gitRun(t, dir, "init", "-q")
+	gitRun(t, dir, "config", "user.email", "alice@example.com")
+	gitRun(t, dir, "config", "user.name", "Alice")
+	gitRun(t, dir, "config", "commit.gpgsign", "false")
+	return dir
+}
+
 // startServer boots the real gRPC server on an ephemeral loopback port and
 // returns the address. Everything is scoped to a temp SQLite DB.
 func startServer(t *testing.T) string {
@@ -303,5 +315,180 @@ func TestGetRepositoryUnknown(t *testing.T) {
 	_, err = client.GetRepository(authed(context.Background()), &singularitreev1.GetRepositoryRequest{RepoId: "nope"})
 	if status.Code(err) != codes.NotFound {
 		t.Fatalf("GetRepository(unknown) code = %v, want NotFound", status.Code(err))
+	}
+}
+
+func TestGetBranchesRemotesTags(t *testing.T) {
+	addr := startServer(t)
+	fixture := initFixtureRepo(t)
+	gitRun(t, fixture, "branch", "-M", "main")
+	gitRun(t, fixture, "branch", "feature")
+	head := gitRun(t, fixture, "rev-parse", "HEAD")
+	gitRun(t, fixture, "remote", "add", "origin", "https://example.com/repo.git")
+	gitRun(t, fixture, "tag", "light")
+	gitRun(t, fixture, "tag", "-a", "annotated", "-m", "release one")
+
+	conn, err := googlegrpc.NewClient(addr, googlegrpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer conn.Close()
+	client := singularitreev1.NewGitCoreClient(conn)
+	ctx := authed(context.Background())
+
+	repo, err := client.OpenRepository(ctx, &singularitreev1.OpenRepositoryRequest{FsPath: fixture})
+	if err != nil {
+		t.Fatalf("OpenRepository: %v", err)
+	}
+	repoID := repo.GetId()
+
+	// Branches round-trip.
+	branchesResp, err := client.GetBranches(ctx, &singularitreev1.GetBranchesRequest{RepoId: repoID})
+	if err != nil {
+		t.Fatalf("GetBranches: %v", err)
+	}
+	branches := branchesResp.GetBranches()
+	if len(branches) != 2 {
+		t.Fatalf("branches len = %d, want 2 (%+v)", len(branches), branches)
+	}
+	byBranch := map[string]*singularitreev1.Branch{}
+	for _, b := range branches {
+		byBranch[b.GetName()] = b
+	}
+	main := byBranch["main"]
+	if main == nil {
+		t.Fatalf("missing main in %+v", branches)
+	}
+	if !main.GetIsCurrent() || main.GetIsRemote() {
+		t.Errorf("main = %+v, want current local branch", main)
+	}
+	if main.GetRefName() != "refs/heads/main" {
+		t.Errorf("main.ref_name = %q, want refs/heads/main", main.GetRefName())
+	}
+	if main.GetTip().GetHex() != head {
+		t.Errorf("main.tip = %q, want HEAD %q", main.GetTip().GetHex(), head)
+	}
+
+	// Remotes round-trip.
+	remotesResp, err := client.GetRemotes(ctx, &singularitreev1.GetRemotesRequest{RepoId: repoID})
+	if err != nil {
+		t.Fatalf("GetRemotes: %v", err)
+	}
+	remotes := remotesResp.GetRemotes()
+	if len(remotes) != 1 {
+		t.Fatalf("remotes len = %d, want 1 (%+v)", len(remotes), remotes)
+	}
+	if remotes[0].GetName() != "origin" || len(remotes[0].GetUrls()) != 1 ||
+		remotes[0].GetUrls()[0] != "https://example.com/repo.git" {
+		t.Errorf("remote = %+v, want origin with configured url", remotes[0])
+	}
+	if len(remotes[0].GetFetchSpecs()) != 1 {
+		t.Errorf("fetch_specs = %v, want one refspec", remotes[0].GetFetchSpecs())
+	}
+
+	// Tags round-trip.
+	tagsResp, err := client.GetTags(ctx, &singularitreev1.GetTagsRequest{RepoId: repoID})
+	if err != nil {
+		t.Fatalf("GetTags: %v", err)
+	}
+	tags := tagsResp.GetTags()
+	if len(tags) != 2 {
+		t.Fatalf("tags len = %d, want 2 (%+v)", len(tags), tags)
+	}
+	byTag := map[string]*singularitreev1.Tag{}
+	for _, tag := range tags {
+		byTag[tag.GetName()] = tag
+	}
+	light := byTag["light"]
+	if light == nil || light.GetAnnotated() {
+		t.Errorf("light = %+v, want lightweight tag", light)
+	} else if light.GetTarget().GetHex() != head || light.GetTagger() != nil || light.GetMessage() != "" {
+		t.Errorf("light = %+v, want target HEAD with no tagger/message", light)
+	}
+	annotated := byTag["annotated"]
+	if annotated == nil || !annotated.GetAnnotated() {
+		t.Fatalf("annotated = %+v, want annotated tag", annotated)
+	}
+	if annotated.GetTarget().GetHex() != head {
+		t.Errorf("annotated.target = %q, want dereferenced HEAD %q", annotated.GetTarget().GetHex(), head)
+	}
+	if annotated.GetTagger().GetEmail() != "alice@example.com" {
+		t.Errorf("annotated.tagger email = %q, want alice@example.com", annotated.GetTagger().GetEmail())
+	}
+	if !strings.Contains(annotated.GetMessage(), "release one") {
+		t.Errorf("annotated.message = %q, want subject containing %q", annotated.GetMessage(), "release one")
+	}
+
+	// Unknown repository id maps to NotFound through the repo port.
+	bad := authed(context.Background())
+	if _, err := client.GetBranches(bad, &singularitreev1.GetBranchesRequest{RepoId: "nope"}); status.Code(err) != codes.NotFound {
+		t.Errorf("GetBranches(unknown) code = %v, want NotFound", status.Code(err))
+	}
+	if _, err := client.GetRemotes(bad, &singularitreev1.GetRemotesRequest{RepoId: "nope"}); status.Code(err) != codes.NotFound {
+		t.Errorf("GetRemotes(unknown) code = %v, want NotFound", status.Code(err))
+	}
+	if _, err := client.GetTags(bad, &singularitreev1.GetTagsRequest{RepoId: "nope"}); status.Code(err) != codes.NotFound {
+		t.Errorf("GetTags(unknown) code = %v, want NotFound", status.Code(err))
+	}
+
+	// Missing/empty repository id must fail fast with a structured NotFound,
+	// never crash the handler.
+	if _, err := client.GetBranches(bad, &singularitreev1.GetBranchesRequest{}); status.Code(err) != codes.NotFound {
+		t.Errorf("GetBranches(empty repo_id) code = %v, want NotFound", status.Code(err))
+	}
+	if _, err := client.GetRemotes(bad, &singularitreev1.GetRemotesRequest{}); status.Code(err) != codes.NotFound {
+		t.Errorf("GetRemotes(empty repo_id) code = %v, want NotFound", status.Code(err))
+	}
+	if _, err := client.GetTags(bad, &singularitreev1.GetTagsRequest{}); status.Code(err) != codes.NotFound {
+		t.Errorf("GetTags(empty repo_id) code = %v, want NotFound", status.Code(err))
+	}
+}
+
+// TestGetBranchesRemotesTagsUnbornRepo covers the empty/unborn repository
+// round-trip: a freshly initialized repo with no commits must report empty
+// branch/remote/tag slices without error.
+func TestGetBranchesRemotesTagsUnbornRepo(t *testing.T) {
+	addr := startServer(t)
+	unborn := initUnbornRepo(t)
+
+	conn, err := googlegrpc.NewClient(addr, googlegrpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer conn.Close()
+	client := singularitreev1.NewGitCoreClient(conn)
+	ctx := authed(context.Background())
+
+	repo, err := client.OpenRepository(ctx, &singularitreev1.OpenRepositoryRequest{FsPath: unborn})
+	if err != nil {
+		t.Fatalf("OpenRepository(unborn): %v", err)
+	}
+	repoID := repo.GetId()
+	if repoID == "" {
+		t.Fatal("OpenRepository(unborn) returned empty id")
+	}
+
+	branchesResp, err := client.GetBranches(ctx, &singularitreev1.GetBranchesRequest{RepoId: repoID})
+	if err != nil {
+		t.Fatalf("GetBranches(unborn): %v", err)
+	}
+	if got := branchesResp.GetBranches(); len(got) != 0 {
+		t.Errorf("branches len = %d, want 0 (%+v)", len(got), got)
+	}
+
+	remotesResp, err := client.GetRemotes(ctx, &singularitreev1.GetRemotesRequest{RepoId: repoID})
+	if err != nil {
+		t.Fatalf("GetRemotes(unborn): %v", err)
+	}
+	if got := remotesResp.GetRemotes(); len(got) != 0 {
+		t.Errorf("remotes len = %d, want 0 (%+v)", len(got), got)
+	}
+
+	tagsResp, err := client.GetTags(ctx, &singularitreev1.GetTagsRequest{RepoId: repoID})
+	if err != nil {
+		t.Fatalf("GetTags(unborn): %v", err)
+	}
+	if got := tagsResp.GetTags(); len(got) != 0 {
+		t.Errorf("tags len = %d, want 0 (%+v)", len(got), got)
 	}
 }

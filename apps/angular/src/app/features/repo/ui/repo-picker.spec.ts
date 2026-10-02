@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { Commit, Lane, Repository } from '@contracts/domain';
 import type { GetCommitsResponse } from '@contracts/gitcore';
 import { IpcBridge } from '@core/services/ipc-bridge.service';
+import { RepoState } from '@core/services/repo-state.service';
 import { GraphStore } from '../graph/graph.store';
 import { RepoPicker } from './repo-picker';
 
@@ -56,6 +57,12 @@ function makeBridge(opts: { recent?: Repository[]; offline?: boolean } = {}): Ip
         return makePage(2, 2);
       case 'listRepositories':
         return { repositories: opts.recent ?? [] };
+      case 'getBranches':
+        return { branches: [{ name: 'main', refName: 'refs/heads/main', tip: undefined, upstream: '', isCurrent: true, isRemote: false }] };
+      case 'getRemotes':
+        return { remotes: [{ name: 'origin', urls: [], fetchSpecs: [] }] };
+      case 'getTags':
+        return { tags: [{ name: 'v1.0.0', refName: 'refs/tags/v1.0.0', target: undefined, tagger: undefined, message: '', annotated: false }] };
       default:
         throw new Error(`unexpected method ${method}`);
     }
@@ -67,16 +74,21 @@ async function setup(opts: { recent?: Repository[]; offline?: boolean } = {}) {
   const bridge = makeBridge(opts);
   const store = new GraphStore(bridge);
   await TestBed.configureTestingModule({
-    providers: [provideZonelessChangeDetection(), { provide: GraphStore, useValue: store }],
+    providers: [
+      provideZonelessChangeDetection(),
+      { provide: GraphStore, useValue: store },
+      { provide: IpcBridge, useValue: bridge },
+    ],
   }).compileComponents();
 
+  const repoState = TestBed.inject(RepoState);
   const fixture = TestBed.createComponent(RepoPicker);
   fixture.detectChanges();
   // Let the constructor's `loadRecentRepos()` microtask settle.
   await Promise.resolve();
   await Promise.resolve();
   fixture.detectChanges();
-  return { store, fixture, bridge };
+  return { store, fixture, bridge, repoState };
 }
 
 function query<T extends Element>(fixture: { nativeElement: unknown }, testId: string): T | null {
@@ -110,7 +122,7 @@ describe('RepoPicker', () => {
   });
 
   it('opens the typed path and loads the graph window', async () => {
-    const { store, fixture, bridge } = await setup({ recent: [] });
+    const { store, fixture, bridge, repoState } = await setup({ recent: [] });
 
     const input = query<HTMLInputElement>(fixture, 'repo-path-input');
     expect(input).not.toBeNull();
@@ -128,6 +140,10 @@ describe('RepoPicker', () => {
     expect(methods.indexOf('openRepository')).toBeLessThan(methods.indexOf('getCommits'));
     expect(bridge.invoke).toHaveBeenCalledWith('openRepository', { fsPath: '/tmp/repo' });
     expect(store.repoId()).toBe('repo-1');
+
+    // The opened repository is published to the root RepoState.
+    expect(repoState.activeId()).toBe('repo-1');
+    expect(repoState.repos().some((repo) => repo.id === 'repo-1')).toBe(true);
   });
 
   it('ignores empty/whitespace input', async () => {
@@ -145,7 +161,7 @@ describe('RepoPicker', () => {
   });
 
   it('opens a repository when a recent entry is clicked', async () => {
-    const { store, fixture, bridge } = await setup({ recent: [REPO_2] });
+    const { store, fixture, bridge, repoState } = await setup({ recent: [REPO_2] });
 
     const item = query<HTMLButtonElement>(fixture, 'repo-recent-item');
     expect(item?.getAttribute('title')).toBe('/tmp/other');
@@ -154,6 +170,18 @@ describe('RepoPicker', () => {
     await vi.waitFor(() => expect(store.repoId()).toBe('repo-2'));
     expect(bridge.invoke).toHaveBeenCalledWith('openRepository', { fsPath: '/tmp/other' });
     expect(store.commits()).toHaveLength(2);
+    expect(repoState.activeId()).toBe('repo-2');
+  });
+
+  it('loads and publishes the active repository ref lists via RepoState', async () => {
+    const { fixture, repoState } = await setup({ recent: [REPO_2] });
+
+    query<HTMLButtonElement>(fixture, 'repo-recent-item')!.click();
+
+    await vi.waitFor(() => expect(repoState.activeId()).toBe('repo-2'));
+    await vi.waitFor(() => expect(repoState.branches()).toEqual(['main']));
+    expect(repoState.remotes()).toEqual(['origin']);
+    expect(repoState.tags()).toEqual(['v1.0.0']);
   });
 
   it('does not crash and shows a clear message when the bridge is unavailable', async () => {

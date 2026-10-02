@@ -8,10 +8,10 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import { Router, RouterOutlet } from '@angular/router';
 import type { RepoCardView } from '@singularitree/ui-kit';
-import { GithubAccountStore } from '@features/github-account/github-account.store';
-import { toRepoCardView } from '@features/github-account/repo-card-view';
+import { RepoState } from '@core/services/repo-state.service';
+import { toLocalRepoCardView } from './local-repo-card-view';
 import { RepoDrawer } from './ui/repo-drawer/repo-drawer';
 import { ShellHeader } from './ui/shell-header/shell-header';
 import { ShellMenubar } from './ui/shell-menubar/shell-menubar';
@@ -20,8 +20,9 @@ import { SidebarLeft } from './ui/sidebar-left/sidebar-left';
 
 /**
  * Application shell: header + menubar + toolbar chrome, a route-driven center
- * region and the repository drawer. Layout state (width/collapse/pin) is
- * persisted to localStorage; drawer data comes from `GithubAccountStore`.
+ * region and the local-repository drawer. Layout state (width/collapse) is
+ * persisted to localStorage; drawer data AND the left sidebar's ref lists both
+ * come from the root `RepoState`, the active-local-repository source of truth.
  */
 @Component({
   selector: 'st-layout',
@@ -32,26 +33,25 @@ import { SidebarLeft } from './ui/sidebar-left/sidebar-left';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LayoutComponent implements OnInit {
-  readonly gh = inject(GithubAccountStore);
+  readonly repoState = inject(RepoState);
+  private readonly router = inject(Router);
 
   // -- responsive --
   private readonly MOBILE_BP = 1024;
   private readonly LS_RIGHT_W = 'st:rightWidth';
   private readonly LS_RIGHT_COL = 'st:rightCollapsed';
-  private readonly LS_RIGHT_PIN = 'st:rightPinned';
 
   readonly rightWidth = signal(320);
   readonly rightCollapsed = signal(false);
-  readonly rightPinned = signal(true);
   readonly leftCollapsed = signal(false);
   /** Controlled workspace selection for `<st-sidebar-left>`. */
   readonly activeWorkspace = signal('history');
   readonly viewportW = signal(typeof window !== 'undefined' ? window.innerWidth : 1280);
   readonly isMobile = computed(() => this.viewportW() < this.MOBILE_BP);
-  readonly isOverlay = computed(() => this.isMobile() || !this.rightPinned());
+  readonly isOverlay = computed(() => this.isMobile());
 
-  /** GitHub account repos mapped to the drawer's presentational view model. */
-  readonly repoCards = computed<RepoCardView[]>(() => this.gh.repos().map(toRepoCardView));
+  /** Local tracked repos mapped to the drawer's presentational view model. */
+  readonly repoCards = computed<RepoCardView[]>(() => this.repoState.repos().map(toLocalRepoCardView));
 
   // drag state
   private dragging = false;
@@ -72,12 +72,6 @@ export class LayoutComponent implements OnInit {
         localStorage.setItem(this.LS_RIGHT_COL, String(c));
       } catch {}
     });
-    effect(() => {
-      const p = this.rightPinned();
-      try {
-        localStorage.setItem(this.LS_RIGHT_PIN, String(p));
-      } catch {}
-    });
   }
 
   async ngOnInit(): Promise<void> {
@@ -89,15 +83,23 @@ export class LayoutComponent implements OnInit {
       }
       const c = localStorage.getItem(this.LS_RIGHT_COL);
       if (c !== null) this.rightCollapsed.set(c === 'true');
-      const p = localStorage.getItem(this.LS_RIGHT_PIN);
-      if (p !== null) this.rightPinned.set(p === 'true');
     } catch {}
     this.viewportW.set(typeof window !== 'undefined' ? window.innerWidth : 1280);
 
-    await this.gh.refreshStatus();
-    if (this.gh.authenticated()) {
-      await this.gh.loadRepos();
-    }
+    // Best-effort: publish persisted repositories so the drawer and sidebar
+    // can resolve local repos and their refs.
+    await this.repoState.loadRepositories();
+  }
+
+  /** Activate the local repository picked in the drawer. */
+  onRepoSelected(id: string): void {
+    const repo = this.repoState.repos().find((r) => r.id === id);
+    if (repo) this.repoState.setActive(repo);
+  }
+
+  /** Route to the repository picker when the drawer's add button is used. */
+  onAddRepository(): void {
+    void this.router.navigate(['/repo']);
   }
 
   @HostListener('window:resize')
@@ -111,14 +113,6 @@ export class LayoutComponent implements OnInit {
 
   toggleLeft(): void {
     this.leftCollapsed.update((v) => !v);
-  }
-
-  togglePin(): void {
-    this.rightPinned.update((v) => !v);
-    // when pinning on desktop, ensure visible
-    if (this.rightPinned() && !this.isMobile()) {
-      this.rightCollapsed.set(false);
-    }
   }
 
   // -- resizable drag handle

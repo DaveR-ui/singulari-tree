@@ -133,6 +133,60 @@ func (s *Server) GetCommits(ctx context.Context, req *singularitreev1.GetCommits
 	return out, nil
 }
 
+// GetBranches returns the repository's local branches.
+func (s *Server) GetBranches(ctx context.Context, req *singularitreev1.GetBranchesRequest) (*singularitreev1.GetBranchesResponse, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	branches, err := s.gitSvc.BranchList(ctx, domain.RepositoryId(req.GetRepoId()))
+	if err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	out := &singularitreev1.GetBranchesResponse{
+		Branches: make([]*singularitreev1.Branch, 0, len(branches)),
+	}
+	for _, b := range branches {
+		out.Branches = append(out.Branches, branchToProto(b))
+	}
+	return out, nil
+}
+
+// GetRemotes returns the repository's configured remotes.
+func (s *Server) GetRemotes(ctx context.Context, req *singularitreev1.GetRemotesRequest) (*singularitreev1.GetRemotesResponse, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	remotes, err := s.gitSvc.RemoteList(ctx, domain.RepositoryId(req.GetRepoId()))
+	if err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	out := &singularitreev1.GetRemotesResponse{
+		Remotes: make([]*singularitreev1.Remote, 0, len(remotes)),
+	}
+	for _, r := range remotes {
+		out.Remotes = append(out.Remotes, remoteToProto(r))
+	}
+	return out, nil
+}
+
+// GetTags returns the repository's tags.
+func (s *Server) GetTags(ctx context.Context, req *singularitreev1.GetTagsRequest) (*singularitreev1.GetTagsResponse, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	tags, err := s.gitSvc.TagList(ctx, domain.RepositoryId(req.GetRepoId()))
+	if err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	out := &singularitreev1.GetTagsResponse{
+		Tags: make([]*singularitreev1.Tag, 0, len(tags)),
+	}
+	for _, tag := range tags {
+		out.Tags = append(out.Tags, tagToProto(tag))
+	}
+	return out, nil
+}
+
 // UnaryAuthInterceptor validates `authorization: Bearer <token>` metadata.
 // When token is empty, authentication is disabled.
 func UnaryAuthInterceptor(token string) googlegrpc.UnaryServerInterceptor {

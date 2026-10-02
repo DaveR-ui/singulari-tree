@@ -11,6 +11,7 @@ package git
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strconv"
@@ -38,6 +39,23 @@ const (
 	// holds the tagged commit so the decoration lands on the commit, not on the
 	// tag object.
 	refPrettyFormat = "%(objectname)" + unitSep + "%(refname)" + unitSep + "%(*objectname)"
+
+	// branchPrettyFormat mirrors the field order parsed by parseBranches:
+	// refname, objectname (tip), upstream:short, upstream (full refname).
+	// Ref names cannot contain control characters, so unitSep/recordSep are
+	// unambiguous field/record separators.
+	branchPrettyFormat = "%(refname)" + unitSep + "%(objectname)" + unitSep +
+		"%(upstream:short)" + unitSep + "%(upstream)" + recordSep
+
+	// tagPrettyFormat mirrors the field order parsed by parseTags: refname,
+	// objectname, objecttype, dereferenced objectname (*objectname, empty for
+	// lightweight tags), tagger name, tagger email, tagger date (ISO strict)
+	// and the message subject. The subject is the last field so it may contain
+	// any separator that somehow slips into the tag message.
+	tagPrettyFormat = "%(refname)" + unitSep + "%(objectname)" + unitSep +
+		"%(objecttype)" + unitSep + "%(*objectname)" + unitSep +
+		"%(taggername)" + unitSep + "%(taggeremail)" + unitSep +
+		"%(taggerdate:iso-strict)" + unitSep + "%(contents:subject)" + recordSep
 
 	// defaultListLimit guards against unbounded reads when the caller omits a
 	// limit (the read path must always be paginated).
@@ -264,6 +282,27 @@ func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 	return stdout.String(), nil
 }
 
+// runGitAllowExit is like runGit but also reports the process exit code so
+// callers can treat specific non-zero exits (e.g. `git config --get-regexp` with
+// no matches, exit 1) as an empty result rather than an error. stdout is
+// returned even on failure; code is -1 when the failure was not an exit status.
+func runGitAllowExit(ctx context.Context, dir string, args ...string) (stdout string, code int, err error) {
+	full := append([]string{"-C", dir}, args...)
+	cmd := exec.CommandContext(ctx, "git", full...)
+	var out, stderr bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &stderr
+	err = cmd.Run()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return out.String(), exitErr.ExitCode(), fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+		}
+		return out.String(), -1, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+	}
+	return out.String(), 0, nil
+}
+
 func parseCommits(out string) ([]domain.Commit, error) {
 	parts := strings.Split(out, recordSep)
 	commits := make([]domain.Commit, 0, len(parts))
@@ -362,9 +401,75 @@ func (a *Adapter) Diff(context.Context, domain.RepositoryId, domain.Oid, domain.
 	return nil, notImplemented("Diff")
 }
 
-// BranchList lists branches. Phase 5.
-func (a *Adapter) BranchList(context.Context, domain.RepositoryId) ([]domain.Branch, error) {
-	return nil, notImplemented("BranchList")
+// BranchList lists local branches (refs/heads) in a repository. It is
+// read-only: the current branch is detected through `git symbolic-ref`, which
+// reports an empty name on a detached HEAD (no branch is marked IsCurrent).
+// An empty/unborn repository yields an empty slice and a nil error.
+func (a *Adapter) BranchList(ctx context.Context, repoID domain.RepositoryId) ([]domain.Branch, error) {
+	fsPath, err := a.resolvePath(ctx, repoID)
+	if err != nil {
+		return nil, err
+	}
+	current := currentBranch(ctx, fsPath)
+	out, err := runGit(ctx, fsPath, "for-each-ref", "--format="+branchPrettyFormat, "refs/heads")
+	if err != nil {
+		return nil, err
+	}
+	return parseBranches(out, current), nil
+}
+
+// currentBranch returns the short name of the branch HEAD points at, or "" when
+// HEAD is detached or unborn (symbolic-ref exits non-zero).
+func currentBranch(ctx context.Context, fsPath string) string {
+	out, err := runGit(ctx, fsPath, "symbolic-ref", "--short", "-q", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+// parseBranches parses `git for-each-ref --format=branchPrettyFormat` output.
+// It is a pure helper (unit-tested directly). Malformed records (e.g. an
+// unparsable oid) are skipped rather than failing the whole listing.
+func parseBranches(out, current string) []domain.Branch {
+	records := strings.Split(out, recordSep)
+	branches := make([]domain.Branch, 0, len(records))
+	for _, rec := range records {
+		rec = strings.Trim(rec, "\n\r")
+		if rec == "" {
+			continue
+		}
+		fields := strings.Split(rec, unitSep)
+		if len(fields) < 4 {
+			continue
+		}
+		ref := strings.TrimSpace(fields[0])
+		oidHex := strings.TrimSpace(fields[1])
+		upstreamShort := strings.TrimSpace(fields[2])
+		upstreamFull := strings.TrimSpace(fields[3])
+
+		oid, err := domain.NewOid(oidHex)
+		if err != nil {
+			continue
+		}
+		b := domain.Branch{
+			Name:      domain.RefName{Raw: ref}.Short(),
+			RefName:   domain.RefName{Raw: ref},
+			Tip:       oid,
+			IsCurrent: current != "" && ref == "refs/heads/"+current,
+			IsRemote:  false,
+		}
+		upstreamRaw := upstreamFull
+		if upstreamRaw == "" {
+			upstreamRaw = upstreamShort
+		}
+		if upstreamRaw != "" {
+			up := domain.RefName{Raw: upstreamRaw}
+			b.Upstream = &up
+		}
+		branches = append(branches, b)
+	}
+	return branches
 }
 
 // BranchCreate creates a branch. Phase 5.
@@ -382,14 +487,152 @@ func (a *Adapter) Checkout(context.Context, domain.RepositoryId, domain.RefName)
 	return notImplemented("Checkout")
 }
 
-// RemoteList lists remotes. Phase 6.
-func (a *Adapter) RemoteList(context.Context, domain.RepositoryId) ([]domain.Remote, error) {
-	return nil, notImplemented("RemoteList")
+// RemoteList lists configured remotes by folding `git config --get-regexp
+// '^remote\.'` into Remote entities (name, urls, fetch specs). It is read-only.
+// A repository with no remotes yields an empty slice and a nil error.
+func (a *Adapter) RemoteList(ctx context.Context, repoID domain.RepositoryId) ([]domain.Remote, error) {
+	fsPath, err := a.resolvePath(ctx, repoID)
+	if err != nil {
+		return nil, err
+	}
+	out, code, err := runGitAllowExit(ctx, fsPath, "config", "--get-regexp", `^remote\.`)
+	if err != nil && code != 1 {
+		// Exit code 1 means "no matching key" (no remotes), which is not an
+		// error; anything else is a genuine failure.
+		return nil, err
+	}
+	return parseRemotes(out), nil
 }
 
-// TagList lists tags. Phase 5.
-func (a *Adapter) TagList(context.Context, domain.RepositoryId) ([]domain.Tag, error) {
-	return nil, notImplemented("TagList")
+// parseRemotes parses `git config --get-regexp '^remote\.'` output (lines of
+// "remote.<name>.<field> <value>") into Remote entities, preserving first-seen
+// order. Remote names may contain dots, so the field is the text after the last
+// dot.
+func parseRemotes(out string) []domain.Remote {
+	type remoteAgg struct {
+		urls  []string
+		fetch []string
+	}
+	byName := map[string]*remoteAgg{}
+	order := make([]string, 0)
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimRight(line, "\r")
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		sp := strings.IndexByte(line, ' ')
+		if sp < 0 {
+			continue
+		}
+		key := line[:sp]
+		value := strings.TrimSpace(line[sp+1:])
+		if !strings.HasPrefix(key, "remote.") {
+			continue
+		}
+		rest := strings.TrimPrefix(key, "remote.")
+		dot := strings.LastIndexByte(rest, '.')
+		if dot <= 0 {
+			continue
+		}
+		name := rest[:dot]
+		field := rest[dot+1:]
+		agg := byName[name]
+		if agg == nil {
+			agg = &remoteAgg{urls: []string{}, fetch: []string{}}
+			byName[name] = agg
+			order = append(order, name)
+		}
+		switch field {
+		case "url":
+			agg.urls = append(agg.urls, value)
+		case "fetch":
+			agg.fetch = append(agg.fetch, value)
+		}
+	}
+	remotes := make([]domain.Remote, 0, len(order))
+	for _, name := range order {
+		agg := byName[name]
+		remotes = append(remotes, domain.Remote{
+			Name:       name,
+			Urls:       agg.urls,
+			FetchSpecs: agg.fetch,
+		})
+	}
+	return remotes
+}
+
+// TagList lists tags (refs/tags) in a repository, distinguishing lightweight
+// from annotated tags. It is read-only. An empty repository yields an empty
+// slice and a nil error.
+func (a *Adapter) TagList(ctx context.Context, repoID domain.RepositoryId) ([]domain.Tag, error) {
+	fsPath, err := a.resolvePath(ctx, repoID)
+	if err != nil {
+		return nil, err
+	}
+	out, err := runGit(ctx, fsPath, "for-each-ref", "--format="+tagPrettyFormat, "refs/tags")
+	if err != nil {
+		return nil, err
+	}
+	return parseTags(out), nil
+}
+
+// parseTags parses `git for-each-ref --format=tagPrettyFormat` output. It is a
+// pure helper (unit-tested directly). Annotated tags (objecttype == "tag")
+// carry a target (the dereferenced object), tagger and message; lightweight
+// tags point directly at the object and have neither tagger nor message.
+func parseTags(out string) []domain.Tag {
+	records := strings.Split(out, recordSep)
+	tags := make([]domain.Tag, 0, len(records))
+	for _, rec := range records {
+		rec = strings.Trim(rec, "\n\r")
+		if rec == "" {
+			continue
+		}
+		fields := strings.SplitN(rec, unitSep, 8)
+		if len(fields) < 8 {
+			continue
+		}
+		ref := strings.TrimSpace(fields[0])
+		objectOid := strings.TrimSpace(fields[1])
+		objectType := strings.TrimSpace(fields[2])
+		derefOid := strings.TrimSpace(fields[3])
+		taggerName := strings.TrimSpace(fields[4])
+		taggerEmail := strings.TrimSpace(fields[5])
+		taggerDate := strings.TrimSpace(fields[6])
+		subject := strings.TrimSpace(fields[7])
+
+		annotated := objectType == "tag"
+		targetHex := objectOid
+		if annotated && derefOid != "" {
+			targetHex = derefOid
+		}
+		oid, err := domain.NewOid(targetHex)
+		if err != nil {
+			continue
+		}
+		tag := domain.Tag{
+			Name:      domain.RefName{Raw: ref}.Short(),
+			RefName:   domain.RefName{Raw: ref},
+			Target:    oid,
+			Annotated: annotated,
+		}
+		if annotated {
+			if taggerName != "" || taggerEmail != "" {
+				sig := domain.Signature{Name: taggerName, Email: strings.Trim(taggerEmail, "<>")}
+				if when, perr := time.Parse(time.RFC3339, taggerDate); perr == nil {
+					sig.When = when
+				}
+				tag.Tagger = &sig
+			}
+			if subject != "" {
+				msg := subject
+				tag.Message = &msg
+			}
+		}
+		tags = append(tags, tag)
+	}
+	return tags
 }
 
 // StashList lists stashes. Phase 5.

@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
+import type { AppError } from '@core/services/ipc-bridge.service';
 
 interface WorkspaceItem {
   readonly kind: string;
@@ -9,8 +10,8 @@ interface WorkspaceItem {
 /**
  * Dumb left sidebar: workspace switcher plus branches/tags/remotes sections.
  *
- * The ref lists are supplied by the parent (empty for now) so the component
- * renders explicit empty states instead of inventing data.
+ * The ref lists are supplied by the parent (root `RepoState`); the component
+ * renders explicit loading/offline/empty states instead of inventing data.
  */
 @Component({
   selector: 'st-sidebar-left',
@@ -53,10 +54,16 @@ interface WorkspaceItem {
           <span class="st-left__arrow">{{ branchesExpanded() ? '▾' : '▸' }}</span> BRANCHES
         </button>
         @if (branchesExpanded()) {
-          @if (branches().length === 0) {
-            <p class="st-left__empty">No branches</p>
+          @if (loading()) {
+            <p class="st-left__empty" data-testid="st-sidebar-refs-loading">Loading…</p>
+          } @else if (offline()) {
+            <p class="st-left__empty" data-testid="st-sidebar-refs-offline">Git core offline</p>
+          } @else if (error(); as err) {
+            <p class="st-left__empty" data-testid="st-sidebar-refs-error">{{ err.message }}</p>
+          } @else if (branches().length === 0) {
+            <p class="st-left__empty" data-testid="st-sidebar-branches-empty">No branches</p>
           } @else {
-            <ul class="st-left__list">
+            <ul class="st-left__list" data-testid="st-sidebar-branches">
               @for (branch of branches(); track branch) {
                 <li class="st-left__item st-left__sub">{{ branch }}</li>
               }
@@ -70,10 +77,16 @@ interface WorkspaceItem {
           <span class="st-left__arrow">{{ tagsExpanded() ? '▾' : '▸' }}</span> TAGS
         </button>
         @if (tagsExpanded()) {
-          @if (tags().length === 0) {
-            <p class="st-left__empty">No tags</p>
+          @if (loading()) {
+            <p class="st-left__empty" data-testid="st-sidebar-refs-loading">Loading…</p>
+          } @else if (offline()) {
+            <p class="st-left__empty" data-testid="st-sidebar-refs-offline">Git core offline</p>
+          } @else if (error(); as err) {
+            <p class="st-left__empty" data-testid="st-sidebar-refs-error">{{ err.message }}</p>
+          } @else if (tags().length === 0) {
+            <p class="st-left__empty" data-testid="st-sidebar-tags-empty">No tags</p>
           } @else {
-            <ul class="st-left__list">
+            <ul class="st-left__list" data-testid="st-sidebar-tags">
               @for (tag of tags(); track tag) {
                 <li class="st-left__item st-left__sub">{{ tag }}</li>
               }
@@ -91,10 +104,16 @@ interface WorkspaceItem {
           <span class="st-left__arrow">{{ remotesExpanded() ? '▾' : '▸' }}</span> REMOTES
         </button>
         @if (remotesExpanded()) {
-          @if (remotes().length === 0) {
-            <p class="st-left__empty">No remotes</p>
+          @if (loading()) {
+            <p class="st-left__empty" data-testid="st-sidebar-refs-loading">Loading…</p>
+          } @else if (offline()) {
+            <p class="st-left__empty" data-testid="st-sidebar-refs-offline">Git core offline</p>
+          } @else if (error(); as err) {
+            <p class="st-left__empty" data-testid="st-sidebar-refs-error">{{ err.message }}</p>
+          } @else if (remotes().length === 0) {
+            <p class="st-left__empty" data-testid="st-sidebar-remotes-empty">No remotes</p>
           } @else {
-            <ul class="st-left__list">
+            <ul class="st-left__list" data-testid="st-sidebar-remotes">
               @for (remote of remotes(); track remote) {
                 <li class="st-left__item st-left__sub">{{ remote }}</li>
               }
@@ -260,6 +279,9 @@ export class SidebarLeft {
   readonly branches = input<readonly string[]>([]);
   readonly tags = input<readonly string[]>([]);
   readonly remotes = input<readonly string[]>([]);
+  readonly loading = input(false);
+  readonly offline = input(false);
+  readonly error = input<AppError | null>(null);
   /** Controlled by the parent; this component never mutates it locally. */
   readonly activeWorkspace = input('history');
 

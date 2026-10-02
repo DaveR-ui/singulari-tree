@@ -7,7 +7,7 @@ import type {
   PageInfo,
   RateLimit,
 } from '@contracts/auth';
-import { IpcBridge, type AppError } from '@core/services/ipc-bridge.service';
+import { IpcBridge, toAppError, type AppError } from '@core/services/ipc-bridge.service';
 
 /** Default page size for `auth:listGitHubRepos` (GitHub default is 30). */
 export const REPOS_PER_PAGE = 30;
@@ -22,15 +22,6 @@ function isIpcUnavailable(err: unknown): boolean {
     'code' in err &&
     (err as { code?: unknown }).code === 'IPC_UNAVAILABLE'
   );
-}
-
-function toAppError(err: unknown): AppError {
-  if (typeof err === 'object' && err !== null) {
-    const code = 'code' in err ? String((err as { code?: unknown }).code) : 'UNKNOWN';
-    const message = 'message' in err ? String((err as { message?: unknown }).message) : 'Unknown error';
-    return { code, message };
-  }
-  return { code: 'UNKNOWN', message: String(err) };
 }
 
 /**

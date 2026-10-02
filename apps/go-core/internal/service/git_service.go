@@ -97,6 +97,22 @@ func (s *GitService) BranchList(ctx context.Context, repoID domain.RepositoryId)
 	return s.gitPort.BranchList(ctx, repoID)
 }
 
+// RemoteList returns configured remotes.
+func (s *GitService) RemoteList(ctx context.Context, repoID domain.RepositoryId) ([]domain.Remote, error) {
+	if s.gitPort == nil {
+		return nil, nil
+	}
+	return s.gitPort.RemoteList(ctx, repoID)
+}
+
+// TagList returns tags.
+func (s *GitService) TagList(ctx context.Context, repoID domain.RepositoryId) ([]domain.Tag, error) {
+	if s.gitPort == nil {
+		return nil, nil
+	}
+	return s.gitPort.TagList(ctx, repoID)
+}
+
 // Checkout checks out a ref.
 func (s *GitService) Checkout(ctx context.Context, repoID domain.RepositoryId, ref domain.RefName) error {
 	if s.gitPort == nil {
