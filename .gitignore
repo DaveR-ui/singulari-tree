@@ -22,6 +22,10 @@ data/sqlite/*.sqlite-shm
 # Do NOT ignore libs/contracts/gen/go/*.pb.go or libs/contracts/gen/ts/*.ts
 # Keep them versioned; buf generate will overwrite.
 
+# Container / compose local data (bind-mounted gRPC socket dir + local DBs)
+ipc/
+.data/
+
 # Env and secrets
 .env
 .env.*

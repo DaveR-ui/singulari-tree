@@ -16,7 +16,8 @@
     "start": "concurrently --kill-others --names \"angular,electron\" \"npm run start --workspace=@singularitree/angular\" \"npm run start:wait --workspace=@singularitree/electron\"",
     "start:electron-only": "npm run start:dev --workspace=@singularitree/electron",
     "build": "npm run build --workspaces --if-present",
-    "gen:contracts": "npm run gen --workspace=@singularitree/contracts"
+    "gen:contracts": "npm run gen --workspace=@singularitree/contracts",
+    "postinstall": "node tools/scripts/provision-electron.js"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
