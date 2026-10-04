@@ -1,6 +1,15 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { ScrollingModule } from '@angular/cdk/scrolling';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  computed,
+  effect,
+  inject,
+  viewChild,
+} from '@angular/core';
+import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
 import { GRAPH_ROW_HEIGHT, GraphRow } from '@singularitree/ui-kit';
+import { KeyboardShortcutService } from '@core/services/keyboard-shortcut.service';
 import { GRAPH_PREFETCH_THRESHOLD, GraphStore, WIP_OID } from '../graph.store';
 import { CommitDetailsPanel } from '../ui/commit-details-panel';
 import { WipRow } from '../ui/wip-row';
@@ -162,9 +171,33 @@ import { WipRow } from '../ui/wip-row';
 export class GraphPage {
   readonly store = inject(GraphStore);
 
+  private readonly shortcuts = inject(KeyboardShortcutService);
+  private readonly destroyRef = inject(DestroyRef);
+
   /** Must match `GRAPH_ROW_HEIGHT` so CDK virtualization delegates row height. */
   readonly rowHeight = GRAPH_ROW_HEIGHT;
   readonly maxLane = computed(() => this.store.maxLane());
+
+  /** Bound to the CDK viewport so keyboard navigation can reveal the selection. */
+  readonly viewport = viewChild(CdkVirtualScrollViewport);
+
+  constructor() {
+    const store = this.store;
+    const unregister = [
+      this.shortcuts.register('ArrowDown', () => store.selectNext()),
+      this.shortcuts.register('ArrowUp', () => store.selectPrevious()),
+      this.shortcuts.register(' ', () => store.openDiff()),
+    ];
+    this.destroyRef.onDestroy(() => unregister.forEach((off) => off()));
+
+    // Keep the selected row in view as keyboard navigation moves it.
+    effect(() => {
+      const index = this.store.selectedIndex();
+      if (index >= 0) {
+        this.viewport()?.scrollToIndex(index, 'smooth');
+      }
+    });
+  }
 
   onFilter(event: Event): void {
     this.store.setFilter((event.target as HTMLInputElement).value);

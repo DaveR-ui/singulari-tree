@@ -35,6 +35,8 @@ import type {
   Progress,
   PullRequest,
   PushRequest,
+  RemoveRepositoryRequest,
+  RemoveRepositoryResponse,
   StageRequest,
   StageResponse,
   UnstageRequest,
@@ -49,6 +51,7 @@ export interface GitClientApi {
   getCommits: (req: GetCommitsRequest) => Promise<GetCommitsResponse>;
   openRepository: (req: OpenRepositoryRequest) => Promise<Repository>;
   listRepositories: (req: ListRepositoriesRequest) => Promise<ListRepositoriesResponse>;
+  removeRepository: (req: RemoveRepositoryRequest) => Promise<RemoveRepositoryResponse>;
   getBranches: (req: GetBranchesRequest) => Promise<GetBranchesResponse>;
   getRemotes: (req: GetRemotesRequest) => Promise<GetRemotesResponse>;
   getTags: (req: GetTagsRequest) => Promise<GetTagsResponse>;

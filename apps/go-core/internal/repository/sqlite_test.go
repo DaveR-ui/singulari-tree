@@ -150,4 +150,83 @@ func TestRepoStoreRoundTrip(t *testing.T) {
 	if len(list) != 1 || list[0].ID != repoB.ID {
 		t.Fatalf("List after Remove = %+v, want only B", list)
 	}
+
+	// Post-removal ordering regression: a later-opened repo sorts ahead of the
+	// survivor, and removing that newer head leaves the survivor's position
+	// pinned (relative order of the remaining rows is unaffected by the delete).
+	repoC, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatalf("Open(C): %v", err)
+	}
+	list, err = store.List(ctx)
+	if err != nil {
+		t.Fatalf("List with C: %v", err)
+	}
+	if len(list) != 2 || list[0].ID != repoC.ID || list[1].ID != repoB.ID {
+		t.Fatalf("List with C = %+v, want [C, B]", list)
+	}
+	if err := store.Remove(ctx, repoC.ID); err != nil {
+		t.Fatalf("Remove(C): %v", err)
+	}
+	list, err = store.List(ctx)
+	if err != nil {
+		t.Fatalf("List after Remove(C): %v", err)
+	}
+	if len(list) != 1 || list[0].ID != repoB.ID {
+		t.Fatalf("List after Remove(C) = %+v, want only B", list)
+	}
+}
+
+// TestRepoStoreRemoveCascades verifies that removing a repository also deletes
+// its child rows via ON DELETE CASCADE (PRAGMA foreign_keys=ON, ADR-006).
+func TestRepoStoreRemoveCascades(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	store := NewRepoStore(db)
+
+	repo, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	id := string(repo.ID)
+
+	// One row in each child table so removal must cascade across all three.
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO commit_cache
+		 (repo_id, oid, parents, author_name, author_email, author_when,
+		  committer_name, committer_email, committer_when, message, tree_oid, committed_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, "abc123", "[]", "Alice", "alice@example.com", "2024-01-01T00:00:00Z",
+		"Alice", "alice@example.com", "2024-01-01T00:00:00Z", "msg", "tree1", "2024-01-01T00:00:00Z",
+	); err != nil {
+		t.Fatalf("insert commit_cache: %v", err)
+	}
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO file_status (repo_id, path, staged, unstaged, is_staged, is_conflicted)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		id, "a.txt", "M", " ", 1, 0,
+	); err != nil {
+		t.Fatalf("insert file_status: %v", err)
+	}
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO stash_cache (repo_id, stash_index, oid, message, branch_name, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		id, 0, "deadbeef", "wip", "main", "2024-01-01T00:00:00Z",
+	); err != nil {
+		t.Fatalf("insert stash_cache: %v", err)
+	}
+
+	if err := store.Remove(ctx, repo.ID); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+
+	for _, table := range []string{"commit_cache", "file_status", "stash_cache", "repos"} {
+		var n int
+		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table).Scan(&n); err != nil {
+			t.Fatalf("count %s: %v", table, err)
+		}
+		if n != 0 {
+			t.Errorf("%s count = %d, want 0 (cascade failed)", table, n)
+		}
+	}
 }

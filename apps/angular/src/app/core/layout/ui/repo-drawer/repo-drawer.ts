@@ -153,7 +153,7 @@ import type { AppError } from '@core/services/ipc-bridge.service';
       gap: 6px;
       padding: 10px 10px 8px 14px;
       border-bottom: 1px solid var(--st-color-border, #2f2f44);
-      background: #23233a;
+      background: var(--st-color-surface-2);
       flex-shrink: 0;
     }
 
@@ -173,7 +173,7 @@ import type { AppError } from '@core/services/ipc-bridge.service';
     }
 
     .st-search {
-      background: #1a1a2a;
+      background: var(--st-color-surface-2);
       border: 1px solid var(--st-color-border, #2f2f44);
       color: var(--st-color-text, #d6d6de);
       border-radius: 6px;

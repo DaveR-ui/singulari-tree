@@ -101,6 +101,27 @@ func (s *Server) ListRepositories(ctx context.Context, _ *singularitreev1.ListRe
 	return out, nil
 }
 
+// RemoveRepository untracks a repository. The delete cascades to its cached
+// rows (ON DELETE CASCADE, PRAGMA foreign_keys=ON); any in-memory state keyed
+// by the repository ID is then dropped best-effort so stale lane layouts or
+// cached commit windows are not served for the removed ID.
+func (s *Server) RemoveRepository(ctx context.Context, req *singularitreev1.RemoveRepositoryRequest) (*singularitreev1.RemoveRepositoryResponse, error) {
+	if s.repoSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "repo service not configured")
+	}
+	id := domain.RepositoryId(req.GetRepoId())
+	if err := s.repoSvc.Remove(ctx, id); err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	if s.graphSvc != nil {
+		s.graphSvc.Invalidate(id)
+	}
+	if s.cacheSvc != nil {
+		s.cacheSvc.Invalidate(id)
+	}
+	return &singularitreev1.RemoveRepositoryResponse{}, nil
+}
+
 // GetCommits returns a window of commits plus the total reachable count.
 func (s *Server) GetCommits(ctx context.Context, req *singularitreev1.GetCommitsRequest) (*singularitreev1.GetCommitsResponse, error) {
 	if s.graphSvc == nil {

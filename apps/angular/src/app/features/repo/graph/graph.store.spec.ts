@@ -302,4 +302,114 @@ describe('GraphStore', () => {
     expect(getCommits).not.toHaveBeenCalled();
     expect(store.rows()).toEqual([]);
   });
+
+  it('tracks selectedIndex over filteredRows (-1 when none/WIP/not found)', async () => {
+    store = new GraphStore(makeBridge({ getCommits: () => Promise.resolve(makePage(3)) }));
+    store.repoId.set(REPO.id);
+    await store.loadWindow(0);
+
+    expect(store.selectedIndex()).toBe(-1);
+
+    store.select(makeCommit(1).oid?.hex ?? '');
+    expect(store.selectedIndex()).toBe(1);
+
+    store.select(WIP_OID);
+    expect(store.selectedIndex()).toBe(-1);
+
+    store.select('deadbeefdeadbeefdeadbeefdeadbeefdeadbeef');
+    expect(store.selectedIndex()).toBe(-1);
+  });
+
+  it('selectNext/selectPrevious move within filtered rows and clamp at bounds', async () => {
+    store = new GraphStore(makeBridge({ getCommits: () => Promise.resolve(makePage(3)) }));
+    store.repoId.set(REPO.id);
+    await store.loadWindow(0);
+
+    store.selectNext();
+    expect(store.selectedIndex()).toBe(0);
+    expect(store.selectedOid()).toBe(makeCommit(0).oid?.hex);
+
+    store.selectNext();
+    expect(store.selectedIndex()).toBe(1);
+
+    store.selectPrevious();
+    expect(store.selectedIndex()).toBe(0);
+
+    store.selectPrevious(); // clamp at first
+    expect(store.selectedIndex()).toBe(0);
+
+    store.selectNext();
+    store.selectNext();
+    store.selectNext(); // clamp at last
+    expect(store.selectedIndex()).toBe(2);
+    expect(store.selectedOid()).toBe(makeCommit(2).oid?.hex);
+  });
+
+  it('navigates only within the filtered rows', async () => {
+    const page: GetCommitsResponse = {
+      commits: [makeCommit(0, [{ name: 'main', kind: 'head' }]), makeCommit(1), makeCommit(2)],
+      total: 3,
+      lanes: [
+        { index: 0, color: 0, continues: false },
+        { index: 1, color: 1, continues: false },
+        { index: 2, color: 2, continues: false },
+      ],
+    };
+    store = new GraphStore(makeBridge({ getCommits: () => Promise.resolve(page) }));
+    store.repoId.set(REPO.id);
+    await store.loadWindow(0);
+
+    store.setFilter('Author 2');
+    expect(store.filteredRows()).toHaveLength(1);
+
+    store.selectNext();
+    expect(store.selectedOid()).toBe(makeCommit(2).oid?.hex);
+    expect(store.selectedIndex()).toBe(0);
+  });
+
+  it('is a no-op for keyboard navigation when there are no rows', () => {
+    store = new GraphStore(makeBridge({ getCommits: () => Promise.resolve(makePage(0)) }));
+    store.repoId.set(REPO.id);
+
+    store.selectNext();
+    store.selectPrevious();
+
+    expect(store.selectedOid()).toBeNull();
+    expect(store.selectedIndex()).toBe(-1);
+  });
+
+  it('openDiff selects the first row when none is selected and records the intent', async () => {
+    store = new GraphStore(makeBridge({ getCommits: () => Promise.resolve(makePage(2)) }));
+    store.repoId.set(REPO.id);
+    await store.loadWindow(0);
+
+    expect(store.diffIntent()).toBeNull();
+
+    store.openDiff();
+
+    expect(store.selectedOid()).toBe(makeCommit(0).oid?.hex);
+    expect(store.diffIntent()).toEqual({ oid: makeCommit(0).oid?.hex });
+  });
+
+  it('openDiff records the already-selected row without moving it', async () => {
+    store = new GraphStore(makeBridge({ getCommits: () => Promise.resolve(makePage(3)) }));
+    store.repoId.set(REPO.id);
+    await store.loadWindow(0);
+
+    store.select(makeCommit(2).oid?.hex ?? '');
+    store.openDiff();
+
+    expect(store.selectedOid()).toBe(makeCommit(2).oid?.hex);
+    expect(store.diffIntent()).toEqual({ oid: makeCommit(2).oid?.hex });
+  });
+
+  it('openDiff is a no-op with no rows', () => {
+    store = new GraphStore(makeBridge({ getCommits: () => Promise.resolve(makePage(0)) }));
+    store.repoId.set(REPO.id);
+
+    store.openDiff();
+
+    expect(store.selectedOid()).toBeNull();
+    expect(store.diffIntent()).toBeNull();
+  });
 });

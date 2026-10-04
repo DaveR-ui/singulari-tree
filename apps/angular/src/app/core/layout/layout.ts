@@ -11,6 +11,7 @@ import {
 import { Router, RouterOutlet } from '@angular/router';
 import type { RepoCardView } from '@singularitree/ui-kit';
 import { RepoState } from '@core/services/repo-state.service';
+import { ThemeService } from '@core/services/theme.service';
 import { RemoteOpsStore } from '@features/remote/remote-ops.store';
 import { FetchDialog } from '@features/remote/ui/fetch-dialog/fetch-dialog';
 import { PullDialog } from '@features/remote/ui/pull-dialog/pull-dialog';
@@ -49,6 +50,7 @@ import { SidebarLeft } from './ui/sidebar-left/sidebar-left';
 export class LayoutComponent implements OnInit {
   readonly repoState = inject(RepoState);
   readonly remoteOps = inject(RemoteOpsStore);
+  readonly themeService = inject(ThemeService);
   private readonly router = inject(Router);
 
   // -- responsive --
@@ -112,9 +114,9 @@ export class LayoutComponent implements OnInit {
     if (repo) this.repoState.setActive(repo);
   }
 
-  /** Route to the repository picker when the drawer's add button is used. */
+  /** Route to the repository manager when the drawer's add button is used. */
   onAddRepository(): void {
-    void this.router.navigate(['/repo']);
+    void this.router.navigate(['/repos']);
   }
 
   @HostListener('window:resize')

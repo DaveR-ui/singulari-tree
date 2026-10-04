@@ -4,8 +4,10 @@
   <st-shell-menubar
     [leftCollapsed]="leftCollapsed()"
     [rightCollapsed]="rightCollapsed()"
+    [theme]="themeService.theme()"
     (toggleLeft)="toggleLeft()"
     (toggleRight)="toggleRight()"
+    (themeToggle)="themeService.toggle()"
   />
 
   <st-shell-toolbar

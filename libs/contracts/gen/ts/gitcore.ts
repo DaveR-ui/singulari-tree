@@ -35,6 +35,13 @@ export interface ListRepositoriesResponse {
   repositories: Repository[];
 }
 
+export interface RemoveRepositoryRequest {
+  repoId: string;
+}
+
+export interface RemoveRepositoryResponse {
+}
+
 /** Commits (windowed + streaming) */
 export interface GetCommitsRequest {
   repoId: string;

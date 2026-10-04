@@ -24,7 +24,9 @@
             "tsConfig": "tsconfig.json",
             "inlineStyleLanguage": "scss",
             "assets": [],
-            "styles": ["src/styles.scss"]
+            "styles": [
+              "src/styles.scss"
+            ]
           },
           "configurations": {
             "production": {
@@ -66,7 +68,30 @@
           "builder": "@angular/build:unit-test",
           "options": {
             "tsConfig": "tsconfig.json",
-            "runner": "vitest"
+            "runner": "vitest",
+            "coverage": true,
+            "coverageReporters": [
+              "text",
+              "text-summary",
+              "html",
+              "lcov"
+            ],
+            "coverageInclude": [
+              "src/**/*.ts"
+            ],
+            "coverageExclude": [
+              "src/**/*.spec.ts",
+              "src/test-setup.ts",
+              "src/**/*.d.ts",
+              "src/main.ts",
+              "src/environments/**"
+            ],
+            "coverageThresholds": {
+              "statements": 80,
+              "branches": 80,
+              "functions": 80,
+              "lines": 80
+            }
           }
         }
       }

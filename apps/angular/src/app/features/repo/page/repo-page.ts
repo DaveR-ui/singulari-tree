@@ -1,9 +1,16 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject } from '@angular/core';
+import { RepoState } from '@core/services/repo-state.service';
+import { GraphStore } from '../graph/graph.store';
 import { GraphPage } from '../graph/page/graph-page';
 import { RepoPicker } from '../ui/repo-picker';
 
 /**
  * Routed repository page: picker + real commit graph, filling the shell center.
+ *
+ * It also hydrates the route-scoped `GraphStore` from the root `RepoState`: the
+ * repository list route only calls `RepoState.setActive()` (or opens the repo
+ * itself) before navigating here, so without this sync the graph would stay
+ * empty until the user re-picked from the in-page picker.
  */
 @Component({
   selector: 'st-repo-page',
@@ -53,4 +60,19 @@ import { RepoPicker } from '../ui/repo-picker';
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class RepoPage {}
+export class RepoPage {
+  private readonly repoState = inject(RepoState);
+  private readonly graphStore = inject(GraphStore);
+
+  constructor() {
+    // Sync the active repo into the route-scoped graph. `openRepository` is not
+    // idempotent (it refreshes `last_opened_at`), so guard by id and only open
+    // when the graph currently points at a different repository.
+    effect(() => {
+      const active = this.repoState.activeRepo();
+      if (active && this.graphStore.repoId() !== active.id) {
+        void this.graphStore.openRepository(active.fsPath);
+      }
+    });
+  }
+}

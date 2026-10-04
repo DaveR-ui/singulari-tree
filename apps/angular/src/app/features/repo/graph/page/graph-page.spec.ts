@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Commit } from '@contracts/domain';
 import type { GetCommitsResponse } from '@contracts/gitcore';
 import { IpcBridge } from '@core/services/ipc-bridge.service';
+import { KeyboardShortcutService } from '@core/services/keyboard-shortcut.service';
 import { GraphStore, WIP_OID } from '../graph.store';
 import { GraphPage } from './graph-page';
 
@@ -37,6 +38,16 @@ function makePage(count: number, total = count): GetCommitsResponse {
   };
 }
 
+type ShortcutHandler = (event: KeyboardEvent) => void;
+
+interface ShortcutStub {
+  register: ReturnType<typeof vi.fn>;
+}
+
+function makeShortcuts(): ShortcutStub {
+  return { register: vi.fn((_key: string, _handler: ShortcutHandler) => vi.fn()) };
+}
+
 async function setup(commits = 3, total = commits) {
   const store = new GraphStore({
     invoke: vi.fn(() => Promise.resolve(makePage(commits, total))),
@@ -44,12 +55,18 @@ async function setup(commits = 3, total = commits) {
   store.repoId.set('repo-1');
   await store.loadWindow(0);
 
+  const shortcuts = makeShortcuts();
+
   await TestBed.configureTestingModule({
-    providers: [provideZonelessChangeDetection(), { provide: GraphStore, useValue: store }],
+    providers: [
+      provideZonelessChangeDetection(),
+      { provide: GraphStore, useValue: store },
+      { provide: KeyboardShortcutService, useValue: shortcuts },
+    ],
   }).compileComponents();
 
   const page = TestBed.runInInjectionContext(() => new GraphPage());
-  return { store, page };
+  return { store, page, shortcuts };
 }
 
 describe('GraphPage', () => {
@@ -97,5 +114,35 @@ describe('GraphPage', () => {
 
     page.onScrolledIndexChange(291);
     expect(loadMore).toHaveBeenCalledTimes(1);
+  });
+
+  it('registers arrow and space keyboard shortcuts on construction', async () => {
+    const { shortcuts } = await setup();
+
+    const keys = shortcuts.register.mock.calls.map((call) => call[0]);
+    expect(keys).toEqual(['ArrowDown', 'ArrowUp', ' ']);
+  });
+
+  it('routes keyboard handlers into the store (navigation + diff intent)', async () => {
+    const { store, shortcuts } = await setup(3);
+
+    const handlerFor = (key: string): ShortcutHandler => {
+      const call = shortcuts.register.mock.calls.find(([k]) => k === key);
+      if (!call) throw new Error(`no handler registered for ${key}`);
+      return call[1] as ShortcutHandler;
+    };
+    const event = new KeyboardEvent('keydown');
+
+    handlerFor('ArrowDown')(event);
+    expect(store.selectedIndex()).toBe(0);
+
+    handlerFor('ArrowDown')(event);
+    expect(store.selectedIndex()).toBe(1);
+
+    handlerFor('ArrowUp')(event);
+    expect(store.selectedIndex()).toBe(0);
+
+    handlerFor(' ')(new KeyboardEvent('keydown'));
+    expect(store.diffIntent()).toEqual({ oid: store.selectedOid() });
   });
 });

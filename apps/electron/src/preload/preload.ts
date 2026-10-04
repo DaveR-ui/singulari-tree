@@ -129,6 +129,14 @@ export interface ListRepositoriesResponse {
   repositories: Repository[];
 }
 
+export interface RemoveRepositoryRequest {
+  repoId: string;
+}
+
+export interface RemoveRepositoryResponse {
+  // empty
+}
+
 export interface GetCommitsRequest {
   repoId: string;
   offset: number;
@@ -432,6 +440,7 @@ export interface GitClientApi {
   push: (req: PushRequest) => Promise<void>;
   openRepository: (req: OpenRepositoryRequest) => Promise<Repository>;
   listRepositories: (req: ListRepositoriesRequest) => Promise<ListRepositoriesResponse>;
+  removeRepository: (req: RemoveRepositoryRequest) => Promise<RemoveRepositoryResponse>;
   getAuthStatus: (req: GetAuthStatusRequest) => Promise<GetAuthStatusResponse>;
   connectGitHubFromCLI: (
     req: ConnectGitHubFromCLIRequest,
@@ -460,6 +469,7 @@ const api: GitClientApi = {
   push: (req) => ipcRenderer.invoke('git:push', req),
   openRepository: (req) => ipcRenderer.invoke('git:openRepository', req),
   listRepositories: (req) => ipcRenderer.invoke('git:listRepositories', req),
+  removeRepository: (req) => ipcRenderer.invoke('git:removeRepository', req),
   getAuthStatus: (req) => ipcRenderer.invoke('auth:getAuthStatus', req),
   connectGitHubFromCLI: (req) => ipcRenderer.invoke('auth:connectGitHubFromCLI', req),
   listGitHubRepos: (req) => ipcRenderer.invoke('auth:listGitHubRepos', req),

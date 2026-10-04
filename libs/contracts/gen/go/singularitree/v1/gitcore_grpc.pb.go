@@ -23,6 +23,7 @@ const (
 	GitCore_OpenRepository_FullMethodName   = "/singularitree.v1.GitCore/OpenRepository"
 	GitCore_GetRepository_FullMethodName    = "/singularitree.v1.GitCore/GetRepository"
 	GitCore_ListRepositories_FullMethodName = "/singularitree.v1.GitCore/ListRepositories"
+	GitCore_RemoveRepository_FullMethodName = "/singularitree.v1.GitCore/RemoveRepository"
 	GitCore_GetCommits_FullMethodName       = "/singularitree.v1.GitCore/GetCommits"
 	GitCore_StreamCommits_FullMethodName    = "/singularitree.v1.GitCore/StreamCommits"
 	GitCore_GetBranches_FullMethodName      = "/singularitree.v1.GitCore/GetBranches"
@@ -52,6 +53,7 @@ type GitCoreClient interface {
 	OpenRepository(ctx context.Context, in *OpenRepositoryRequest, opts ...grpc.CallOption) (*Repository, error)
 	GetRepository(ctx context.Context, in *GetRepositoryRequest, opts ...grpc.CallOption) (*Repository, error)
 	ListRepositories(ctx context.Context, in *ListRepositoriesRequest, opts ...grpc.CallOption) (*ListRepositoriesResponse, error)
+	RemoveRepository(ctx context.Context, in *RemoveRepositoryRequest, opts ...grpc.CallOption) (*RemoveRepositoryResponse, error)
 	GetCommits(ctx context.Context, in *GetCommitsRequest, opts ...grpc.CallOption) (*GetCommitsResponse, error)
 	// Root-qualified to disambiguate from the `Commit` service method (which would
 	// otherwise shadow the message of the same name in this service's scope).
@@ -115,6 +117,16 @@ func (c *gitCoreClient) ListRepositories(ctx context.Context, in *ListRepositori
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListRepositoriesResponse)
 	err := c.cc.Invoke(ctx, GitCore_ListRepositories_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gitCoreClient) RemoveRepository(ctx context.Context, in *RemoveRepositoryRequest, opts ...grpc.CallOption) (*RemoveRepositoryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RemoveRepositoryResponse)
+	err := c.cc.Invoke(ctx, GitCore_RemoveRepository_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -346,6 +358,7 @@ type GitCoreServer interface {
 	OpenRepository(context.Context, *OpenRepositoryRequest) (*Repository, error)
 	GetRepository(context.Context, *GetRepositoryRequest) (*Repository, error)
 	ListRepositories(context.Context, *ListRepositoriesRequest) (*ListRepositoriesResponse, error)
+	RemoveRepository(context.Context, *RemoveRepositoryRequest) (*RemoveRepositoryResponse, error)
 	GetCommits(context.Context, *GetCommitsRequest) (*GetCommitsResponse, error)
 	// Root-qualified to disambiguate from the `Commit` service method (which would
 	// otherwise shadow the message of the same name in this service's scope).
@@ -386,6 +399,9 @@ func (UnimplementedGitCoreServer) GetRepository(context.Context, *GetRepositoryR
 }
 func (UnimplementedGitCoreServer) ListRepositories(context.Context, *ListRepositoriesRequest) (*ListRepositoriesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListRepositories not implemented")
+}
+func (UnimplementedGitCoreServer) RemoveRepository(context.Context, *RemoveRepositoryRequest) (*RemoveRepositoryResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RemoveRepository not implemented")
 }
 func (UnimplementedGitCoreServer) GetCommits(context.Context, *GetCommitsRequest) (*GetCommitsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetCommits not implemented")
@@ -527,6 +543,24 @@ func _GitCore_ListRepositories_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(GitCoreServer).ListRepositories(ctx, req.(*ListRepositoriesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GitCore_RemoveRepository_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemoveRepositoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).RemoveRepository(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_RemoveRepository_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).RemoveRepository(ctx, req.(*RemoveRepositoryRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -824,6 +858,10 @@ var GitCore_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListRepositories",
 			Handler:    _GitCore_ListRepositories_Handler,
+		},
+		{
+			MethodName: "RemoveRepository",
+			Handler:    _GitCore_RemoveRepository_Handler,
 		},
 		{
 			MethodName: "GetCommits",

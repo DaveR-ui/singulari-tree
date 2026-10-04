@@ -8,7 +8,7 @@ import {
 import { AUTH_RPC_METHODS, GIT_CORE_RPC_METHODS } from '../src/main/go-core-client';
 
 /**
- * Guards the frozen IPC surface (20 channels) and catches channel→gRPC mapping
+ * Guards the frozen IPC surface (21 channels) and catches channel→gRPC mapping
  * drift: every channel value must resolve to a real RPC on its owning service
  * (`singularitree.v1.GitCore` for `git:*`, `singularitree.v1.Auth` for `auth:*`).
  */
@@ -30,6 +30,7 @@ const EXPECTED_MAPPING: Record<string, string> = {
   'git:push': 'Push',
   'git:openRepository': 'OpenRepository',
   'git:listRepositories': 'ListRepositories',
+  'git:removeRepository': 'RemoveRepository',
   'auth:getAuthStatus': 'GetAuthStatus',
   'auth:connectGitHubFromCLI': 'ConnectGitHubFromCLI',
   'auth:listGitHubRepos': 'ListGitHubRepos',
@@ -37,9 +38,9 @@ const EXPECTED_MAPPING: Record<string, string> = {
 };
 
 describe('CHANNELS ↔ service RPC mapping', () => {
-  it('exposes exactly the 20 frozen channels', () => {
+  it('exposes exactly the 21 frozen channels', () => {
     const values = Object.values(CHANNELS);
-    expect(values).toHaveLength(20);
+    expect(values).toHaveLength(21);
     expect([...values].sort()).toEqual(Object.keys(EXPECTED_MAPPING).sort());
   });
 

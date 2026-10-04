@@ -1,18 +1,18 @@
-/* Layout shell — dark theme #1e1e2e, panels #252536, accent #0a84ff */
+/* Layout shell — aliases the global design tokens for local use. */
 :host {
   display: block;
   --left-w: 260px;
   --right-w: 320px;
   --header-h: 48px;
   --toolbar-h: 44px;
-  --bg: #1e1e2e;
-  --panel: #252536;
-  --panel-2: #2a2a3a;
-  --border: #2f2f44;
-  --text: #d6d6de;
-  --muted: #8a8a9a;
-  --accent: #0a84ff;
-  --accent-soft: rgba(10, 132, 255, 0.15);
+  --bg: var(--st-color-bg);
+  --panel: var(--st-color-surface);
+  --panel-2: var(--st-color-surface-2);
+  --border: var(--st-color-border);
+  --text: var(--st-color-text);
+  --muted: var(--st-color-muted);
+  --accent: var(--st-color-accent);
+  --accent-soft: var(--st-color-accent-soft);
 }
 
 .st-shell {

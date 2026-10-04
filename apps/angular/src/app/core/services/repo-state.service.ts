@@ -42,6 +42,8 @@ export class RepoState {
   readonly reposError = signal<AppError | null>(null);
   /** True when the repository list could not be read because the bridge is absent. */
   readonly reposOffline = signal(false);
+  /** Id of the repository currently being removed, or null when idle. */
+  readonly removingId = signal<RepositoryId | null>(null);
 
   // -- ref lists for the active repository ---------------------------------
   readonly branches = signal<string[]>([]);
@@ -81,6 +83,38 @@ export class RepoState {
       }
     } finally {
       this.reposLoading.set(false);
+    }
+  }
+
+  /**
+   * Remove a persisted repository from the core (`removeRepository`).
+   *
+   * On success the repo is dropped from `repos`; if it was the active one,
+   * `activeId` is cleared and `loadRefs()` runs to clear the ref lists and bump
+   * the generation token. On failure the list/selection are left untouched:
+   * `reposOffline` records a missing bridge, any other error goes to `reposError`.
+   */
+  async removeRepository(id: RepositoryId): Promise<boolean> {
+    this.removingId.set(id);
+    this.reposError.set(null);
+    try {
+      await this.bridge.invoke('removeRepository', { repoId: id });
+      this.reposOffline.set(false);
+      this.repos.update((prev) => prev.filter((repo) => repo.id !== id));
+      if (this.activeId() === id) {
+        this.activeId.set(null);
+        void this.loadRefs();
+      }
+      return true;
+    } catch (err) {
+      if (isIpcUnavailable(err)) {
+        this.reposOffline.set(true);
+      } else {
+        this.reposError.set(toAppError(err));
+      }
+      return false;
+    } finally {
+      this.removingId.set(null);
     }
   }
 

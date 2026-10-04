@@ -30,6 +30,7 @@ export const GIT_CORE_RPC_METHODS = [
   'OpenRepository',
   'GetRepository',
   'ListRepositories',
+  'RemoveRepository',
   'GetCommits',
   'StreamCommits',
   'GetBranches',
@@ -204,6 +205,14 @@ export interface ListRepositoriesRequest {
 
 export interface ListRepositoriesResponse {
   repositories: Repository[];
+}
+
+export interface RemoveRepositoryRequest {
+  repoId: string;
+}
+
+export interface RemoveRepositoryResponse {
+  // empty
 }
 
 export interface GetCommitsRequest {
@@ -566,6 +575,12 @@ export class GoCoreClient {
     req: ListRepositoriesRequest,
   ): Promise<ListRepositoriesResponse> {
     return this.unary<ListRepositoriesResponse>('ListRepositories', req);
+  }
+
+  removeRepository(
+    req: RemoveRepositoryRequest,
+  ): Promise<RemoveRepositoryResponse> {
+    return this.unary<RemoveRepositoryResponse>('RemoveRepository', req);
   }
 
   getCommits(req: GetCommitsRequest): Promise<GetCommitsResponse> {

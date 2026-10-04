@@ -180,6 +180,89 @@ describe('RepoState', () => {
     expect(store.refsOffline()).toBe(false);
   });
 
+  it('removes an active repository, clears the selection and reloads empty refs', async () => {
+    store.repos.set([REPO_A, REPO_B]);
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockResolvedValue({});
+
+    const removed = await store.removeRepository(REPO_A.id);
+
+    expect(removed).toBe(true);
+    expect(bridge.invoke).toHaveBeenCalledWith('removeRepository', { repoId: REPO_A.id });
+    expect(store.repos()).toEqual([REPO_B]);
+    expect(store.activeId()).toBeNull();
+    expect(store.branches()).toEqual([]);
+    expect(store.tags()).toEqual([]);
+    expect(store.remotes()).toEqual([]);
+    expect(store.reposError()).toBeNull();
+    expect(store.removingId()).toBeNull();
+  });
+
+  it('keeps the active selection when a different repository is removed', async () => {
+    store.repos.set([REPO_A, REPO_B]);
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockResolvedValue({});
+
+    const removed = await store.removeRepository(REPO_B.id);
+
+    expect(removed).toBe(true);
+    expect(store.repos()).toEqual([REPO_A]);
+    expect(store.activeId()).toBe(REPO_A.id);
+    expect(store.branches()).toEqual(['main-a', 'feature-a']);
+  });
+
+  it('keeps the list and selection and records the error when removal fails', async () => {
+    store.repos.set([REPO_A, REPO_B]);
+    store.activeId.set(REPO_A.id);
+    bridge.invoke.mockRejectedValue({ code: 'GIT_FAILED', message: 'boom' } as AppError);
+
+    const removed = await store.removeRepository(REPO_A.id);
+
+    expect(removed).toBe(false);
+    expect(store.repos()).toEqual([REPO_A, REPO_B]);
+    expect(store.activeId()).toBe(REPO_A.id);
+    expect(store.reposError()).toEqual({ code: 'GIT_FAILED', message: 'boom', details: {} });
+    expect(store.reposOffline()).toBe(false);
+    expect(store.removingId()).toBeNull();
+  });
+
+  it('sets reposOffline and keeps state when removal hits IPC_UNAVAILABLE', async () => {
+    store.repos.set([REPO_A, REPO_B]);
+    store.activeId.set(REPO_A.id);
+    bridge.invoke.mockRejectedValue({ code: 'IPC_UNAVAILABLE', message: 'no bridge' } as AppError);
+
+    const removed = await store.removeRepository(REPO_A.id);
+
+    expect(removed).toBe(false);
+    expect(store.reposOffline()).toBe(true);
+    expect(store.repos()).toEqual([REPO_A, REPO_B]);
+    expect(store.activeId()).toBe(REPO_A.id);
+    expect(store.reposError()).toBeNull();
+  });
+
+  it('exposes removingId while a removal is in flight', async () => {
+    store.repos.set([REPO_A]);
+    let resolveRemove: (value: unknown) => void = () => {};
+    bridge.invoke.mockImplementation((method: string) => {
+      if (method === 'removeRepository') {
+        return new Promise((resolve) => {
+          resolveRemove = resolve;
+        });
+      }
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    const pending = store.removeRepository(REPO_A.id);
+    expect(store.removingId()).toBe(REPO_A.id);
+
+    resolveRemove({});
+    await pending;
+
+    expect(store.removingId()).toBeNull();
+  });
+
   it('discards a stale response when a newer repository becomes active', async () => {
     let resolveA: (value: unknown) => void = () => {};
     const deferredA = new Promise((resolve) => {

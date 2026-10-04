@@ -12,6 +12,7 @@ service GitCore {
   rpc OpenRepository(OpenRepositoryRequest) returns (Repository);
   rpc GetRepository(GetRepositoryRequest) returns (Repository);
   rpc ListRepositories(ListRepositoriesRequest) returns (ListRepositoriesResponse);
+  rpc RemoveRepository(RemoveRepositoryRequest) returns (RemoveRepositoryResponse);
   rpc GetCommits(GetCommitsRequest) returns (GetCommitsResponse);
   // Root-qualified to disambiguate from the `Commit` service method (which would
   // otherwise shadow the message of the same name in this service's scope).
@@ -46,6 +47,8 @@ message OpenRepositoryRequest { string fs_path = 1; }
 message GetRepositoryRequest { string repo_id = 1; }
 message ListRepositoriesRequest {}
 message ListRepositoriesResponse { repeated Repository repositories = 1; }
+message RemoveRepositoryRequest { string repo_id = 1; }
+message RemoveRepositoryResponse {}
 
 // Commits (windowed + streaming)
 message GetCommitsRequest {

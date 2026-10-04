@@ -20,6 +20,7 @@
     "postinstall": "node tools/scripts/provision-electron.js"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "concurrently": "^9.1.2",
     "wait-on": "^9.1.0"
   },

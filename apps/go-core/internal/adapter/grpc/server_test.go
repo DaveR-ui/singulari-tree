@@ -318,6 +318,65 @@ func TestGetRepositoryUnknown(t *testing.T) {
 	}
 }
 
+func TestRemoveRepositoryUnknown(t *testing.T) {
+	addr := startServer(t)
+	conn, err := googlegrpc.NewClient(addr, googlegrpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer conn.Close()
+	client := singularitreev1.NewGitCoreClient(conn)
+
+	_, err = client.RemoveRepository(authed(context.Background()), &singularitreev1.RemoveRepositoryRequest{RepoId: "nope"})
+	if status.Code(err) != codes.NotFound {
+		t.Fatalf("RemoveRepository(unknown) code = %v, want NotFound", status.Code(err))
+	}
+}
+
+// TestRemoveRepositoryRoundTrip opens a real fixture repo, removes it, and
+// asserts it disappears from ListRepositories and that GetRepository reports
+// NotFound.
+func TestRemoveRepositoryRoundTrip(t *testing.T) {
+	addr := startServer(t)
+	fixture := initFixtureRepo(t)
+
+	conn, err := googlegrpc.NewClient(addr, googlegrpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer conn.Close()
+	client := singularitreev1.NewGitCoreClient(conn)
+	ctx := authed(context.Background())
+
+	repo, err := client.OpenRepository(ctx, &singularitreev1.OpenRepositoryRequest{FsPath: fixture})
+	if err != nil {
+		t.Fatalf("OpenRepository: %v", err)
+	}
+	repoID := repo.GetId()
+
+	resp, err := client.RemoveRepository(ctx, &singularitreev1.RemoveRepositoryRequest{RepoId: repoID})
+	if err != nil {
+		t.Fatalf("RemoveRepository: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("RemoveRepository returned nil response")
+	}
+
+	list, err := client.ListRepositories(ctx, &singularitreev1.ListRepositoriesRequest{})
+	if err != nil {
+		t.Fatalf("ListRepositories: %v", err)
+	}
+	for _, r := range list.GetRepositories() {
+		if r.GetId() == repoID {
+			t.Fatalf("removed repo %q still present in ListRepositories", repoID)
+		}
+	}
+
+	if _, err := client.GetRepository(ctx, &singularitreev1.GetRepositoryRequest{RepoId: repoID}); status.Code(err) != codes.NotFound {
+		t.Fatalf("GetRepository after Remove code = %v, want NotFound", status.Code(err))
+	}
+}
+
 func TestGetBranchesRemotesTags(t *testing.T) {
 	addr := startServer(t)
 	fixture := initFixtureRepo(t)

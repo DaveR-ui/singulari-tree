@@ -52,6 +52,11 @@ export class GraphStore {
   readonly loading = signal(false);
   readonly error = signal<AppError | null>(null);
   readonly selectedOid = signal<string | null>(null);
+  /**
+   * Intent-only signal for the (not-yet-implemented) diff viewer: carries the
+   * oid the user asked to diff. No IPC / panel is wired to it this iteration.
+   */
+  readonly diffIntent = signal<{ oid: string } | null>(null);
   readonly filter = signal('');
   /** Recently opened repositories (from `listRepositories`), newest first. */
   readonly recentRepos = signal<Repository[]>([]);
@@ -69,6 +74,16 @@ export class GraphStore {
     const oid = this.selectedOid();
     if (!oid || oid === WIP_OID) return null;
     return this.rows().find((row) => row.commit.oid?.hex === oid) ?? null;
+  });
+  /**
+   * Index of the selected row within `filteredRows()`; -1 when nothing is
+   * selected, the synthetic WIP node is selected, or the selected oid is
+   * filtered out / absent.
+   */
+  readonly selectedIndex = computed<number>(() => {
+    const oid = this.selectedOid();
+    if (!oid || oid === WIP_OID) return -1;
+    return this.filteredRows().findIndex((row) => row.commit.oid?.hex === oid);
   });
 
   // -- actions -------------------------------------------------------------
@@ -162,6 +177,35 @@ export class GraphStore {
 
   select(oid: string | null): void {
     this.selectedOid.set(oid);
+  }
+
+  /** Move the selection down one visible row, clamping at the last row. */
+  selectNext(): void {
+    this.moveSelection(1);
+  }
+
+  /** Move the selection up one visible row, clamping at the first row. */
+  selectPrevious(): void {
+    this.moveSelection(-1);
+  }
+
+  /**
+   * Intent-only "open diff" action: with no visible selection it first selects
+   * the first row, then publishes that oid on `diffIntent` for a future viewer.
+   */
+  openDiff(): void {
+    if (this.selectedIndex() < 0) this.selectNext();
+    const oid = this.selectedOid();
+    if (oid && oid !== WIP_OID) this.diffIntent.set({ oid });
+  }
+
+  private moveSelection(delta: number): void {
+    const rows = this.filteredRows();
+    if (rows.length === 0) return;
+    const current = this.selectedIndex();
+    const target =
+      current < 0 ? 0 : Math.min(Math.max(current + delta, 0), rows.length - 1);
+    this.selectedOid.set(rows[target].commit.oid?.hex ?? null);
   }
 
   setFilter(query: string): void {

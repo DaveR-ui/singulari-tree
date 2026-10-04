@@ -8,6 +8,7 @@ tmp/
 apps/go-core/go-core
 apps/go-core/*.exe
 dist/
+coverage/
 bin/
 
 # SQLite per-user databases (runtime data, not committed)
@@ -46,3 +47,6 @@ Thumbs.db
 apps/angular/.opencode/
 apps/electron/.opencode/
 apps/go-core/.opencode/
+
+# Playwright e2e artifacts (reports, traces, screenshots, videos)
+apps/electron/e2e-results/

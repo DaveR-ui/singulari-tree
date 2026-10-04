@@ -53,7 +53,7 @@ func (s *RepoService) List(ctx context.Context) ([]domain.Repository, error) {
 // Remove untracks a repository.
 func (s *RepoService) Remove(ctx context.Context, id domain.RepositoryId) error {
 	if s.repoPort == nil {
-		return nil
+		return domain.ErrRepoNotFound
 	}
 	return s.repoPort.Remove(ctx, id)
 }

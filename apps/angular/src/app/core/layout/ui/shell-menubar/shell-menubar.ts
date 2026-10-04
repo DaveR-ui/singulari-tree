@@ -1,8 +1,9 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import type { Theme } from '@core/services/theme.service';
 
 /**
- * Menu bar chrome (File/Edit/View/…) plus the two sidebar toggle icon buttons.
- * Labels are inert chrome; the toggles bubble up to the shell container.
+ * Menu bar chrome (File/Edit/View/…) plus the sidebar and theme toggle icon
+ * buttons. Labels are inert chrome; the toggles bubble up to the shell container.
  */
 @Component({
   selector: 'st-shell-menubar',
@@ -13,6 +14,16 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
       <span>File</span><span>Edit</span><span>View</span><span>Repository</span><span>Branch</span
       ><span>Help</span>
       <span class="st-menubar__spacer"></span>
+      <button
+        class="st-icon-btn"
+        type="button"
+        data-testid="theme-toggle"
+        (click)="themeToggle.emit()"
+        [attr.aria-label]="theme() === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
+        [title]="theme() === 'dark' ? 'Light theme' : 'Dark theme'"
+      >
+        {{ theme() === 'dark' ? '☀' : '🌙' }}
+      </button>
       <button
         class="st-icon-btn"
         type="button"
@@ -43,7 +54,7 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
       align-items: center;
       gap: 14px;
       padding: 6px 12px;
-      background: #1a1a2e;
+      background: var(--st-color-menubar, #1a1a2e);
       border-bottom: 1px solid var(--border, #2f2f44);
       color: var(--muted, #8a8a9a);
       font-size: 12px;
@@ -81,6 +92,9 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
 export class ShellMenubar {
   readonly leftCollapsed = input(false);
   readonly rightCollapsed = input(false);
+  /** Current theme; drives the sun/moon icon and the toggle's aria-label. */
+  readonly theme = input<Theme>('dark');
   readonly toggleLeft = output<void>();
   readonly toggleRight = output<void>();
+  readonly themeToggle = output<void>();
 }

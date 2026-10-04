@@ -11,6 +11,10 @@ export const routes: Routes = [
     loadChildren: () => import('./features/repo/repo.routes').then((m) => m.REPO_ROUTES),
   },
   {
+    path: 'repos',
+    loadChildren: () => import('./features/repos/repos.routes').then((m) => m.REPOS_ROUTES),
+  },
+  {
     path: 'github-account',
     loadChildren: () =>
       import('./features/github-account/github-account.routes').then((m) => m.GITHUB_ACCOUNT_ROUTES),
