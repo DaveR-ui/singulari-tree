@@ -10,6 +10,7 @@ import {
 import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
 import { GRAPH_ROW_HEIGHT, GraphRow } from '@singularitree/ui-kit';
 import { KeyboardShortcutService } from '@core/services/keyboard-shortcut.service';
+import type { CommitRow } from '../../repo-models';
 import { GRAPH_PREFETCH_THRESHOLD, GraphStore, WIP_OID } from '../graph.store';
 import { CommitDetailsPanel } from '../ui/commit-details-panel';
 import { WipRow } from '../ui/wip-row';
@@ -62,7 +63,7 @@ import { WipRow } from '../ui/wip-row';
             (scrolledIndexChange)="onScrolledIndexChange($event)"
           >
             <st-graph-row
-              *cdkVirtualFor="let row of store.filteredRows()"
+              *cdkVirtualFor="let row of store.filteredRows(); trackBy: trackByRow"
               [commit]="row.commit"
               [lane]="row.lane"
               [maxLane]="maxLane()"
@@ -177,6 +178,15 @@ export class GraphPage {
   /** Must match `GRAPH_ROW_HEIGHT` so CDK virtualization delegates row height. */
   readonly rowHeight = GRAPH_ROW_HEIGHT;
   readonly maxLane = computed(() => this.store.maxLane());
+
+  /**
+   * Stable CDK identity for row DOM reuse on window shifts: the commit oid hex,
+   * falling back to the synthetic WIP pseudo-oid for a row without an oid.
+   * A readonly field (not a class expression) keeps the reference stable across
+   * change-detection cycles, so the trackBy is not recreated per CD pass.
+   */
+  readonly trackByRow = (_index: number, row: CommitRow): string =>
+    row.commit.oid?.hex ?? WIP_OID;
 
   /** Bound to the CDK viewport so keyboard navigation can reveal the selection. */
   readonly viewport = viewChild(CdkVirtualScrollViewport);

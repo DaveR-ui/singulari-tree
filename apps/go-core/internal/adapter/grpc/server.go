@@ -154,7 +154,7 @@ func (s *Server) GetCommits(ctx context.Context, req *singularitreev1.GetCommits
 	return out, nil
 }
 
-// GetBranches returns the repository's local branches.
+// GetBranches returns the repository's local and remote-tracking branches.
 func (s *Server) GetBranches(ctx context.Context, req *singularitreev1.GetBranchesRequest) (*singularitreev1.GetBranchesResponse, error) {
 	if s.gitSvc == nil {
 		return nil, status.Error(codes.FailedPrecondition, "git service not configured")

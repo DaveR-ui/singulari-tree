@@ -127,7 +127,7 @@ func main() {
 	repoStore := repository.NewRepoStore(db)
 	gitAdapter := git.NewAdapter(repoStore)
 	repoSvc := service.NewRepoService(repoStore, gitAdapter)
-	cacheSvc := service.NewCacheServiceWithStore(500, repository.NewCommitCache(db))
+	cacheSvc := service.NewCacheServiceWithStore(service.DefaultLRUCapacity, repository.NewCommitCache(db))
 	graphSvc := service.NewGraphService(gitAdapter, cacheSvc)
 	watcherSvc := service.NewWatcherService(watcher.NewFsnotifyAdapter())
 	gitSvc := service.NewGitService(gitAdapter, cacheSvc, watcherSvc)

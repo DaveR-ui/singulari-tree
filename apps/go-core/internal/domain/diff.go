@@ -87,7 +87,8 @@ type WatcherPort interface {
 	Unwatch(repoID RepositoryId) error
 }
 
-// FsChangedEvent is emitted by WatcherService (debounced 150ms).
+// FsChangedEvent is emitted by WatcherService, coalesced over its debounce
+// window (default 150ms).
 type FsChangedEvent struct {
 	RepoID RepositoryId
 	Paths  []string

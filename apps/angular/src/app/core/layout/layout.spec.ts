@@ -73,6 +73,7 @@ interface StubRepoStateOptions {
   repos?: Repository[];
   activeId?: string | null;
   branches?: string[];
+  remoteBranches?: string[];
   tags?: string[];
   remotes?: string[];
   refsLoading?: boolean;
@@ -81,6 +82,7 @@ interface StubRepoStateOptions {
   reposLoading?: boolean;
   reposError?: AppError | null;
   reposOffline?: boolean;
+  removingId?: string | null;
 }
 
 function makeRepoState(opts: StubRepoStateOptions = {}) {
@@ -96,7 +98,9 @@ function makeRepoState(opts: StubRepoStateOptions = {}) {
     reposLoading: signal(opts.reposLoading ?? false),
     reposError: signal<AppError | null>(opts.reposError ?? null),
     reposOffline: signal(opts.reposOffline ?? false),
+    removingId: signal<string | null>(opts.removingId ?? null),
     branches: signal<string[]>(opts.branches ?? []),
+    remoteBranches: signal<string[]>(opts.remoteBranches ?? []),
     tags: signal<string[]>(opts.tags ?? []),
     remotes: signal<string[]>(opts.remotes ?? []),
     refsLoading: signal(opts.refsLoading ?? false),
@@ -105,6 +109,7 @@ function makeRepoState(opts: StubRepoStateOptions = {}) {
     loadRepositories: vi.fn(async () => {}),
     setActive: vi.fn(),
     loadRefs: vi.fn(async () => {}),
+    removeRepository: vi.fn(async () => true),
   };
 }
 
@@ -233,6 +238,17 @@ describe('LayoutComponent', () => {
     expect(repoState.setActive).toHaveBeenCalledWith(repo);
   });
 
+  it('removes a repository from the drawer, clearing the active selection', async () => {
+    const repo = makeRepository(1);
+    const { fixture, repoState } = await setup({ repos: [repo], activeId: repo.id });
+
+    query<HTMLButtonElement>(fixture, 'repo-drawer-remove')!.click();
+    fixture.detectChanges();
+
+    expect(repoState.removeRepository).toHaveBeenCalledTimes(1);
+    expect(repoState.removeRepository).toHaveBeenCalledWith(repo.id);
+  });
+
   it('persists the right-collapsed state to localStorage', async () => {
     const { fixture } = await setup();
 
@@ -297,6 +313,19 @@ describe('LayoutComponent', () => {
     expect(branches?.textContent).toContain('feature/x');
     expect(el.querySelector('[data-testid="st-sidebar-remotes"]')?.textContent).toContain('origin');
     expect(el.querySelector('[data-testid="st-sidebar-branches-empty"]')).toBeNull();
+  });
+
+  it('passes real remote branches into the sidebar REMOTES section', async () => {
+    const { fixture } = await setup({
+      remotes: ['origin'],
+      remoteBranches: ['origin/david/topic'],
+    });
+    const el = fixture.nativeElement as HTMLElement;
+
+    const items = Array.from(
+      el.querySelectorAll('[data-testid="st-sidebar-remote-branches"]'),
+    ).map((li) => li.textContent?.trim());
+    expect(items).toEqual(['david/topic']);
   });
 
   it('renders a real tag name once the TAGS section is expanded', async () => {

@@ -6,6 +6,7 @@ import type { GetCommitsResponse } from '@contracts/gitcore';
 import { IpcBridge } from '@core/services/ipc-bridge.service';
 import { KeyboardShortcutService } from '@core/services/keyboard-shortcut.service';
 import { GraphStore, WIP_OID } from '../graph.store';
+import type { CommitRow } from '../../repo-models';
 import { GraphPage } from './graph-page';
 
 // The virtual viewport itself is CDK's concern (and needs real layout, absent in
@@ -73,6 +74,32 @@ describe('GraphPage', () => {
   it('uses the 28px item size for the virtual viewport', async () => {
     const { page } = await setup();
     expect(page.rowHeight).toBe(28);
+  });
+
+  it('tracks rows by a stable commit identity (same row twice, distinct commits apart)', async () => {
+    const { page, store } = await setup(3);
+    const [first, second] = store.filteredRows();
+
+    const keyA = page.trackByRow(0, first);
+    const keyB = page.trackByRow(1, first);
+
+    // Same row → same key regardless of index; key equals the commit oid hex.
+    expect(keyA).toBe(keyB);
+    expect(keyA).toBe(first.commit.oid?.hex);
+    // Different commits → distinct keys.
+    expect(page.trackByRow(0, second)).not.toBe(keyA);
+  });
+
+  it('falls back to the WIP pseudo-oid when a row has no oid', async () => {
+    const { page } = await setup(1);
+    const rowWithoutOid = {
+      commit: { ...makeCommit(0), oid: undefined },
+      lane: { index: 0, color: 0, continues: false },
+      refs: [],
+      isHead: false,
+    } satisfies CommitRow;
+
+    expect(page.trackByRow(0, rowWithoutOid)).toBe(WIP_OID);
   });
 
   it('exposes the highest lane index for the SVG graph column width', async () => {

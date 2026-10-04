@@ -7,17 +7,23 @@ import { registerIpcHandlers } from '../ipc/handlers';
 import { sendProgress } from '../ipc/events';
 import { Supervisor } from './supervisor';
 import { buildAppMenu } from './app-menu';
+import { registerAppProtocol, registerPrivilegedSchemes } from './protocol';
+
+// Must be called before app.whenReady() (module top level) so the privileged
+// `app://` scheme is registered in time.
+registerPrivilegedSchemes();
 
 let mainWindow: BrowserWindow | null = null;
 let supervisor: Supervisor | null = null;
 
 function getGoCoreBinary(): string {
+  const exe = process.platform === 'win32' ? '.exe' : '';
   // In packaged app, go-core binary is alongside resources.
   if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'go-core', 'go-core');
+    return path.join(process.resourcesPath, 'go-core', 'go-core' + exe);
   }
   // Dev — look for built binary under SingulariTree/dist
-  return path.join(app.getAppPath(), '../../dist/go-core');
+  return path.join(app.getAppPath(), '../../dist/go-core' + exe);
 }
 
 /**
@@ -85,6 +91,9 @@ async function loadWithRetry(win: BrowserWindow, url: string): Promise<void> {
 async function bootstrap(): Promise<void> {
   await app.whenReady();
 
+  // Serve the packaged renderer over the privileged `app://` origin.
+  registerAppProtocol();
+
   Menu.setApplicationMenu(buildAppMenu());
 
   mainWindow = createMainWindow();
@@ -132,12 +141,9 @@ async function bootstrap(): Promise<void> {
       mainWindow.webContents.openDevTools({ mode: 'detach' });
     }
   } else {
-    // Production — Angular build output
-    const indexHtml = path.join(__dirname, '../../apps/angular/dist/browser/index.html');
-    const fallback = path.join(__dirname, '../angular/browser/index.html');
-    const fs = await import('node:fs');
-    const target = fs.existsSync(indexHtml) ? indexHtml : fallback;
-    await mainWindow.loadFile(target);
+    // Production — Angular build output served through the `app://` protocol
+    // (renderer root resolved inside protocol.ts for dev vs packaged).
+    await mainWindow.loadURL('app://bundle/index.html');
   }
 
   app.on('window-all-closed', () => {

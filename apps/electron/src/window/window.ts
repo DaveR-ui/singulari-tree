@@ -20,13 +20,16 @@ export function createMainWindow(): BrowserWindow {
   });
 
   // CSP enforcement — header injection; relaxed for localhost in dev.
+  // If the response already carries a CSP (e.g. `app://` responses set it in
+  // main/protocol.ts), keep it rather than appending a second, invalid policy.
   win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Content-Security-Policy': [csp],
-      },
-    });
+    const existing = Object.keys(details.responseHeaders ?? {}).some(
+      (k) => k.toLowerCase() === 'content-security-policy',
+    );
+    const responseHeaders = existing
+      ? details.responseHeaders
+      : { ...details.responseHeaders, 'Content-Security-Policy': [csp] };
+    callback({ responseHeaders });
   });
 
   win.once('ready-to-show', () => win.show());

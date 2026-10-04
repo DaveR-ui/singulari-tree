@@ -11,6 +11,7 @@ const REPO_B: RepoCardView = { id: 'repo-b', name: 'beta', subtitle: '/tmp/b' };
 interface SetupOptions {
   repos?: RepoCardView[];
   selectedId?: string | null;
+  removingId?: string | null;
   loading?: boolean;
   offline?: boolean;
   error?: AppError | null;
@@ -25,6 +26,7 @@ async function setup(opts: SetupOptions = {}): Promise<ComponentFixture<RepoDraw
   const ref = fixture.componentRef;
   ref.setInput('repos', opts.repos ?? []);
   ref.setInput('selectedId', opts.selectedId ?? null);
+  ref.setInput('removingId', opts.removingId ?? null);
   ref.setInput('loading', opts.loading ?? false);
   ref.setInput('offline', opts.offline ?? false);
   ref.setInput('error', opts.error ?? null);
@@ -35,6 +37,14 @@ async function setup(opts: SetupOptions = {}): Promise<ComponentFixture<RepoDraw
 function cards(fixture: ComponentFixture<RepoDrawer>): HTMLElement[] {
   return Array.from(
     (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('[data-testid="repo-card"]'),
+  );
+}
+
+function removeButtons(fixture: ComponentFixture<RepoDrawer>): HTMLButtonElement[] {
+  return Array.from(
+    (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+      '[data-testid="repo-drawer-remove"]',
+    ),
   );
 }
 
@@ -112,5 +122,26 @@ describe('RepoDrawer', () => {
     (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.st-right__add')!.click();
 
     expect(requested).toBe(1);
+  });
+
+  it('emits removeRequested with the id and not repoSelected', async () => {
+    const fixture = await setup({ repos: [REPO_A, REPO_B] });
+    const removed: string[] = [];
+    const selected: string[] = [];
+    fixture.componentInstance.removeRequested.subscribe((id) => removed.push(id));
+    fixture.componentInstance.repoSelected.subscribe((id) => selected.push(id));
+
+    removeButtons(fixture)[1].click();
+
+    expect(removed).toEqual([REPO_B.id]);
+    expect(selected).toEqual([]);
+  });
+
+  it('disables the remove button while its repository is being removed', async () => {
+    const fixture = await setup({ repos: [REPO_A, REPO_B], removingId: REPO_A.id });
+
+    const [first, second] = removeButtons(fixture);
+    expect(first.disabled).toBe(true);
+    expect(second.disabled).toBe(false);
   });
 });

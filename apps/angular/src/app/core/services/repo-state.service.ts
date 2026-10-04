@@ -46,7 +46,10 @@ export class RepoState {
   readonly removingId = signal<RepositoryId | null>(null);
 
   // -- ref lists for the active repository ---------------------------------
+  /** Local branch display names (remote-tracking branches are excluded). */
   readonly branches = signal<string[]>([]);
+  /** Remote-tracking branch display names, e.g. `origin/david/topic`. */
+  readonly remoteBranches = signal<string[]>([]);
   readonly tags = signal<string[]>([]);
   readonly remotes = signal<string[]>([]);
   readonly refsLoading = signal(false);
@@ -132,8 +135,10 @@ export class RepoState {
   }
 
   /**
-   * Load branch/tag/remote display names for the active repository. Clears the
-   * lists when there is no active repo; records `refsOffline` on a missing
+   * Load branch/tag/remote display names for the active repository. Local
+   * branches (`!isRemote`) feed `branches`; remote-tracking branches
+   * (`isRemote`) feed `remoteBranches`; `origin/HEAD` is never surfaced. Clears
+   * the lists when there is no active repo; records `refsOffline` on a missing
    * bridge and any other failure on `refsError`. A monotonic generation token
    * discards late responses from a repository that is no longer active.
    */
@@ -144,9 +149,7 @@ export class RepoState {
 
     if (!id) {
       this.refsOffline.set(false);
-      this.branches.set([]);
-      this.tags.set([]);
-      this.remotes.set([]);
+      this.clearRefLists();
       this.refsLoading.set(false);
       return;
     }
@@ -161,7 +164,15 @@ export class RepoState {
       // Stale response: a newer loadRefs superseded this one.
       if (generation !== this.refsGeneration) return;
       this.refsOffline.set(false);
-      this.branches.set(branches.branches.map((b) => b.name));
+      const refs = branches.branches ?? [];
+      this.branches.set(refs.filter((b) => !b.isRemote).map((b) => b.name));
+      // Defensive: never surface the symbolic `origin/HEAD` remote ref
+      // (matched on the raw ref so it holds regardless of short-name form).
+      this.remoteBranches.set(
+        refs
+          .filter((b) => b.isRemote && !b.refName.endsWith('/HEAD'))
+          .map((b) => b.name),
+      );
       this.tags.set(tags.tags.map((t) => t.name));
       this.remotes.set(remotes.remotes.map((r) => r.name));
     } catch (err) {
@@ -169,17 +180,20 @@ export class RepoState {
       if (generation !== this.refsGeneration) return;
       if (isIpcUnavailable(err)) {
         this.refsOffline.set(true);
-        this.branches.set([]);
-        this.tags.set([]);
-        this.remotes.set([]);
       } else {
         this.refsError.set(toAppError(err));
-        this.branches.set([]);
-        this.tags.set([]);
-        this.remotes.set([]);
       }
+      this.clearRefLists();
     } finally {
       if (generation === this.refsGeneration) this.refsLoading.set(false);
     }
+  }
+
+  /** Clear every ref list; used when there is no active repo or on failure. */
+  private clearRefLists(): void {
+    this.branches.set([]);
+    this.remoteBranches.set([]);
+    this.tags.set([]);
+    this.remotes.set([]);
   }
 }

@@ -531,8 +531,8 @@ func TestParseRemotesAllowsDottedNames(t *testing.T) {
 
 func TestParseBranchesCurrent(t *testing.T) {
 	out := strings.Join([]string{
-		"refs/heads/main" + unitSep + strings.Repeat("a", 40) + unitSep + "origin/main" + unitSep + "refs/remotes/origin/main" + recordSep,
-		"refs/heads/other" + unitSep + strings.Repeat("b", 40) + unitSep + "" + unitSep + "" + recordSep,
+		"refs/heads/main" + unitSep + strings.Repeat("a", 40) + unitSep + "origin/main" + unitSep + "refs/remotes/origin/main" + unitSep + "" + recordSep,
+		"refs/heads/other" + unitSep + strings.Repeat("b", 40) + unitSep + "" + unitSep + "" + unitSep + "" + recordSep,
 	}, "")
 	branches := parseBranches(out, "main")
 	if len(branches) != 2 {
@@ -549,5 +549,124 @@ func TestParseBranchesCurrent(t *testing.T) {
 	}
 	if branches[1].Upstream != nil {
 		t.Errorf("other.Upstream = %+v, want nil", branches[1].Upstream)
+	}
+}
+
+// TestBranchListIncludesRemoteRefs proves that remote-tracking refs under
+// refs/remotes are enumerated as domain.Branch{IsRemote:true} alongside local
+// branches, that the symbolic refs/remotes/origin/HEAD is excluded, and that
+// local-branch behavior is unchanged. The refs are created locally with
+// `git update-ref` / `git symbolic-ref`, so no network access is required.
+func TestBranchListIncludesRemoteRefs(t *testing.T) {
+	dir := initRepo(t)
+	gitRun(t, dir, "branch", "-M", "main")
+	head := gitRun(t, dir, "rev-parse", "HEAD")
+
+	// Simulate the state left by a fetch: remote-tracking refs plus the
+	// symbolic origin/HEAD that points at the remote's default branch.
+	gitRun(t, dir, "update-ref", "refs/remotes/origin/main", head)
+	gitRun(t, dir, "update-ref", "refs/remotes/origin/david/testbranches", head)
+	gitRun(t, dir, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+
+	repoID := domain.RepositoryId("repo-1")
+	a := NewAdapter(&fakeRepoPort{fsPath: dir})
+
+	branches, err := a.BranchList(context.Background(), repoID)
+	if err != nil {
+		t.Fatalf("BranchList: %v", err)
+	}
+
+	byName := map[string]domain.Branch{}
+	names := make([]string, 0, len(branches))
+	for _, b := range branches {
+		byName[b.Name] = b
+		names = append(names, b.Name)
+	}
+
+	// Local branch remains current and non-remote.
+	main, ok := byName["main"]
+	if !ok {
+		t.Fatalf("missing local main in %+v", names)
+	}
+	if main.IsRemote {
+		t.Errorf("main.IsRemote = true, want false")
+	}
+	if !main.IsCurrent {
+		t.Errorf("main.IsCurrent = false, want true")
+	}
+
+	// Remote-tracking branch is enumerated and flagged correctly.
+	remote, ok := byName["origin/david/testbranches"]
+	if !ok {
+		t.Fatalf("missing origin/david/testbranches in %+v", names)
+	}
+	if !remote.IsRemote {
+		t.Errorf("origin/david/testbranches IsRemote = false, want true")
+	}
+	if remote.IsCurrent {
+		t.Errorf("remote branch marked current, want false")
+	}
+	if remote.RefName.Raw != "refs/remotes/origin/david/testbranches" {
+		t.Errorf("remote RefName.Raw = %q, want refs/remotes/origin/david/testbranches", remote.RefName.Raw)
+	}
+	if remote.Tip.Hex != head {
+		t.Errorf("remote Tip = %s, want %s", remote.Tip.Hex, head)
+	}
+	if remote.Upstream != nil {
+		t.Errorf("remote Upstream = %+v, want nil", remote.Upstream)
+	}
+
+	// The second remote-tracking branch is present too.
+	if _, ok := byName["origin/main"]; !ok {
+		t.Errorf("missing origin/main in %+v", names)
+	}
+
+	// The symbolic origin/HEAD must not surface as a normal branch.
+	if _, ok := byName["origin/HEAD"]; ok {
+		t.Errorf("origin/HEAD should be excluded, got %+v", names)
+	}
+}
+
+// TestParseBranchesRemote is a pure-helper test proving that refs/remotes/*
+// records parse to IsRemote:true (never current/no upstream) and that a
+// symbolic record (non-empty symref) is skipped.
+func TestParseBranchesRemote(t *testing.T) {
+	localOid := strings.Repeat("a", 40)
+	remoteOid := strings.Repeat("b", 40)
+	out := strings.Join([]string{
+		"refs/heads/main" + unitSep + localOid + unitSep + "" + unitSep + "" + unitSep + "" + recordSep,
+		"refs/remotes/origin/david/testbranches" + unitSep + remoteOid + unitSep + "" + unitSep + "" + unitSep + "" + recordSep,
+		// Symbolic origin/HEAD carries a symref target and must be excluded.
+		"refs/remotes/origin/HEAD" + unitSep + remoteOid + unitSep + "" + unitSep + "" + unitSep + "refs/remotes/origin/main" + recordSep,
+	}, "")
+
+	branches := parseBranches(out, "main")
+	if len(branches) != 2 {
+		t.Fatalf("len(branches) = %d, want 2 (%+v)", len(branches), branches)
+	}
+
+	local := branches[0]
+	if local.Name != "main" || local.IsRemote || !local.IsCurrent {
+		t.Errorf("local = %+v, want current local main", local)
+	}
+
+	remote := branches[1]
+	if remote.Name != "origin/david/testbranches" {
+		t.Errorf("remote.Name = %q, want origin/david/testbranches", remote.Name)
+	}
+	if !remote.IsRemote {
+		t.Errorf("remote.IsRemote = false, want true")
+	}
+	if remote.IsCurrent {
+		t.Errorf("remote.IsCurrent = true, want false")
+	}
+	if remote.RefName.Raw != "refs/remotes/origin/david/testbranches" {
+		t.Errorf("remote.RefName.Raw = %q, want refs/remotes/origin/david/testbranches", remote.RefName.Raw)
+	}
+	if remote.Upstream != nil {
+		t.Errorf("remote.Upstream = %+v, want nil", remote.Upstream)
+	}
+	if remote.Tip.Hex != remoteOid {
+		t.Errorf("remote.Tip = %s, want %s", remote.Tip.Hex, remoteOid)
 	}
 }

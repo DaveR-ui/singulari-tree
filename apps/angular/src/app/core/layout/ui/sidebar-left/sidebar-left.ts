@@ -1,10 +1,16 @@
-import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 import type { AppError } from '@core/services/ipc-bridge.service';
 
 interface WorkspaceItem {
   readonly kind: string;
   readonly label: string;
   readonly icon: string;
+}
+
+/** One REMOTES group: a remote config name plus its known remote branches. */
+interface RemoteGroup {
+  readonly remote: string;
+  readonly branches: string[];
 }
 
 /**
@@ -110,14 +116,24 @@ interface WorkspaceItem {
             <p class="st-left__empty" data-testid="st-sidebar-refs-offline">Git core offline</p>
           } @else if (error(); as err) {
             <p class="st-left__empty" data-testid="st-sidebar-refs-error">{{ err.message }}</p>
-          } @else if (remotes().length === 0) {
+          } @else if (remoteGroups().length === 0) {
             <p class="st-left__empty" data-testid="st-sidebar-remotes-empty">No remotes</p>
           } @else {
-            <ul class="st-left__list" data-testid="st-sidebar-remotes">
-              @for (remote of remotes(); track remote) {
-                <li class="st-left__item st-left__sub">{{ remote }}</li>
+            <div data-testid="st-sidebar-remotes">
+              @for (group of remoteGroups(); track group.remote) {
+                <ul class="st-left__list">
+                  <li class="st-left__item st-left__sub">{{ group.remote }}</li>
+                  @for (branch of group.branches; track branch) {
+                    <li
+                      class="st-left__item st-left__sub st-left__sub--branch"
+                      data-testid="st-sidebar-remote-branches"
+                    >
+                      {{ branch }}
+                    </li>
+                  }
+                </ul>
               }
-            </ul>
+            </div>
           }
         }
       </div>
@@ -233,6 +249,10 @@ interface WorkspaceItem {
       color: var(--muted, #8a8a9a);
     }
 
+    .st-left__sub--branch {
+      padding-left: 58px;
+    }
+
     .st-left__empty {
       margin: 0;
       padding: 4px 10px 4px 28px;
@@ -276,8 +296,12 @@ interface WorkspaceItem {
 })
 export class SidebarLeft {
   readonly collapsed = input(false);
+  /** Local branch display names. */
   readonly branches = input<readonly string[]>([]);
+  /** Remote-tracking branch names, e.g. `origin/david/topic`. */
+  readonly remoteBranches = input<readonly string[]>([]);
   readonly tags = input<readonly string[]>([]);
+  /** Remote config names (not remote branches). */
   readonly remotes = input<readonly string[]>([]);
   readonly loading = input(false);
   readonly offline = input(false);
@@ -287,6 +311,39 @@ export class SidebarLeft {
 
   readonly collapseToggle = output<void>();
   readonly workspaceSelected = output<string>();
+
+  /**
+   * REMOTES groups: every configured remote (in order) plus any remote derived
+   * from a remote-tracking branch name. Each group lists its branch short names
+   * (remote prefix stripped). Remote visibility never requires a local
+   * tracking branch.
+   */
+  readonly remoteGroups = computed<RemoteGroup[]>(() => {
+    const groups: RemoteGroup[] = [];
+    const indexByRemote = new Map<string, number>();
+    const ensure = (remote: string): RemoteGroup => {
+      const existing = indexByRemote.get(remote);
+      if (existing !== undefined) return groups[existing];
+      const group: RemoteGroup = { remote, branches: [] };
+      indexByRemote.set(remote, groups.length);
+      groups.push(group);
+      return group;
+    };
+
+    for (const remote of this.remotes()) ensure(remote);
+
+    for (const branch of this.remoteBranches()) {
+      const separator = branch.indexOf('/');
+      if (separator <= 0) continue;
+      const remote = branch.slice(0, separator);
+      const shortName = branch.slice(separator + 1);
+      if (!remote || !shortName) continue;
+      const group = ensure(remote);
+      if (!group.branches.includes(shortName)) group.branches.push(shortName);
+    }
+
+    return groups;
+  });
 
   readonly WORKSPACE: readonly WorkspaceItem[] = [
     { kind: 'status', label: 'File status', icon: '▦' },

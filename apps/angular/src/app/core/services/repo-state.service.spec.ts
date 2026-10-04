@@ -31,6 +31,17 @@ function branch(name: string): Branch {
   };
 }
 
+function remoteBranch(name: string): Branch {
+  return {
+    name,
+    refName: `refs/remotes/${name}`,
+    tip: undefined,
+    upstream: '',
+    isCurrent: false,
+    isRemote: true,
+  };
+}
+
 function remote(name: string): Remote {
   return { name, urls: [], fetchSpecs: [] };
 }
@@ -51,7 +62,16 @@ function makeBridge(): IpcBridge & { invoke: Mock } {
     const suffix = req.repoId === REPO_A.id ? 'a' : 'b';
     switch (method) {
       case 'getBranches':
-        return { branches: [branch(`main-${suffix}`), branch(`feature-${suffix}`)] };
+        return {
+          branches: [
+            branch(`main-${suffix}`),
+            branch(`feature-${suffix}`),
+            remoteBranch(`origin/base-${suffix}`),
+            remoteBranch(`origin/david/topic-${suffix}`),
+            // Defensive: the symbolic HEAD must never reach the UI.
+            remoteBranch('origin/HEAD'),
+          ],
+        };
       case 'getRemotes':
         return { remotes: [remote(`origin-${suffix}`)] };
       case 'getTags':
@@ -83,6 +103,7 @@ describe('RepoState', () => {
     expect(bridge.invoke).toHaveBeenCalledWith('getRemotes', { repoId: REPO_A.id });
     expect(bridge.invoke).toHaveBeenCalledWith('getTags', { repoId: REPO_A.id });
     expect(bridge.invoke.mock.calls.filter((c) => c[0] === 'getBranches')).toHaveLength(1);
+    expect(store.remoteBranches()).toEqual(['origin/base-a', 'origin/david/topic-a']);
     expect(store.tags()).toEqual(['v1-a']);
     expect(store.remotes()).toEqual(['origin-a']);
     expect(store.refsLoading()).toBe(false);
@@ -137,6 +158,7 @@ describe('RepoState', () => {
 
   it('clears the lists without touching the bridge when there is no active repo', async () => {
     store.branches.set(['stale']);
+    store.remoteBranches.set(['origin/stale']);
     store.tags.set(['stale']);
     store.remotes.set(['stale']);
     store.refsOffline.set(true);
@@ -144,6 +166,7 @@ describe('RepoState', () => {
     await store.loadRefs();
 
     expect(store.branches()).toEqual([]);
+    expect(store.remoteBranches()).toEqual([]);
     expect(store.tags()).toEqual([]);
     expect(store.remotes()).toEqual([]);
     expect(store.refsOffline()).toBe(false);
@@ -158,6 +181,7 @@ describe('RepoState', () => {
 
     await vi.waitFor(() => expect(store.refsOffline()).toBe(true));
     expect(store.branches()).toEqual([]);
+    expect(store.remoteBranches()).toEqual([]);
     expect(store.tags()).toEqual([]);
     expect(store.remotes()).toEqual([]);
     expect(store.refsLoading()).toBe(false);
@@ -166,6 +190,7 @@ describe('RepoState', () => {
 
   it('records a generic error and clears stale lists', async () => {
     store.branches.set(['stale']);
+    store.remoteBranches.set(['origin/stale']);
     store.tags.set(['stale']);
     store.remotes.set(['stale']);
     bridge.invoke.mockRejectedValue({ code: 'GIT_FAILED', message: 'boom' } as AppError);
@@ -174,6 +199,7 @@ describe('RepoState', () => {
 
     await vi.waitFor(() => expect(store.refsError()).toEqual({ code: 'GIT_FAILED', message: 'boom', details: {} }));
     expect(store.branches()).toEqual([]);
+    expect(store.remoteBranches()).toEqual([]);
     expect(store.tags()).toEqual([]);
     expect(store.remotes()).toEqual([]);
     expect(store.refsLoading()).toBe(false);
@@ -193,6 +219,7 @@ describe('RepoState', () => {
     expect(store.repos()).toEqual([REPO_B]);
     expect(store.activeId()).toBeNull();
     expect(store.branches()).toEqual([]);
+    expect(store.remoteBranches()).toEqual([]);
     expect(store.tags()).toEqual([]);
     expect(store.remotes()).toEqual([]);
     expect(store.reposError()).toBeNull();
@@ -211,6 +238,7 @@ describe('RepoState', () => {
     expect(store.repos()).toEqual([REPO_A]);
     expect(store.activeId()).toBe(REPO_A.id);
     expect(store.branches()).toEqual(['main-a', 'feature-a']);
+    expect(store.remoteBranches()).toEqual(['origin/base-a', 'origin/david/topic-a']);
   });
 
   it('keeps the list and selection and records the error when removal fails', async () => {
@@ -263,6 +291,55 @@ describe('RepoState', () => {
     expect(store.removingId()).toBeNull();
   });
 
+  it('splits local and remote-tracking branches, excluding origin/HEAD', async () => {
+    bridge.invoke.mockImplementation(async (method: string, req: { repoId: string }) => {
+      switch (method) {
+        case 'getBranches':
+          return {
+            branches: [
+              branch('main'),
+              remoteBranch('origin/main'),
+              remoteBranch('upstream/develop'),
+              remoteBranch('origin/HEAD'),
+            ],
+          };
+        case 'getRemotes':
+          return { remotes: [remote('origin')] };
+        case 'getTags':
+          return { tags: [tag('v1')] };
+        default:
+          throw new Error(`unexpected method ${method}`);
+      }
+    });
+
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main']));
+
+    expect(store.remoteBranches()).toEqual(['origin/main', 'upstream/develop']);
+    expect(store.branches().some((name) => name.includes('/'))).toBe(false);
+  });
+
+  it('clears both branch lists when the repository has no refs', async () => {
+    bridge.invoke.mockImplementation(async (method: string) => {
+      switch (method) {
+        case 'getBranches':
+          return { branches: [] };
+        case 'getRemotes':
+          return { remotes: [] };
+        case 'getTags':
+          return { tags: [] };
+        default:
+          throw new Error(`unexpected method ${method}`);
+      }
+    });
+
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.refsLoading()).toBe(false));
+
+    expect(store.branches()).toEqual([]);
+    expect(store.remoteBranches()).toEqual([]);
+  });
+
   it('discards a stale response when a newer repository becomes active', async () => {
     let resolveA: (value: unknown) => void = () => {};
     const deferredA = new Promise((resolve) => {
@@ -274,7 +351,7 @@ describe('RepoState', () => {
       if (req.repoId === REPO_A.id) return deferredA;
       switch (method) {
         case 'getBranches':
-          return { branches: [branch('main-b')] };
+          return { branches: [branch('main-b'), remoteBranch('origin/base-b')] };
         case 'getRemotes':
           return { remotes: [remote('origin-b')] };
         case 'getTags':
@@ -288,12 +365,13 @@ describe('RepoState', () => {
     store.setActive(REPO_B);
 
     await vi.waitFor(() => expect(store.branches()).toEqual(['main-b']));
+    expect(store.remoteBranches()).toEqual(['origin/base-b']);
     expect(store.remotes()).toEqual(['origin-b']);
     expect(store.tags()).toEqual(['v1-b']);
 
     // Now let repo A's stale response settle; it must not overwrite B.
     resolveA({
-      branches: [branch('main-a')],
+      branches: [branch('main-a'), remoteBranch('origin/base-a')],
       remotes: [remote('origin-a')],
       tags: [tag('v1-a')],
     });
@@ -301,6 +379,7 @@ describe('RepoState', () => {
     await Promise.resolve();
 
     expect(store.branches()).toEqual(['main-b']);
+    expect(store.remoteBranches()).toEqual(['origin/base-b']);
     expect(store.remotes()).toEqual(['origin-b']);
     expect(store.tags()).toEqual(['v1-b']);
     expect(store.refsLoading()).toBe(false);

@@ -114,6 +114,11 @@ export class LayoutComponent implements OnInit {
     if (repo) this.repoState.setActive(repo);
   }
 
+  /** Remove a repository from the persisted list via the drawer's trash icon. */
+  onRemoveRepository(id: string): void {
+    void this.repoState.removeRepository(id);
+  }
+
   /** Route to the repository manager when the drawer's add button is used. */
   onAddRepository(): void {
     void this.router.navigate(['/repos']);

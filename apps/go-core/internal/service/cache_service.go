@@ -15,7 +15,11 @@ type cacheEntry struct {
 	total   int
 }
 
-// CacheService implements LRU (500 entries) + SQLite coherence (service-design.md §6).
+// DefaultLRUCapacity is the default number of commit windows retained in the
+// L1 in-memory commit cache (service-design.md §6).
+const DefaultLRUCapacity = 500
+
+// CacheService implements LRU (DefaultLRUCapacity entries) + SQLite coherence (service-design.md §6).
 //
 // It is the L1 (in-memory) layer of the commit cache; an optional L2 store
 // (SQLite CommitCache) can be layered underneath via NewCacheServiceWithStore.
@@ -37,7 +41,7 @@ func NewCacheService(capacity int) *CacheService {
 // served from L1 only (the caller falls back to Git on a miss).
 func NewCacheServiceWithStore(capacity int, store domain.CachePort) *CacheService {
 	if capacity <= 0 {
-		capacity = 500
+		capacity = DefaultLRUCapacity
 	}
 	return &CacheService{
 		capacity: capacity,

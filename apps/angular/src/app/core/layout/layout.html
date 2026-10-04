@@ -23,6 +23,7 @@
       [collapsed]="leftCollapsed()"
       [activeWorkspace]="activeWorkspace()"
       [branches]="repoState.branches()"
+      [remoteBranches]="repoState.remoteBranches()"
       [tags]="repoState.tags()"
       [remotes]="repoState.remotes()"
       [loading]="repoState.refsLoading()"
@@ -46,12 +47,14 @@
       [overlay]="isOverlay()"
       [width]="isOverlay() || rightCollapsed() ? null : rightWidth()"
       [selectedId]="repoState.activeId()"
+      [removingId]="repoState.removingId()"
       [loading]="repoState.reposLoading()"
       [offline]="repoState.reposOffline()"
       [error]="repoState.reposError()"
       (toggleRight)="toggleRight()"
       (resizeStart)="onDragStart($event)"
       (repoSelected)="onRepoSelected($event)"
+      (removeRequested)="onRemoveRepository($event)"
       (addRequested)="onAddRepository()"
     />
   </div>

@@ -62,7 +62,10 @@ export class RemoteOpsStore {
 
   // -- ref data for the active repository ----------------------------------
   readonly remotes = signal<Remote[]>([]);
+  /** Local branches only (`!isRemote`); remote-tracking refs are separate. */
   readonly locals = signal<Branch[]>([]);
+  /** Real remote-tracking branches enumerated by `getBranches` (`isRemote`). */
+  readonly remoteRefs = signal<Branch[]>([]);
   readonly tags = signal<Tag[]>([]);
   readonly refsLoading = signal(false);
   readonly refsError = signal<AppError | null>(null);
@@ -92,20 +95,44 @@ export class RemoteOpsStore {
   );
 
   /**
-   * Remote branches discovered from the local branches' upstreams, keyed by
-   * remote name and deduplicated by branch name. Empty when no local branch
-   * tracks a remote (there is no RPC that enumerates remote branches yet).
+   * Remote branches keyed by remote name, deduplicated by branch name. Real
+   * remote-tracking branches from `getBranches` (`isRemote`) are listed first
+   * with `derivedFromUpstream:false`; any upstreams not backed by a real ref
+   * are appended as a fallback with `derivedFromUpstream:true`. Empty when the
+   * repository has neither remote-tracking branches nor tracking upstreams.
    */
   readonly remoteBranchesByRemote = computed<Record<string, RemoteBranchOption[]>>(() => {
     const byRemote: Record<string, RemoteBranchOption[]> = {};
+    const seen = new Set<string>();
+    const add = (remote: string, option: RemoteBranchOption): void => {
+      const key = `${remote}\u0000${option.name}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      (byRemote[remote] ??= []).push(option);
+    };
+
+    // Real remote-tracking branches enumerated by `getBranches`.
+    for (const branch of this.remoteRefs()) {
+      const parsed = parseRemoteTracking(branch.refName);
+      if (!parsed) continue;
+      add(parsed.remote, {
+        name: parsed.branch,
+        refName: branch.refName,
+        derivedFromUpstream: false,
+      });
+    }
+
+    // Fallback: remote branches inferred from local branches' upstreams.
     for (const branch of this.locals()) {
       const parsed = parseRemoteTracking(branch.upstream);
       if (!parsed) continue;
-      const list = byRemote[parsed.remote] ?? [];
-      if (list.some((option) => option.name === parsed.branch)) continue;
-      list.push({ name: parsed.branch, refName: branch.upstream, derivedFromUpstream: true });
-      byRemote[parsed.remote] = list;
+      add(parsed.remote, {
+        name: parsed.branch,
+        refName: branch.upstream,
+        derivedFromUpstream: true,
+      });
     }
+
     return byRemote;
   });
 
@@ -145,9 +172,7 @@ export class RemoteOpsStore {
 
     if (!id) {
       this.offline.set(false);
-      this.remotes.set([]);
-      this.locals.set([]);
-      this.tags.set([]);
+      this.clearRefs();
       this.refsLoading.set(false);
       return;
     }
@@ -162,7 +187,11 @@ export class RemoteOpsStore {
       // Stale response: a newer loadRefs superseded this one.
       if (generation !== this.refsGeneration) return;
       this.offline.set(false);
-      this.locals.set(branches.branches ?? []);
+      const refs = branches.branches ?? [];
+      this.locals.set(refs.filter((b) => !b.isRemote));
+      // Defensive: never surface the symbolic `origin/HEAD` remote ref
+      // (matched on the raw ref so it holds regardless of short-name form).
+      this.remoteRefs.set(refs.filter((b) => b.isRemote && !b.refName.endsWith('/HEAD')));
       this.remotes.set(remotes.remotes ?? []);
       this.tags.set(tags.tags ?? []);
     } catch (err) {
@@ -173,12 +202,18 @@ export class RemoteOpsStore {
       } else {
         this.refsError.set(toAppError(err));
       }
-      this.remotes.set([]);
-      this.locals.set([]);
-      this.tags.set([]);
+      this.clearRefs();
     } finally {
       if (generation === this.refsGeneration) this.refsLoading.set(false);
     }
+  }
+
+  /** Clear every ref list; used when there is no active repo or on failure. */
+  private clearRefs(): void {
+    this.remotes.set([]);
+    this.locals.set([]);
+    this.remoteRefs.set([]);
+    this.tags.set([]);
   }
 
   // -- remote operations ---------------------------------------------------

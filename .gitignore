@@ -50,3 +50,6 @@ apps/go-core/.opencode/
 
 # Playwright e2e artifacts (reports, traces, screenshots, videos)
 apps/electron/e2e-results/
+
+# electron-builder packaged output (installers + unpacked dirs)
+apps/electron/release/

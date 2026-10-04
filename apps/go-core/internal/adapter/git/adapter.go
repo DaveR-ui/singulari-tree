@@ -41,11 +41,13 @@ const (
 	refPrettyFormat = "%(objectname)" + unitSep + "%(refname)" + unitSep + "%(*objectname)"
 
 	// branchPrettyFormat mirrors the field order parsed by parseBranches:
-	// refname, objectname (tip), upstream:short, upstream (full refname).
-	// Ref names cannot contain control characters, so unitSep/recordSep are
-	// unambiguous field/record separators.
+	// refname, objectname (tip), upstream:short, upstream (full refname),
+	// symref (target refname for a symbolic ref such as refs/remotes/origin/HEAD,
+	// empty for ordinary refs). Symrefs are skipped: only real branches are
+	// listed. Ref names cannot contain control characters, so unitSep/recordSep
+	// are unambiguous field/record separators.
 	branchPrettyFormat = "%(refname)" + unitSep + "%(objectname)" + unitSep +
-		"%(upstream:short)" + unitSep + "%(upstream)" + recordSep
+		"%(upstream:short)" + unitSep + "%(upstream)" + unitSep + "%(symref)" + recordSep
 
 	// tagPrettyFormat mirrors the field order parsed by parseTags: refname,
 	// objectname, objecttype, dereferenced objectname (*objectname, empty for
@@ -401,17 +403,23 @@ func (a *Adapter) Diff(context.Context, domain.RepositoryId, domain.Oid, domain.
 	return nil, notImplemented("Diff")
 }
 
-// BranchList lists local branches (refs/heads) in a repository. It is
-// read-only: the current branch is detected through `git symbolic-ref`, which
-// reports an empty name on a detached HEAD (no branch is marked IsCurrent).
-// An empty/unborn repository yields an empty slice and a nil error.
+// BranchList lists local branches (refs/heads) and remote-tracking branches
+// (refs/remotes) in a repository. It is read-only: the current branch is
+// detected through `git symbolic-ref`, which reports an empty name on a
+// detached HEAD (no branch is marked IsCurrent). Remote-tracking branches are
+// always IsRemote:true and never IsCurrent. Symbolic refs such as
+// refs/remotes/origin/HEAD are filtered out by parseBranches. An empty/unborn
+// repository yields an empty slice and a nil error.
 func (a *Adapter) BranchList(ctx context.Context, repoID domain.RepositoryId) ([]domain.Branch, error) {
 	fsPath, err := a.resolvePath(ctx, repoID)
 	if err != nil {
 		return nil, err
 	}
 	current := currentBranch(ctx, fsPath)
-	out, err := runGit(ctx, fsPath, "for-each-ref", "--format="+branchPrettyFormat, "refs/heads")
+	// A single call enumerates both namespaces; a pattern that matches nothing
+	// (e.g. no refs/remotes in a fresh repo) contributes no records and is not
+	// an error, so local-branch behavior is unchanged.
+	out, err := runGit(ctx, fsPath, "for-each-ref", "--format="+branchPrettyFormat, "refs/heads", "refs/remotes")
 	if err != nil {
 		return nil, err
 	}
@@ -430,7 +438,12 @@ func currentBranch(ctx context.Context, fsPath string) string {
 
 // parseBranches parses `git for-each-ref --format=branchPrettyFormat` output.
 // It is a pure helper (unit-tested directly). Malformed records (e.g. an
-// unparsable oid) are skipped rather than failing the whole listing.
+// unparsable oid) are skipped rather than failing the whole listing. Remote-ness
+// is derived from the ref prefix: refs/remotes/* are remote-tracking branches
+// (IsRemote:true, never current, no upstream); refs/heads/* are local branches.
+// The skip applies to any symbolic ref (non-empty symref), including both the
+// symbolic refs/remotes/origin/HEAD and a local refs/heads symbolic ref; they
+// are not real branches and are excluded. Ordinary refs have an empty symref.
 func parseBranches(out, current string) []domain.Branch {
 	records := strings.Split(out, recordSep)
 	branches := make([]domain.Branch, 0, len(records))
@@ -447,25 +460,38 @@ func parseBranches(out, current string) []domain.Branch {
 		oidHex := strings.TrimSpace(fields[1])
 		upstreamShort := strings.TrimSpace(fields[2])
 		upstreamFull := strings.TrimSpace(fields[3])
+		symref := ""
+		if len(fields) >= 5 {
+			symref = strings.TrimSpace(fields[4])
+		}
+		if symref != "" {
+			// Symbolic ref (e.g. refs/remotes/origin/HEAD): not a branch.
+			continue
+		}
 
 		oid, err := domain.NewOid(oidHex)
 		if err != nil {
 			continue
 		}
+		isRemote := strings.HasPrefix(ref, "refs/remotes/")
 		b := domain.Branch{
 			Name:      domain.RefName{Raw: ref}.Short(),
 			RefName:   domain.RefName{Raw: ref},
 			Tip:       oid,
-			IsCurrent: current != "" && ref == "refs/heads/"+current,
-			IsRemote:  false,
+			IsCurrent: !isRemote && current != "" && ref == "refs/heads/"+current,
+			IsRemote:  isRemote,
 		}
-		upstreamRaw := upstreamFull
-		if upstreamRaw == "" {
-			upstreamRaw = upstreamShort
-		}
-		if upstreamRaw != "" {
-			up := domain.RefName{Raw: upstreamRaw}
-			b.Upstream = &up
+		// Remote-tracking refs have no configured upstream; for-each-ref already
+		// reports an empty upstream for them, so only local branches can set it.
+		if !isRemote {
+			upstreamRaw := upstreamFull
+			if upstreamRaw == "" {
+				upstreamRaw = upstreamShort
+			}
+			if upstreamRaw != "" {
+				up := domain.RefName{Raw: upstreamRaw}
+				b.Upstream = &up
+			}
 		}
 		branches = append(branches, b)
 	}

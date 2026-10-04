@@ -10,14 +10,21 @@ import { RemoteOpsStore } from './remote-ops.store';
 // -- fixtures ---------------------------------------------------------------
 
 function branch(overrides: Partial<Branch> & { name: string }): Branch {
+  const isRemote = overrides.isRemote ?? false;
   return {
     name: overrides.name,
-    refName: overrides.refName ?? `refs/heads/${overrides.name}`,
+    refName:
+      overrides.refName ??
+      (isRemote ? `refs/remotes/${overrides.name}` : `refs/heads/${overrides.name}`),
     tip: overrides.tip ?? undefined,
     upstream: overrides.upstream ?? '',
     isCurrent: overrides.isCurrent ?? false,
-    isRemote: overrides.isRemote ?? false,
+    isRemote,
   };
+}
+
+function remoteBranch(name: string): Branch {
+  return branch({ name, isRemote: true });
 }
 
 function remote(name: string, url = `https://example.com/${name}.git`): Remote {
@@ -163,7 +170,7 @@ describe('RemoteOpsStore', () => {
     expect(store.opError()).toBeNull();
   });
 
-  it('loadRefs maps remote options, push rows and remote branches by remote', async () => {
+  it('loadRefs maps remote options, push rows and upstream-derived remote branches', async () => {
     const locals = [
       branch({ name: 'main', isCurrent: true, upstream: 'refs/remotes/origin/main' }),
       branch({ name: 'feature', upstream: 'refs/remotes/origin/feature' }),
@@ -198,6 +205,63 @@ describe('RemoteOpsStore', () => {
     ]);
   });
 
+  it('prefers real remote-tracking branches and keeps locals free of remotes', async () => {
+    const locals = [branch({ name: 'feature', upstream: 'refs/remotes/origin/feature' })];
+    const remotes = [
+      remoteBranch('origin/david/topic'),
+      remoteBranch('origin/main'),
+      // Shares its short name with the local `feature` upstream below.
+      remoteBranch('origin/feature'),
+      remoteBranch('origin/HEAD'),
+      // A real remote branch with no matching local upstream.
+      remoteBranch('upstream/develop'),
+    ];
+    const { bridge } = makeBridge({
+      getBranches: () => ({ branches: [...locals, ...remotes] }),
+      getRemotes: () => ({ remotes: [remote('origin'), remote('upstream')] }),
+    });
+    const store = makeStore(bridge);
+
+    await store.loadRefs();
+
+    expect(store.localBranchNames()).toEqual(['feature']);
+    expect(store.remoteRefs().map((b) => b.name)).toEqual([
+      'origin/david/topic',
+      'origin/main',
+      'origin/feature',
+      'upstream/develop',
+    ]);
+    expect(store.remoteBranchesByRemote()).toEqual({
+      origin: [
+        { name: 'david/topic', refName: 'refs/remotes/origin/david/topic', derivedFromUpstream: false },
+        { name: 'main', refName: 'refs/remotes/origin/main', derivedFromUpstream: false },
+        // `feature` is already real on origin, so the upstream adds nothing.
+        { name: 'feature', refName: 'refs/remotes/origin/feature', derivedFromUpstream: false },
+      ],
+      upstream: [
+        { name: 'develop', refName: 'refs/remotes/upstream/develop', derivedFromUpstream: false },
+      ],
+    });
+  });
+
+  it('keeps the upstream-derived fallback when no real remote ref exists', async () => {
+    const locals = [branch({ name: 'feature', upstream: 'refs/remotes/origin/feature' })];
+    const { bridge } = makeBridge({
+      getBranches: () => ({ branches: locals }),
+      getRemotes: () => ({ remotes: [remote('origin')] }),
+    });
+    const store = makeStore(bridge);
+
+    await store.loadRefs();
+
+    expect(store.remoteRefs()).toEqual([]);
+    expect(store.remoteBranchesByRemote()).toEqual({
+      origin: [
+        { name: 'feature', refName: 'refs/remotes/origin/feature', derivedFromUpstream: true },
+      ],
+    });
+  });
+
   it('loadRefs sets offline and clears lists on IPC_UNAVAILABLE', async () => {
     const { bridge } = makeBridge({
       getBranches: () => {
@@ -213,6 +277,7 @@ describe('RemoteOpsStore', () => {
     expect(store.refsError()).toBeNull();
     expect(store.remotes()).toEqual([]);
     expect(store.locals()).toEqual([]);
+    expect(store.remoteRefs()).toEqual([]);
     expect(store.tags()).toEqual([]);
     expect(store.refsLoading()).toBe(false);
   });
@@ -240,6 +305,7 @@ describe('RemoteOpsStore', () => {
 
     expect(invoke).not.toHaveBeenCalled();
     expect(store.locals()).toEqual([]);
+    expect(store.remoteRefs()).toEqual([]);
     expect(store.refsLoading()).toBe(false);
   });
 

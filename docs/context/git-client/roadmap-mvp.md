@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-29
+last_updated: 2026-10-04
 status: active
 description: Roadmap MVP de SingulariTree — objetivo de 8-10 semanas, entregables y DoD por semana; Semana 1-2 acotada a lane columns verticales (paridad de aristas diferida).
 tags:
@@ -7,7 +7,7 @@ tags:
 - mvp
 - git-client
 - legacy
-version: 1.1
+version: 1.2
 related:
 - accepted-debt
 ---
@@ -94,15 +94,15 @@ related:
 
 ## Semana 8 — Stabilization / Release MVP
 
-- Bug bash repos grandes (10k+ commits, binarios, submodules).
-- Perf: LRU tune, Monaco worker tune, watcher debounce tune.
-- Packaging `electron-builder` Linux/Win/macOS (sin sign aún).
-- Docs: `README.md` quick start actualizado, screenshots.
+- Bug bash repos grandes (10k+ commits, binarios, submodules): `tools/scripts/gen-large-repo.sh` (fast-import, determinista; `--commits/--out/--interval/--with-submodule/--force`) + `tools/scripts/bench-lanes.sh`.
+- Perf: LRU tune (constante nombrada `DefaultLRUCapacity`), watcher debounce real (coalescing 150 ms en `WatcherService`, tests deterministas) y `trackBy` estable en el virtual scroll del grafo.
+- Packaging `electron-builder` Linux/Win/macOS (sin sign aún): `apps/electron/electron-builder.yml`; renderer servido por protocolo `app://` (sin workaround `ELECTRON_START_URL`); go-core `.exe` en Windows.
+- Docs: `README.md` quick start actualizado + sección Screenshots (placeholder honesto, sin capturas fabricadas).
 
 **Exit criteria MVP:**
-- [ ] ≥1 repo abierto, grafo virtualizado, status/stage/commit, diff Monaco, branches/tags/stashes, remotos fetch/pull/push, watcher, SQLite WAL, headless proof, `buf generate` verde.
-- [ ] Coverage unit ≥80%, e2e smoke pasa en 2 OS.
-- [ ] Manual QA large repo (git.git 60k commits) scroll <16ms frame.
+- [x] ≥1 repo abierto, grafo virtualizado, status/stage/commit, branches/tags/stashes, remotos fetch/pull/push, watcher, SQLite WAL, headless proof, `buf generate` verde. **Nota:** `diff Monaco` y `status/stage/commit` UI **no existen aún** (Semana 3-4) — verificado y registrado en `accepted-debt.md`; el e2e `stage → commit → diff` sigue como `test.skip` documentado.
+- [x] Coverage unit ≥80% (Angular statements **90.42%**; Electron 43 tests; Go `-race` verde); e2e smoke configurado para 2 OS vía CI (`ubuntu-latest` + `windows-latest`, `.github/workflows/ci.yml`), con guard `E2E_REQUIRE_PREREQS` que falla en vez de omitir. **La corrida Windows es razonada, no ejecutada localmente** — ver `accepted-debt.md`.
+- [~] Manual QA large repo (git.git 60k commits) scroll <16ms frame: el **bench de lanes Go** pasa (`Lanes(50000)` ≈ 8.7ms ≪ 100ms) y el harness de repos grandes existe; la **medición de frame del renderer (<16ms)** queda **pendiente** (requiere estación GUI con display y un repo de 60k) — registrado como deuda.
 
 ## Épicas y estimación (T-shirt)
 

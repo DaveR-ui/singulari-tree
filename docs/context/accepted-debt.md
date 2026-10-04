@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-29
+last_updated: 2026-10-04
 status: active
 description: Deuda aceptada del corpus — documentos legacy sin migrar y decisiones toleradas explícitamente, con el criterio para reducirla.
 tags:
@@ -7,7 +7,7 @@ tags:
 - debt
 - legacy
 - ratchet
-version: 1.1
+version: 1.2
 related:
 - documentation-system
 ---
@@ -29,6 +29,10 @@ Registrar aquí **cada excepción de forma explícita**, con su razón y el crit
 | ADR-001..ADR-013 embebidos en `docs/context/git-client/decisions.md` | No se extraen a `docs/adrs/` para evitar un big-bang de 13 archivos. | La numeración continúa en **ADR-014**; los nuevos ADRs nacen ya en `docs/adrs/` con su hub. |
 | `README.md` (raíz) | README humano, **sin frontmatter**, FUERA del corpus. | Se mantiene como puntero al entry point ([`docs/project.md`](../project.md)); no se migra. |
 | `docs/context/git-client/README.md` | Alias del hub legacy `INDEX.md`. | Desaparece cuando el hub legacy se migre/normalice al tocarlo. |
+| Diff viewer Monaco ausente (Semana 4 del `roadmap-mvp.md`) — `libs/ui-kit/src/diff-viewer/` es un stub (`index.ts` solo exporta `DIFF_VIEWER_PLACEHOLDER`) y `monaco-editor` no está en ninguna dependencia. | La UI `stage → commit → diff` no existe aún; por eso el e2e `stage → commit → diff` es un `test.skip` documentado (`apps/electron/e2e/smoke.e2e.ts`). El tuning de "Monaco worker" de la Semana 8 **no aplica** porque no hay Monaco que tunear. Implementarlo es alcance Semana 3-4, no Semana 8. | Cerrar el track Semana 3-4 (StatusStore + commit box + `diffEditor`) **detrás de su propio ciclo**; entonces quitar el `test.skip` del e2e y añadir la captura de pantalla de diff. |
+| Watcher `fsnotify` sigue siendo stub en el adapter — `apps/go-core/internal/adapter/watcher/watcher.go` no adjunta fsnotify; solo el *coalescing* real (150ms) vive en `WatcherService`. | El adapter real de fsnotify no era alcance de la Semana 8 (estabilización); esta semana se implementó el debounce/coalescing que faltaba (`WatcherService`, tests en `watcher_service_test.go`), no el watch de filesystem. | Implementar `fsnotify` real en `adapter/watcher` (watch de `.git/index`, `HEAD`, refs, worktree) y quitar la etiqueta "stub" de los comentarios. |
+| Paquete UNSIGNED (sin firma/notarización/auto-update) | Alcance explícito del MVP: la firma y `electron-updater` son V1 (`roadmap-v1.md` §V1.4). | Fase V1.4: notarización macOS, firma Windows, flatpak/AppImage firmado, auto-update. |
+| e2e de 2 OS vía GitHub Actions (`ubuntu-latest` + `windows-latest`) — sin validación en estación Windows local. | El criterio `roadmap-mvp.md` L104 exige "e2e smoke pasa en 2 OS" y no hay estación de 2 OS declarada; el workflow es el mecanismo mínimo verificable. Las ramas específicas de Windows (`go-core.exe`, sin symlinks) están razonadas pero **no ejecutadas** en este host Linux. | Correr el workflow en CI real; si Windows falla, ajustar el shim/build script y re-verificar. |
 
 **Lo que NO es deuda** (cumple contrato y debe validarse):
 

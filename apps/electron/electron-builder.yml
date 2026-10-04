@@ -1,0 +1,56 @@
+# electron-builder config for the SingulariTree desktop shell.
+# UNSIGNED builds only — no signing, notarization or auto-update keys.
+#
+# Prerequisites before running `npm run pack` / `npm run dist`:
+#   ./tools/scripts/build-go-core.sh        -> <repo>/dist/go-core
+#   (cd apps/angular && npm run build)      -> apps/angular/dist/browser
+#   (cd apps/electron && npm run build)     -> apps/electron/dist/main/main.js
+#
+# `from` paths are resolved relative to this config/package dir (apps/electron).
+
+appId: com.singularitree.app
+productName: SingulariTree
+asar: true
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**/*
+  - package.json
+  - "!src/**"
+  - "!e2e/**"
+  - "!**/*.map"
+
+# Renderer bundle, go-core binary and proto SSOT live outside apps/electron;
+# they are copied verbatim into the packaged resources directory.
+extraResources:
+  - from: ../../apps/angular/dist/browser
+    to: renderer
+  - from: ../../dist
+    filter:
+      - go-core
+      - go-core.exe
+    to: go-core
+  - from: ../../libs/contracts/proto
+    filter:
+      - "*.proto"
+    to: proto
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Utility
+
+win:
+  target:
+    - nsis
+    - portable
+
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.developer-tools

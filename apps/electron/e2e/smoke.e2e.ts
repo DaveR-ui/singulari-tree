@@ -23,26 +23,37 @@ import { _electron as electron, type ElectronApplication, type Page } from 'play
  *   the shell toolbar's "Commit" button is inert chrome (see shell-toolbar.ts).
  *   `GraphStore.diffIntent` exists but is explicitly "not-yet-implemented".
  *
- * PREREQUISITES (build from the repo root; this spec will `test.skip` if missing)
- *   ./tools/scripts/build-go-core.sh                 -> dist/go-core
+ * PREREQUISITES (build from the repo root)
+ *   ./tools/scripts/build-go-core.sh                 -> dist/go-core (posix) / dist/go-core.exe (win32)
  *   (cd apps/angular && npm run build)               -> apps/angular/dist/browser/index.html
  *   (cd apps/electron && npm run build)              -> apps/electron/dist/main/main.js
  *
- * LAUNCH NOTE — why a static server + ELECTRON_START_URL instead of loadFile:
- *   main.ts' production branch computes
- *     path.join(__dirname, '../../apps/angular/dist/browser/index.html')
- *   which resolves to `apps/electron/dist/apps/angular/...` (does not exist), and
- *   the fallback `apps/electron/dist/angular/browser/index.html` is missing too, so
- *   loading the built `index.html` directly is currently broken. This spec instead
- *   serves the *same built bundle* (apps/angular/dist/browser) over a local HTTP
- *   server and points `ELECTRON_START_URL` at it — still the real renderer bundle,
- *   real preload bridge, real go-core.
+ * PREREQUISITE GUARD (skip vs. fail)
+ *   Locally, missing artifacts make this spec `test.skip` so a developer without a
+ *   full build gets an honest skip. In CI a skip would exit 0 and masquerade as a
+ *   green run, so the spec must fail instead. Contract:
+ *     E2E_REQUIRE_PREREQS=1   -> missing prerequisites FAIL the run.
+ *     CI (any non-empty)      -> same as E2E_REQUIRE_PREREQS=1 (safety net).
+ *     unset / any other value -> missing prerequisites SKIP (local default).
+ *   Verified by a `test.beforeAll` throw plus non-skipping assertions in each test.
+ *
+ * LAUNCH NOTE — why a static server + ELECTRON_START_URL instead of app://:
+ *   In production main.ts loads the renderer via the privileged `app://` protocol
+ *   (`app://bundle/index.html`, see src/main/protocol.ts), whose root is
+ *   `process.resourcesPath/renderer` when packaged. This spec does not package the
+ *   app, so it serves the *same built bundle* (apps/angular/dist/browser) over a
+ *   local HTTP server and points `ELECTRON_START_URL` at it — still the real
+ *   renderer bundle, real preload bridge, real go-core. The packaged `app://` path
+ *   is exercised separately by the packaging build (electron-builder extraResources
+ *   `to: renderer`).
  *
  * PLAywRIGHT/ELECTRON QUIRK — resource shim:
  *   Playwright's Electron loader makes `app.isPackaged === true`, so the shell
  *   resolves go-core/proto under `process.resourcesPath`. `ensureResourceShim()`
- *   creates idempotent symlinks from the Electron resources dir to the repo
- *   artifacts (node_modules is gitignored).
+ *   copies the repo artifacts (go-core binary + proto SSOT) into the Electron
+ *   resources dir (node_modules is gitignored). Copies — not symlinks — because
+ *   `fs.symlinkSync` needs Developer Mode / admin on windows-latest; re-copying
+ *   is cheap and keeps the step idempotent and non-throwing on both OSes.
  *
  * Run from this package directory (never the repo root):
  *   cd apps/electron && npx playwright test
@@ -52,14 +63,22 @@ const testDir = __dirname;
 const packageDir = path.resolve(testDir, '..');
 const repoRoot = path.resolve(packageDir, '../..');
 
-const goCoreBin = path.join(repoRoot, 'dist/go-core');
+const isWindows = process.platform === 'win32';
+// build-go-core.sh / getGoCoreBinary() emit `go-core.exe` on win32.
+const goCoreBin = path.join(repoRoot, 'dist', isWindows ? 'go-core.exe' : 'go-core');
 const angularIndex = path.join(repoRoot, 'apps/angular/dist/browser/index.html');
 const electronMain = path.join(packageDir, 'dist/main/main.js');
 const protoDir = path.join(repoRoot, 'libs/contracts/proto');
 
+/**
+ * When true, missing prerequisites FAIL instead of skipping.
+ * Contract: E2E_REQUIRE_PREREQS=1 or any non-empty CI env.
+ */
+const requirePrereqs = process.env['E2E_REQUIRE_PREREQS'] === '1' || !!process.env['CI'];
+
 /** Collect build/runtime prerequisites; any entry makes the smoke skip loudly. */
 const missing: string[] = [];
-if (!fs.existsSync(goCoreBin)) missing.push('dist/go-core (run ./tools/scripts/build-go-core.sh)');
+if (!fs.existsSync(goCoreBin)) missing.push(`dist/${path.basename(goCoreBin)} (run ./tools/scripts/build-go-core.sh)`);
 if (!fs.existsSync(angularIndex)) missing.push('apps/angular/dist/browser/index.html (run `npm run build` in apps/angular)');
 if (!fs.existsSync(electronMain)) missing.push('apps/electron/dist/main/main.js (run `npm run build` in apps/electron)');
 if (spawnSync('git', ['--version'], { encoding: 'utf8' }).status !== 0) missing.push('git on PATH (needed for the fixture repo)');
@@ -104,16 +123,27 @@ function electronResourcesDir(): string | null {
   return candidates.find((p) => fs.existsSync(p)) ?? null;
 }
 
-/** Idempotent symlinks so the packaged-resolution paths find the real artifacts. */
+/**
+ * Copy the real artifacts into the Electron resources dir so the packaged-
+ * resolution paths (`resourcesPath/go-core/go-core[.exe]`, `resourcesPath/proto`)
+ * find them under Playwright. Copies work on Windows (unlike `symlinkSync`,
+ * which needs Developer Mode/admin); it is idempotent and non-throwing because
+ * `copyFileSync`/`cpSync` overwrite in place and create missing dirs.
+ */
 function ensureResourceShim(): void {
   const res = electronResourcesDir();
   if (!res) return;
   const goCoreDir = path.join(res, 'go-core');
   fs.mkdirSync(goCoreDir, { recursive: true });
-  const goCoreLink = path.join(goCoreDir, 'go-core');
-  if (!fs.existsSync(goCoreLink)) fs.symlinkSync(goCoreBin, goCoreLink);
-  const protoLink = path.join(res, 'proto');
-  if (!fs.existsSync(protoLink)) fs.symlinkSync(protoDir, protoLink);
+  // Mirror main.ts: `go-core` on posix, `go-core.exe` on win32.
+  const goCoreTarget = path.join(goCoreDir, path.basename(goCoreBin));
+  // Remove any pre-existing file/symlink first: copying through a symlink that
+  // points back at the source would truncate it or copy a dir into itself.
+  fs.rmSync(goCoreTarget, { recursive: true, force: true });
+  fs.copyFileSync(goCoreBin, goCoreTarget);
+  const protoTarget = path.join(res, 'proto');
+  fs.rmSync(protoTarget, { recursive: true, force: true });
+  fs.cpSync(protoDir, protoTarget, { recursive: true });
 }
 
 const MIME: Record<string, string> = {
@@ -147,7 +177,15 @@ let fixture: Fixture | null = null;
 
 test.describe('SingulariTree Electron smoke: open repo → graph → select → WIP', () => {
   test.beforeAll(async () => {
-    if (missing.length > 0) return;
+    if (missing.length > 0) {
+      // In CI a skip exits 0 and hides a broken build — fail loudly instead.
+      if (requirePrereqs) {
+        throw new Error(
+          `e2e prerequisites missing and E2E_REQUIRE_PREREQS/CI is set: ${missing.join('; ')}`,
+        );
+      }
+      return;
+    }
 
     ensureResourceShim();
     fixture = createFixtureRepo();
@@ -157,10 +195,15 @@ test.describe('SingulariTree Electron smoke: open repo → graph → select → 
     const { port } = server!.address() as AddressInfo;
     const url = `http://127.0.0.1:${port}/`;
 
+    // The sandbox / dev-shm workarounds are Linux-only; passing them on Windows
+    // is at best noise and at worst an unsupported switch.
+    const linuxFlags =
+      process.platform === 'linux' ? ['--no-sandbox', '--disable-dev-shm-usage'] : [];
+
     app = await electron.launch({
       // Passing the package directory => `electron apps/electron` so
       // app.getAppPath() === apps/electron (go-core/proto resolve correctly).
-      args: [packageDir, '--no-sandbox', '--disable-dev-shm-usage'],
+      args: [packageDir, ...linuxFlags],
       cwd: packageDir,
       env: { ...process.env, ELECTRON_START_URL: url, MOCK_GO_CORE: '0' },
       timeout: 120_000,
@@ -182,7 +225,7 @@ test.describe('SingulariTree Electron smoke: open repo → graph → select → 
   });
 
   test('opens the fixture repo and renders the real commit graph', async () => {
-    test.skip(missing.length > 0, `missing prerequisites: ${missing.join('; ')}`);
+    test.skip(missing.length > 0 && !requirePrereqs, `missing prerequisites: ${missing.join('; ')}`);
     if (!window || !fixture) throw new Error('e2e setup did not initialise');
 
     // (a) open repo via the in-page picker.
@@ -205,7 +248,7 @@ test.describe('SingulariTree Electron smoke: open repo → graph → select → 
   });
 
   test('selects a commit and shows its details, then the WIP row', async () => {
-    test.skip(missing.length > 0, `missing prerequisites: ${missing.join('; ')}`);
+    test.skip(missing.length > 0 && !requirePrereqs, `missing prerequisites: ${missing.join('; ')}`);
     if (!window || !fixture) throw new Error('e2e setup did not initialise');
 
     // (c) selection → details panel (read-only; no stage/commit UI exists).

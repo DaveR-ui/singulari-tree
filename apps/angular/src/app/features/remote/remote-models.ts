@@ -19,7 +19,11 @@ export interface RemoteOption {
   url: string;
 }
 
-/** A selectable remote branch derived from a local branch's upstream. */
+/**
+ * A selectable remote branch: either a REAL remote-tracking branch
+ * (`derivedFromUpstream:false`) or an upstream-derived fallback
+ * (`derivedFromUpstream:true`).
+ */
 export interface RemoteBranchOption {
   name: string;
   refName: string;

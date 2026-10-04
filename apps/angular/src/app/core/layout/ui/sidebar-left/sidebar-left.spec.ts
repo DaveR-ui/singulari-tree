@@ -6,6 +6,7 @@ import { SidebarLeft } from './sidebar-left';
 
 interface SetupOptions {
   branches?: string[];
+  remoteBranches?: string[];
   tags?: string[];
   remotes?: string[];
   loading?: boolean;
@@ -21,6 +22,7 @@ async function setup(opts: SetupOptions = {}): Promise<ComponentFixture<SidebarL
   const fixture = TestBed.createComponent(SidebarLeft);
   const ref = fixture.componentRef;
   ref.setInput('branches', opts.branches ?? []);
+  ref.setInput('remoteBranches', opts.remoteBranches ?? []);
   ref.setInput('tags', opts.tags ?? []);
   ref.setInput('remotes', opts.remotes ?? []);
   ref.setInput('loading', opts.loading ?? false);
@@ -66,6 +68,34 @@ describe('SidebarLeft', () => {
 
     expandTags(fixture);
     expect(el.querySelector('[data-testid="st-sidebar-tags"]')?.textContent).toContain('v1.0.0');
+  });
+
+  it('renders remote branches under their remote, stripping the prefix', async () => {
+    const fixture = await setup({
+      remotes: ['origin', 'upstream'],
+      remoteBranches: ['origin/main', 'origin/david/topic', 'upstream/develop'],
+    });
+    const el = fixture.nativeElement as HTMLElement;
+
+    const remotesText = el.querySelector('[data-testid="st-sidebar-remotes"]')?.textContent ?? '';
+    expect(remotesText).toContain('origin');
+    expect(remotesText).toContain('upstream');
+
+    const items = Array.from(
+      el.querySelectorAll('[data-testid="st-sidebar-remote-branches"]'),
+    ).map((li) => li.textContent?.trim());
+    expect(items).toEqual(['main', 'david/topic', 'develop']);
+  });
+
+  it('surfaces a remote branch even when no remote config is known', async () => {
+    const fixture = await setup({ remoteBranches: ['origin/feature'] });
+    const el = fixture.nativeElement as HTMLElement;
+
+    expect(el.querySelector('[data-testid="st-sidebar-remotes-empty"]')).toBeNull();
+    const items = Array.from(
+      el.querySelectorAll('[data-testid="st-sidebar-remote-branches"]'),
+    ).map((li) => li.textContent?.trim());
+    expect(items).toEqual(['feature']);
   });
 
   it('renders the empty state when there are no refs', async () => {

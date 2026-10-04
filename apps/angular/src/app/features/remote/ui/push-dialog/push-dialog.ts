@@ -393,13 +393,12 @@ export class PushDialog {
   );
 
   /**
-   * Selectable remote branches for each row: the branches known for the
-   * selected remote, plus the row's default target and its local branch.
+   * Selectable remote branches for each row: the real remote-tracking branches
+   * known for the selected remote (plus any upstream-derived fallbacks), the
+   * row's default target and its local branch.
    *
-   * Full remote-branch enumeration is unavailable (no RPC), so this derived
-   * fallback list feeds the per-row target select. An empty selection means
-   * "same name as the local branch" (the core's `PushRequest.remoteBranch`
-   * contract).
+   * An empty selection means "same name as the local branch" (the core's
+   * `PushRequest.remoteBranch` contract).
    */
   readonly rowOptions = computed<Record<string, string[]>>(() => {
     const known = (this.remoteBranchesByRemote()[this.selectedRemote()] ?? []).map(

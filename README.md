@@ -76,14 +76,60 @@ Behavior in `--headless`:
 
 This monorepo does not modify `frontend/` or `backend/`. Workspace routing (`docs/project.md` Slices table) remains authoritative for Necomat; SingulariTree is documented as a greenfield topic folder under `docs/context/git-client/` until promoted to a slice.
 
-## Quick Start (scaffold)
+## Quick Start
+
+**Prerequisites:** Node >=20 (npm workspaces) · Go 1.25+ (the Go workspace targets 1.26) · `git` on `PATH`. Only for regenerating contracts: [`buf`](https://buf.build/docs/installation) — `./tools/scripts/gen-contracts.sh` fails fast if it is missing.
 
 ```bash
-# verify Go core builds headless
-go vet ./...
-go run ./apps/go-core/cmd/go-core --headless --help
-# generate contracts (requires buf)
-./tools/scripts/gen-contracts.sh
-# build binary
-./tools/scripts/build-go-core.sh
+# 1. Install JS/TS dependencies (postinstall provisions the Electron binary)
+npm ci
+
+# 2. Build all three runtimes from the repo root
+./tools/scripts/build-go-core.sh                    # -> dist/go-core (or dist/go-core.exe)
+npm run build --workspace=@singularitree/angular    # -> apps/angular/dist/browser
+npm run build --workspace=@singularitree/electron   # -> apps/electron/dist/main/main.js
+# `npm run build` at the root builds every JS workspace (angular, electron, contracts, ui-kit).
+
+# 3. Run the dev app (Angular `ng serve` + Electron, via concurrently + wait-on)
+npm start
+npm run start:electron-only                         # Electron shell only
+npm run start:mock --workspace=@singularitree/electron   # mock core, opt-in via MOCK_GO_CORE=1
 ```
+
+`MOCK_GO_CORE=1` is **strictly opt-in** — the real `go-core` is the default. The dev scripts build the shell, then launch Electron pointed at the Angular dev server (`http://localhost:4200`).
+
+Tests (run from the **package directory**, never the repo root):
+
+```bash
+npm test --workspace=@singularitree/angular     # Angular vitest (`ng test --no-watch`)
+npm test --workspace=@singularitree/electron    # Electron vitest (`vitest run`)
+cd apps/go-core && go test ./...                # Go core
+cd apps/electron && npx playwright test         # e2e smoke — needs the three builds above
+```
+
+Package (**UNSIGNED** — code signing / notarization is V1):
+
+```bash
+cd apps/electron
+npm run pack   # unpacked dir -> apps/electron/release/
+npm run dist   # installers   -> apps/electron/release/
+```
+
+Targets from `apps/electron/electron-builder.yml`: Linux `AppImage` + `deb`, Windows `nsis` + `portable`, macOS `dmg` + `zip`. Before packaging, `dist/go-core`, `apps/angular/dist/browser/` and `apps/electron/dist/main/` must exist — `extraResources` copies the renderer, core binary and `libs/contracts/proto` into the package. Build installers on the **target OS**: Windows `nsis` generally needs Windows or wine; macOS `dmg`/`zip` require macOS.
+
+## Screenshots
+
+> **Placeholder — no real screenshots committed yet.** The Electron GUI cannot be captured in this headless environment, so the image below is a labeled SVG placeholder, **not a product screenshot**.
+
+![Placeholder for the SingulariTree UI screenshots](docs/assets/placeholder-screenshot.svg)
+
+Screenshots to capture manually and drop into `docs/assets/` (filenames and exact state in `docs/assets/README.txt`):
+
+| # | Screenshot | State to capture |
+|---|---|---|
+| 1 | Repo picker | first launch, empty state |
+| 2 | Commit graph | repo opened, a commit selected |
+| 3 | Diff view | a diff open (once the diff UI lands; the current iteration is read-only graph + WIP) |
+| 4 | Packaging artifact | `apps/electron/release/` after `npm run dist` (e.g. the AppImage) |
+
+Replace `docs/assets/placeholder-screenshot.svg` with the real captures and update the image links above.

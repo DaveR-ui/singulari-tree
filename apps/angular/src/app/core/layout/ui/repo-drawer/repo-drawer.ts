@@ -80,11 +80,24 @@ import type { AppError } from '@core/services/ipc-bridge.service';
       } @else {
         <div data-testid="repo-drawer-list">
           @for (repo of filteredRepos(); track repo.id) {
-            <st-repo-card
-              [repo]="repo"
-              [selected]="selectedId() === repo.id"
-              (picked)="select(repo.id)"
-            />
+            <div class="st-right__row" data-testid="repo-drawer-row">
+              <st-repo-card
+                [repo]="repo"
+                [selected]="selectedId() === repo.id"
+                (picked)="select(repo.id)"
+              />
+              <button
+                class="st-icon-btn st-icon-btn--sm st-right__remove"
+                type="button"
+                data-testid="repo-drawer-remove"
+                title="Remove repository"
+                [attr.aria-label]="'Remove ' + repo.name"
+                [disabled]="removingId() === repo.id"
+                (click)="onRemove($event, repo.id)"
+              >
+                🗑
+              </button>
+            </div>
           }
         </div>
       }
@@ -199,8 +212,22 @@ import type { AppError } from '@core/services/ipc-bridge.service';
       gap: 6px;
     }
 
-    .st-right__list st-repo-card {
+    .st-right__row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
       margin: 0 8px;
+      min-width: 0;
+    }
+
+    .st-right__row st-repo-card {
+      flex: 1;
+      min-width: 0;
+      margin: 0;
+    }
+
+    .st-right__remove {
+      flex: none;
     }
 
     .st-right__add {
@@ -239,6 +266,11 @@ import type { AppError } from '@core/services/ipc-bridge.service';
       padding: 3px 6px;
       font-size: 12px;
     }
+
+    .st-icon-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
   `,
 })
 export class RepoDrawer {
@@ -251,10 +283,13 @@ export class RepoDrawer {
   readonly error = input<AppError | null>(null);
   /** Controlled by the parent; this component never mutates the highlight locally. */
   readonly selectedId = input<string | null>(null);
+  /** Id of the repository being removed, or null when idle; disables its button. */
+  readonly removingId = input<string | null>(null);
 
   readonly toggleRight = output<void>();
   readonly resizeStart = output<MouseEvent>();
   readonly repoSelected = output<string>();
+  readonly removeRequested = output<string>();
   readonly addRequested = output<void>();
 
   readonly search = signal('');
@@ -275,5 +310,14 @@ export class RepoDrawer {
 
   select(id: string): void {
     this.repoSelected.emit(id);
+  }
+
+  /**
+   * Emit a removal intent for `id`. Stops propagation so the click never also
+   * selects the card underneath the trash control.
+   */
+  onRemove(event: Event, id: string): void {
+    event.stopPropagation();
+    this.removeRequested.emit(id);
   }
 }

@@ -84,8 +84,9 @@ function deriveBranchOptions(
 
         <label class="st-pull__field">
           <span class="st-pull__label">Branch</span>
-          <!-- No RPC enumerates remote branches, so the options are derived from
-               upstreams/local branches — the select is intentionally partial. -->
+          <!-- Options come from the real remote-tracking branches known for the
+               selected remote (plus upstream-derived fallbacks), so the select
+               stays in sync with the remote. -->
           <select
             class="st-pull__control"
             data-testid="pull-branch-select"
