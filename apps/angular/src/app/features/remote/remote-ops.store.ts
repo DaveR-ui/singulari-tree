@@ -24,10 +24,6 @@ function isIpcUnavailable(err: unknown): boolean {
   );
 }
 
-/** Friendly replacement for the core's `NOT_IMPLEMENTED` remote-op rejection. */
-const NOT_IMPLEMENTED_MESSAGE =
-  'Remote operations are not available in this core build yet (Phase 6). Nothing was executed.';
-
 /**
  * Root store for the Git remote dialogs (Pull/Push/Fetch).
  *
@@ -201,12 +197,18 @@ export class RemoteOpsStore {
           await this.bridge.invoke('fetch', {
             repoId,
             remote: remote.name,
+            prune: intent.prune,
+            tags: intent.tags,
+            force: intent.force,
           } satisfies FetchRequest);
         }
       } else {
         await this.bridge.invoke('fetch', {
           repoId,
           remote: intent.remote,
+          prune: intent.prune,
+          tags: intent.tags,
+          force: intent.force,
         } satisfies FetchRequest);
       }
       await this.loadRefs();
@@ -231,6 +233,11 @@ export class RemoteOpsStore {
         repoId,
         remote: intent.remote,
         branch: intent.branch,
+        localBranch: intent.intoLocalBranch,
+        noCommit: intent.noCommit,
+        log: intent.log,
+        noFf: intent.noFf,
+        rebase: intent.rebase,
       } satisfies PullRequest);
       await this.loadRefs();
     } catch (err) {
@@ -255,9 +262,12 @@ export class RemoteOpsStore {
         await this.bridge.invoke('push', {
           repoId,
           remote: intent.remote,
-          // Same-name push: remote-branch rename is deferred (no refspec field),
-          // so the local name is the single push target.
           branch: row.localBranch,
+          // Empty `remoteBranch` means "same name as `branch`" (core contract).
+          remoteBranch: row.remoteBranch,
+          setUpstream: row.track,
+          tags: intent.tags,
+          force: intent.force,
         } satisfies PushRequest);
       }
       await this.loadRefs();
@@ -274,11 +284,7 @@ export class RemoteOpsStore {
       this.offline.set(true);
       return;
     }
-    const appError = toAppError(err);
-    this.opError.set(
-      appError.code === 'NOT_IMPLEMENTED'
-        ? { ...appError, message: NOT_IMPLEMENTED_MESSAGE }
-        : appError,
-    );
+    // Surface real core failures (FETCH_FAILED/PULL_FAILED/PUSH_FAILED, …) as-is.
+    this.opError.set(toAppError(err));
   }
 }

@@ -10,7 +10,6 @@ import {
 import { ModalComponent } from '@shared/ui/modal/modal';
 import type { AppError } from '@core/services/ipc-bridge.service';
 import {
-  DEFERRED as DEFERRED_OPTIONS,
   type PullIntent,
   type RemoteBranchOption,
   type RemoteOpProgress,
@@ -38,12 +37,10 @@ function deriveBranchOptions(
 }
 
 /**
- * Dumb Pull dialog: collects the remote/branch pair to pull and emits a
- * {@link PullIntent}. Ref data is supplied by `RemoteOpsStore`; the component
- * only owns the transient selection and never talks to Git.
- *
- * Options that need a proto/core contract field are rendered disabled with a
- * tooltip sourced from the centralized {@link DEFERRED} table.
+ * Dumb Pull dialog: collects the remote/branch pair, the local target branch
+ * and the merge/rebase options, then emits a {@link PullIntent}. Ref data is
+ * supplied by `RemoteOpsStore`; the component only owns the transient selection
+ * and never talks to Git.
  */
 @Component({
   selector: 'st-pull-dialog',
@@ -119,87 +116,52 @@ function deriveBranchOptions(
             class="st-pull__control"
             type="text"
             data-testid="pull-into-local"
-            [value]="currentBranch()"
-            disabled
-            aria-disabled="true"
+            [value]="intoLocalBranch()"
+            (input)="onIntoLocalBranchChange($event)"
           />
-          <span
-            class="st-deferred-badge"
-            data-testid="pull-into-local-deferred"
-            [title]="DEFERRED['pull.intoLocal'].reason"
-            >Deferred</span
-          >
         </label>
 
         <fieldset class="st-pull__options">
           <legend>Options</legend>
 
-          <label class="st-pull__option" [title]="DEFERRED['pull.commitMerged'].reason">
+          <label class="st-pull__option">
             <input
               type="checkbox"
               data-testid="pull-option-commit-merged"
-              disabled
-              aria-disabled="true"
-              [title]="DEFERRED['pull.commitMerged'].reason"
+              [checked]="commitMerged()"
+              (change)="onCommitMergedChange($event)"
             />
             <span>Commit merged changes immediately</span>
-            <span
-              class="st-deferred-badge"
-              data-testid="pull-option-commit-merged-deferred"
-              [title]="DEFERRED['pull.commitMerged'].reason"
-              >Deferred</span
-            >
           </label>
 
-          <label class="st-pull__option" [title]="DEFERRED['pull.includeMergedMessages'].reason">
+          <label class="st-pull__option">
             <input
               type="checkbox"
               data-testid="pull-option-log"
-              disabled
-              aria-disabled="true"
-              [title]="DEFERRED['pull.includeMergedMessages'].reason"
+              [checked]="log()"
+              (change)="onLogChange($event)"
             />
             <span>Include messages from commits being merged in merge commit</span>
-            <span
-              class="st-deferred-badge"
-              data-testid="pull-option-log-deferred"
-              [title]="DEFERRED['pull.includeMergedMessages'].reason"
-              >Deferred</span
-            >
           </label>
 
-          <label class="st-pull__option" [title]="DEFERRED['pull.noFF'].reason">
+          <label class="st-pull__option">
             <input
               type="checkbox"
               data-testid="pull-option-no-ff"
-              disabled
-              aria-disabled="true"
-              [title]="DEFERRED['pull.noFF'].reason"
+              [checked]="noFf()"
+              (change)="onNoFfChange($event)"
             />
             <span>Create a new commit even if fast-forward is possible</span>
-            <span
-              class="st-deferred-badge"
-              data-testid="pull-option-no-ff-deferred"
-              [title]="DEFERRED['pull.noFF'].reason"
-              >Deferred</span
-            >
           </label>
 
-          <label class="st-pull__option" [title]="DEFERRED['pull.rebase'].reason">
+          <label class="st-pull__option">
             <input
               type="checkbox"
               data-testid="pull-option-rebase"
-              disabled
-              aria-disabled="true"
-              [title]="DEFERRED['pull.rebase'].reason"
+              [checked]="rebase()"
+              (change)="onRebaseChange($event)"
             />
             <span>Rebase instead of merge</span>
-            <span
-              class="st-deferred-badge"
-              data-testid="pull-option-rebase-deferred"
-              [title]="DEFERRED['pull.rebase'].reason"
-              >Deferred</span
-            >
           </label>
         </fieldset>
 
@@ -324,22 +286,7 @@ function deriveBranchOptions(
       align-items: center;
       gap: 8px;
       font-size: 12px;
-      cursor: not-allowed;
-    }
-
-    .st-pull__option input:disabled {
-      cursor: not-allowed;
-    }
-
-    .st-deferred-badge {
-      flex-shrink: 0;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      border-radius: 999px;
-      padding: 1px 8px;
-      font-size: 10px;
-      color: var(--muted, #8a8a9a);
-      background: rgba(255, 255, 255, 0.04);
-      cursor: help;
+      cursor: pointer;
     }
 
     .st-pull__note {
@@ -410,11 +357,15 @@ export class PullDialog {
   readonly refreshRequested = output<void>();
   readonly submitted = output<PullIntent>();
 
-  /** Deferred-option table exposed to the template for tooltips. */
-  readonly DEFERRED = DEFERRED_OPTIONS;
-
   readonly selectedRemote = signal('');
   readonly selectedBranch = signal('');
+  /** Local branch to pull into (empty = currently checked-out branch). */
+  readonly intoLocalBranch = signal('');
+  /** "Commit merged changes immediately" — when false, emit `noCommit`. */
+  readonly commitMerged = signal(true);
+  readonly log = signal(false);
+  readonly noFf = signal(false);
+  readonly rebase = signal(false);
 
   /** The selected remote's primary URL (empty when no remote matches). */
   readonly selectedRemoteUrl = computed(
@@ -456,6 +407,11 @@ export class PullDialog {
         current,
       );
       this.selectedBranch.set(current && options.includes(current) ? current : (options[0] ?? ''));
+      this.intoLocalBranch.set(current);
+      this.commitMerged.set(true);
+      this.log.set(false);
+      this.noFf.set(false);
+      this.rebase.set(false);
     });
   }
 
@@ -470,11 +426,35 @@ export class PullDialog {
     this.selectedBranch.set((event.target as HTMLSelectElement).value);
   }
 
+  onIntoLocalBranchChange(event: Event): void {
+    this.intoLocalBranch.set((event.target as HTMLInputElement).value);
+  }
+
+  onCommitMergedChange(event: Event): void {
+    this.commitMerged.set((event.target as HTMLInputElement).checked);
+  }
+
+  onLogChange(event: Event): void {
+    this.log.set((event.target as HTMLInputElement).checked);
+  }
+
+  onNoFfChange(event: Event): void {
+    this.noFf.set((event.target as HTMLInputElement).checked);
+  }
+
+  onRebaseChange(event: Event): void {
+    this.rebase.set((event.target as HTMLInputElement).checked);
+  }
+
   onSubmit(): void {
     this.submitted.emit({
       remote: this.selectedRemote(),
       branch: this.selectedBranch(),
-      intoLocalBranch: this.currentBranch(),
+      intoLocalBranch: this.intoLocalBranch(),
+      noCommit: !this.commitMerged(),
+      log: this.log(),
+      noFf: this.noFf(),
+      rebase: this.rebase(),
     });
   }
 }

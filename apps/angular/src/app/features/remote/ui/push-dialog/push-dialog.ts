@@ -10,7 +10,6 @@ import {
 import type { AppError } from '@core/services/ipc-bridge.service';
 import { ModalComponent } from '@shared/ui/modal/modal';
 import {
-  DEFERRED,
   type PushIntent,
   type PushRowSelection,
   type PushRowView,
@@ -109,41 +108,26 @@ interface PushRowState {
                     <select
                       class="st-push__select"
                       data-testid="push-row-remote-select"
-                      disabled
-                      aria-disabled="true"
-                      [value]="row.defaultRemoteBranch"
+                      [value]="stateFor(row).remoteBranch"
                       [attr.aria-label]="'Remote branch for ' + row.localBranch"
-                      [title]="DEFERRED['push.remoteBranch'].reason"
+                      (change)="onRowRemoteBranchChange(row, $event)"
                     >
                       @for (branch of rowOptions()[row.localBranch]; track branch) {
-                        <option [value]="branch" [selected]="branch === row.defaultRemoteBranch">
+                        <option [value]="branch" [selected]="branch === stateFor(row).remoteBranch">
                           {{ branch }}
                         </option>
                       }
                     </select>
-                    <span
-                      class="st-deferred-badge"
-                      data-testid="push-row-remote-deferred"
-                      [title]="DEFERRED['push.remoteBranch'].reason"
-                    >
-                      Deferred
-                    </span>
                   </div>
                 </td>
                 <td class="st-push__track">
                   <input
                     type="checkbox"
                     data-testid="push-row-track"
-                    disabled
-                    aria-disabled="true"
+                    [checked]="stateFor(row).track"
+                    [attr.aria-label]="'Track ' + row.localBranch"
+                    (change)="onRowTrackChange(row, $event)"
                   />
-                  <span
-                    class="st-deferred-badge"
-                    data-testid="push-row-track-deferred"
-                    [title]="DEFERRED['push.track'].reason"
-                  >
-                    Deferred
-                  </span>
                 </td>
               </tr>
             }
@@ -165,33 +149,19 @@ interface PushRowState {
             <input
               type="checkbox"
               data-testid="push-option-tags"
-              disabled
-              aria-disabled="true"
+              [checked]="tags()"
+              (change)="onTagsChange($event)"
             />
             Push all tags
-            <span
-              class="st-deferred-badge"
-              data-testid="push-option-tags-deferred"
-              [title]="DEFERRED['push.tags'].reason"
-            >
-              Deferred
-            </span>
           </label>
           <label class="st-push__check">
             <input
               type="checkbox"
               data-testid="push-option-force"
-              disabled
-              aria-disabled="true"
+              [checked]="force()"
+              (change)="onForceChange($event)"
             />
             Force Push
-            <span
-              class="st-deferred-badge"
-              data-testid="push-option-force-deferred"
-              [title]="DEFERRED['push.force'].reason"
-            >
-              Deferred
-            </span>
           </label>
         </div>
 
@@ -331,19 +301,6 @@ interface PushRowState {
       gap: 6px;
     }
 
-    .st-deferred-badge {
-      display: inline-block;
-      padding: 1px 6px;
-      border-radius: 999px;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      background: rgba(255, 255, 255, 0.05);
-      color: var(--muted, #8a8a9a);
-      font-size: 10px;
-      line-height: 1.4;
-      cursor: help;
-      white-space: nowrap;
-    }
-
     .st-push__check {
       display: flex;
       align-items: center;
@@ -419,6 +376,10 @@ export class PushDialog {
 
   /** Selected remote name; defaults to `origin` (else the first remote). */
   readonly selectedRemote = signal('');
+  /** Push all tags (`--tags`). */
+  readonly tags = signal(false);
+  /** Force-push (`--force`). */
+  readonly force = signal(false);
 
   /**
    * Per-row selection, keyed by local branch. Re-seeded from `rows()` whenever
@@ -436,9 +397,9 @@ export class PushDialog {
    * selected remote, plus the row's default target and its local branch.
    *
    * Full remote-branch enumeration is unavailable (no RPC), so this derived
-   * fallback list feeds the disabled select that displays the target. Pushing
-   * to a differently-named remote branch is deferred: `PushRequest` has no
-   * refspec/target field, so the target is always the local branch name.
+   * fallback list feeds the per-row target select. An empty selection means
+   * "same name as the local branch" (the core's `PushRequest.remoteBranch`
+   * contract).
    */
   readonly rowOptions = computed<Record<string, string[]>>(() => {
     const known = (this.remoteBranchesByRemote()[this.selectedRemote()] ?? []).map(
@@ -483,6 +444,8 @@ export class PushDialog {
       this.selectedRemote.set(
         remotes.find((remote) => remote.name === 'origin')?.name ?? remotes[0]?.name ?? '',
       );
+      this.tags.set(false);
+      this.force.set(false);
       const next: Record<string, PushRowState> = {};
       for (const row of rows) {
         next[row.localBranch] = {
@@ -518,6 +481,30 @@ export class PushDialog {
     }));
   }
 
+  onRowRemoteBranchChange(row: PushRowView, event: Event): void {
+    const remoteBranch = (event.target as HTMLSelectElement).value;
+    this.rowState.update((state) => ({
+      ...state,
+      [row.localBranch]: { ...this.stateFor(row), remoteBranch },
+    }));
+  }
+
+  onRowTrackChange(row: PushRowView, event: Event): void {
+    const track = (event.target as HTMLInputElement).checked;
+    this.rowState.update((state) => ({
+      ...state,
+      [row.localBranch]: { ...this.stateFor(row), track },
+    }));
+  }
+
+  onTagsChange(event: Event): void {
+    this.tags.set((event.target as HTMLInputElement).checked);
+  }
+
+  onForceChange(event: Event): void {
+    this.force.set((event.target as HTMLInputElement).checked);
+  }
+
   onToggleAll(event: Event): void {
     const checked = (event.target as HTMLInputElement).checked;
     this.rowState.update((state) => {
@@ -533,14 +520,19 @@ export class PushDialog {
     const state = this.rowState();
     const branches: PushRowSelection[] = this.rows()
       .filter((row) => state[row.localBranch]?.checked ?? false)
-      .map((row) => ({
-        localBranch: row.localBranch,
-        // Same-name push: remote-branch rename is deferred (no refspec field).
-        remoteBranch: row.localBranch,
-        track: false,
-      }));
-    this.submitted.emit({ remote: this.selectedRemote(), branches });
+      .map((row) => {
+        const rowState = this.stateFor(row);
+        return {
+          localBranch: row.localBranch,
+          remoteBranch: rowState.remoteBranch,
+          track: rowState.track,
+        };
+      });
+    this.submitted.emit({
+      remote: this.selectedRemote(),
+      branches,
+      tags: this.tags(),
+      force: this.force(),
+    });
   }
-
-  protected readonly DEFERRED = DEFERRED;
 }

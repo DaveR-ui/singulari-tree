@@ -86,33 +86,63 @@ describe('PullDialog', () => {
     expect(query(fixture, 'modal-title')?.textContent?.trim()).toBe('Pull');
   });
 
-  it('renders the deferred local-branch control disabled with a deferred badge', async () => {
+  it('renders the local-branch and option controls enabled', async () => {
     const fixture = await setup(openFixture());
 
     const intoLocal = query<HTMLInputElement>(fixture, 'pull-into-local');
     expect(intoLocal).not.toBeNull();
-    expect(intoLocal!.disabled).toBe(true);
-    expect(intoLocal!.getAttribute('aria-disabled')).toBe('true');
-    expect(query(fixture, 'pull-into-local-deferred')?.textContent).toContain('Deferred');
-  });
+    expect(intoLocal!.disabled).toBe(false);
+    expect(intoLocal!.value).toBe(CURRENT_BRANCH);
+    expect(query(fixture, 'pull-into-local-deferred')).toBeNull();
 
-  it('renders all four deferred options disabled with badges', async () => {
-    const fixture = await setup(openFixture());
-
-    const ids = [
+    for (const id of [
       'pull-option-commit-merged',
       'pull-option-log',
       'pull-option-no-ff',
       'pull-option-rebase',
-    ];
-    for (const id of ids) {
+    ]) {
       const checkbox = query<HTMLInputElement>(fixture, id);
       expect(checkbox).not.toBeNull();
-      expect(checkbox!.disabled).toBe(true);
-      expect(checkbox!.getAttribute('aria-disabled')).toBe('true');
-      expect(checkbox!.title.length).toBeGreaterThan(0);
-      expect(query(fixture, `${id}-deferred`)?.textContent).toContain('Deferred');
+      expect(checkbox!.disabled).toBe(false);
+      expect(checkbox!.hasAttribute('aria-disabled')).toBe(false);
+      expect(query(fixture, `${id}-deferred`)).toBeNull();
     }
+  });
+
+  it('carries the local branch and merge/rebase options through the intent', async () => {
+    const fixture = await setup(openFixture());
+    const intents: PullIntent[] = [];
+    fixture.componentInstance.submitted.subscribe((intent) => intents.push(intent));
+
+    const intoLocal = query<HTMLInputElement>(fixture, 'pull-into-local')!;
+    intoLocal.value = 'release';
+    intoLocal.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    const commitMerged = query<HTMLInputElement>(fixture, 'pull-option-commit-merged')!;
+    commitMerged.checked = false;
+    commitMerged.dispatchEvent(new Event('change'));
+
+    for (const id of ['pull-option-log', 'pull-option-no-ff', 'pull-option-rebase']) {
+      const checkbox = query<HTMLInputElement>(fixture, id)!;
+      checkbox.checked = true;
+      checkbox.dispatchEvent(new Event('change'));
+    }
+    fixture.detectChanges();
+
+    query<HTMLButtonElement>(fixture, 'pull-submit')!.click();
+
+    expect(intents).toEqual([
+      {
+        remote: 'origin',
+        branch: 'feature',
+        intoLocalBranch: 'release',
+        noCommit: true,
+        log: true,
+        noFf: true,
+        rebase: true,
+      },
+    ]);
   });
 
   it('emits the PullIntent with the default remote/branch selection', async () => {
@@ -123,7 +153,15 @@ describe('PullDialog', () => {
     query<HTMLButtonElement>(fixture, 'pull-submit')!.click();
 
     expect(intents).toEqual([
-      { remote: 'origin', branch: 'feature', intoLocalBranch: CURRENT_BRANCH },
+      {
+        remote: 'origin',
+        branch: 'feature',
+        intoLocalBranch: CURRENT_BRANCH,
+        noCommit: false,
+        log: false,
+        noFf: false,
+        rebase: false,
+      },
     ]);
   });
 
@@ -146,7 +184,17 @@ describe('PullDialog', () => {
 
     query<HTMLButtonElement>(fixture, 'pull-submit')!.click();
 
-    expect(intents).toEqual([{ remote: 'upstream', branch: 'develop', intoLocalBranch: '' }]);
+    expect(intents).toEqual([
+      {
+        remote: 'upstream',
+        branch: 'develop',
+        intoLocalBranch: '',
+        noCommit: false,
+        log: false,
+        noFf: false,
+        rebase: false,
+      },
+    ]);
   });
 
   it('emits closed when Cancel is clicked', async () => {

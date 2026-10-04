@@ -78,7 +78,9 @@ describe('FetchDialog', () => {
     fixture.componentInstance.submitted.subscribe((intent) => intents.push(intent));
     query<HTMLButtonElement>(fixture, 'fetch-submit')!.click();
 
-    expect(intents).toEqual([{ allRemotes: true, remote: 'origin', prune: false }]);
+    expect(intents).toEqual([
+      { allRemotes: true, remote: 'origin', prune: false, tags: false, force: false },
+    ]);
   });
 
   it('prefers origin even when it is not the first remote', async () => {
@@ -110,26 +112,37 @@ describe('FetchDialog', () => {
     fixture.componentInstance.submitted.subscribe((intent) => intents.push(intent));
     query<HTMLButtonElement>(fixture, 'fetch-submit')!.click();
 
-    expect(intents).toEqual([{ allRemotes: false, remote: 'upstream', prune: false }]);
+    expect(intents).toEqual([
+      { allRemotes: false, remote: 'upstream', prune: false, tags: false, force: false },
+    ]);
   });
 
-  it('renders the postponed options disabled, unchecked and with deferred badges', async () => {
+  it('renders the option checkboxes enabled and unchecked', async () => {
     const fixture = await setup();
 
-    const options = [
-      ['fetch-prune', 'fetch-prune-deferred'],
-      ['fetch-option-tags', 'fetch-option-tags-deferred'],
-      ['fetch-option-overwrite-tags', 'fetch-option-overwrite-tags-deferred'],
-    ] as const;
-
-    for (const [testId, badgeId] of options) {
+    for (const testId of ['fetch-prune', 'fetch-option-tags', 'fetch-option-overwrite-tags']) {
       const input = query<HTMLInputElement>(fixture, testId)!;
-      expect(input.disabled).toBe(true);
+      expect(input.disabled).toBe(false);
       expect(input.checked).toBe(false);
-      expect(input.getAttribute('aria-disabled')).toBe('true');
-      expect((input.getAttribute('title') ?? '').length).toBeGreaterThan(0);
-      expect(query(fixture, badgeId)?.textContent?.trim()).toBe('Deferred');
+      expect(input.hasAttribute('aria-disabled')).toBe(false);
+      expect(query(fixture, `${testId}-deferred`)).toBeNull();
     }
+  });
+
+  it('carries prune, tags and force through the emitted intent', async () => {
+    const fixture = await setup();
+    const intents: FetchIntent[] = [];
+    fixture.componentInstance.submitted.subscribe((intent) => intents.push(intent));
+
+    toggle(fixture, 'fetch-prune', true);
+    toggle(fixture, 'fetch-option-tags', true);
+    toggle(fixture, 'fetch-option-overwrite-tags', true);
+
+    query<HTMLButtonElement>(fixture, 'fetch-submit')!.click();
+
+    expect(intents).toEqual([
+      { allRemotes: true, remote: 'origin', prune: true, tags: true, force: true },
+    ]);
   });
 
   it('emits closed when cancel is clicked', async () => {

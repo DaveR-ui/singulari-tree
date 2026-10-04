@@ -10,19 +10,13 @@ import {
 } from '@angular/core';
 import type { AppError } from '@core/services/ipc-bridge.service';
 import { ModalComponent } from '@shared/ui/modal/modal';
-import {
-  DEFERRED,
-  type FetchIntent,
-  type RemoteOpProgress,
-  type RemoteOption,
-} from '../../remote-models';
+import { type FetchIntent, type RemoteOpProgress, type RemoteOption } from '../../remote-models';
 
 /**
- * Dumb Fetch dialog. Collects a {@link FetchIntent} (all remotes or one) and
- * surfaces the running/progress/error state supplied by the shell. Options that
- * need a proto contract field the renderer cannot add yet are rendered disabled
- * with the centralized `DEFERRED` tooltip/badge; the dialog never pretends they
- * apply (`prune` is always emitted as `false`).
+ * Dumb Fetch dialog. Collects a {@link FetchIntent} (all remotes or one, plus
+ * the prune/tags/force options) and surfaces the running/progress/error state
+ * supplied by the shell. The renderer never talks to Git; the shell store maps
+ * the intent onto the `FetchRequest` that crosses the IPC bridge.
  */
 @Component({
   selector: 'st-fetch-dialog',
@@ -64,44 +58,36 @@ import {
           </label>
         }
 
-        <label class="st-fetch__option st-fetch__option--deferred">
+        <label class="st-fetch__option">
           <input
             type="checkbox"
             data-testid="fetch-prune"
-            disabled
-            aria-disabled="true"
-            [title]="DEFERRED['fetch.prune'].reason"
+            [checked]="prune()"
+            (change)="onPruneChange($event)"
           />
           <span class="st-fetch__label">
             Prune tracking branches no longer present on remote(s)
           </span>
-          <span class="st-deferred-badge" data-testid="fetch-prune-deferred">Deferred</span>
         </label>
 
-        <label class="st-fetch__option st-fetch__option--deferred">
+        <label class="st-fetch__option">
           <input
             type="checkbox"
             data-testid="fetch-option-tags"
-            disabled
-            aria-disabled="true"
-            [title]="DEFERRED['fetch.tags'].reason"
+            [checked]="tags()"
+            (change)="onTagsChange($event)"
           />
           <span class="st-fetch__label">Fetch all tags</span>
-          <span class="st-deferred-badge" data-testid="fetch-option-tags-deferred">Deferred</span>
         </label>
 
-        <label class="st-fetch__option st-fetch__option--deferred">
+        <label class="st-fetch__option">
           <input
             type="checkbox"
             data-testid="fetch-option-overwrite-tags"
-            disabled
-            aria-disabled="true"
-            [title]="DEFERRED['fetch.overwriteTags'].reason"
+            [checked]="overwriteTags()"
+            (change)="onOverwriteTagsChange($event)"
           />
           <span class="st-fetch__label">Overwrite Local Tags (--force)</span>
-          <span class="st-deferred-badge" data-testid="fetch-option-overwrite-tags-deferred">
-            Deferred
-          </span>
         </label>
 
         @if (progress(); as p) {
@@ -164,11 +150,6 @@ import {
       cursor: pointer;
     }
 
-    .st-fetch__option--deferred {
-      cursor: not-allowed;
-      opacity: 0.7;
-    }
-
     .st-fetch__option input[type='checkbox'] {
       accent-color: var(--st-color-accent, #0a84ff);
       margin: 0;
@@ -190,18 +171,6 @@ import {
 
     .st-fetch__select:focus {
       border-color: var(--st-color-accent, #0a84ff);
-    }
-
-    .st-deferred-badge {
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid var(--st-color-border, #2f2f44);
-      color: var(--muted, #8a8a9a);
-      border-radius: 999px;
-      padding: 1px 7px;
-      font-size: 10px;
-      letter-spacing: 0.3px;
-      text-transform: uppercase;
-      white-space: nowrap;
     }
 
     .st-fetch__progress {
@@ -258,9 +227,6 @@ import {
   `,
 })
 export class FetchDialog {
-  /** Exposed to the template for the disabled-option tooltips. */
-  readonly DEFERRED = DEFERRED;
-
   readonly open = input(false);
   readonly remotes = input<RemoteOption[]>([]);
   readonly loading = input(false);
@@ -276,6 +242,12 @@ export class FetchDialog {
   readonly allRemotes = signal(true);
   /** Name of the selected remote; falls back to `origin`, then the first. */
   readonly selectedRemote = signal('');
+  /** Prune remote-tracking refs deleted upstream (`--prune`). */
+  readonly prune = signal(false);
+  /** Fetch all tags (`--tags`). */
+  readonly tags = signal(false);
+  /** Overwrite moved local tags (`--force`). */
+  readonly overwriteTags = signal(false);
 
   readonly submitDisabled = computed(
     () => this.running() || this.offline() || (!this.allRemotes() && !this.selectedRemote()),
@@ -291,6 +263,9 @@ export class FetchDialog {
 
   private resetLocalState(): void {
     this.allRemotes.set(true);
+    this.prune.set(false);
+    this.tags.set(false);
+    this.overwriteTags.set(false);
     const preferred = this.remotes().find((remote) => remote.name === 'origin');
     this.selectedRemote.set(preferred?.name ?? this.remotes()[0]?.name ?? '');
   }
@@ -303,12 +278,26 @@ export class FetchDialog {
     this.selectedRemote.set((event.target as HTMLSelectElement).value);
   }
 
+  onPruneChange(event: Event): void {
+    this.prune.set((event.target as HTMLInputElement).checked);
+  }
+
+  onTagsChange(event: Event): void {
+    this.tags.set((event.target as HTMLInputElement).checked);
+  }
+
+  onOverwriteTagsChange(event: Event): void {
+    this.overwriteTags.set((event.target as HTMLInputElement).checked);
+  }
+
   submit(): void {
     if (this.submitDisabled()) return;
     this.submitted.emit({
       allRemotes: this.allRemotes(),
       remote: this.selectedRemote(),
-      prune: false,
+      prune: this.prune(),
+      tags: this.tags(),
+      force: this.overwriteTags(),
     });
   }
 }

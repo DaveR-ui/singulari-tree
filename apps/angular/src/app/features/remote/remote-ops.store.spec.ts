@@ -283,10 +283,22 @@ describe('RemoteOpsStore', () => {
     const store = makeStore(bridge);
     store.remotes.set([remote('origin'), remote('upstream')]);
 
-    await store.runFetch({ allRemotes: true, remote: '', prune: false });
+    await store.runFetch({ allRemotes: true, remote: '', prune: true, tags: true, force: true });
 
-    expect(invoke).toHaveBeenCalledWith('fetch', { repoId: 'repo-1', remote: 'origin' });
-    expect(invoke).toHaveBeenCalledWith('fetch', { repoId: 'repo-1', remote: 'upstream' });
+    expect(invoke).toHaveBeenCalledWith('fetch', {
+      repoId: 'repo-1',
+      remote: 'origin',
+      prune: true,
+      tags: true,
+      force: true,
+    });
+    expect(invoke).toHaveBeenCalledWith('fetch', {
+      repoId: 'repo-1',
+      remote: 'upstream',
+      prune: true,
+      tags: true,
+      force: true,
+    });
     expect(callsTo(invoke, 'fetch')).toHaveLength(2);
     expect(maxInFlight).toBe(1);
     expect(store.running()).toBe(false);
@@ -297,34 +309,51 @@ describe('RemoteOpsStore', () => {
     const { bridge, invoke } = makeBridge();
     const store = makeStore(bridge);
 
-    await store.runFetch({ allRemotes: false, remote: 'origin', prune: false });
+    await store.runFetch({ allRemotes: false, remote: 'origin', prune: false, tags: false, force: false });
 
-    expect(callsTo(invoke, 'fetch')).toEqual([['fetch', { repoId: 'repo-1', remote: 'origin' }]]);
+    expect(callsTo(invoke, 'fetch')).toEqual([
+      ['fetch', { repoId: 'repo-1', remote: 'origin', prune: false, tags: false, force: false }],
+    ]);
   });
 
-  it('runPull invokes the pull RPC with the selected remote and branch', async () => {
+  it('runPull invokes the pull RPC with every option', async () => {
     const { bridge, invoke } = makeBridge();
     const store = makeStore(bridge);
 
-    await store.runPull({ remote: 'origin', branch: 'main', intoLocalBranch: 'main' });
+    await store.runPull({
+      remote: 'origin',
+      branch: 'main',
+      intoLocalBranch: 'release',
+      noCommit: true,
+      log: true,
+      noFf: true,
+      rebase: true,
+    });
 
     expect(invoke).toHaveBeenCalledWith('pull', {
       repoId: 'repo-1',
       remote: 'origin',
       branch: 'main',
+      localBranch: 'release',
+      noCommit: true,
+      log: true,
+      noFf: true,
+      rebase: true,
     });
     expect(store.running()).toBe(false);
   });
 
-  it('runPush invokes once per selected row using each row local branch (same-name)', async () => {
+  it('runPush invokes once per selected row forwarding remoteBranch, track, tags and force', async () => {
     const { bridge, invoke } = makeBridge();
     const store = makeStore(bridge);
 
     await store.runPush({
       remote: 'origin',
+      tags: true,
+      force: true,
       branches: [
-        { localBranch: 'main', remoteBranch: 'main', track: false },
-        { localBranch: 'feature', remoteBranch: 'feature', track: false },
+        { localBranch: 'main', remoteBranch: 'main', track: true },
+        { localBranch: 'feature', remoteBranch: 'feature-x', track: false },
         { localBranch: 'local-only', remoteBranch: '', track: false },
         { localBranch: '', remoteBranch: 'ignored', track: false },
       ],
@@ -332,45 +361,97 @@ describe('RemoteOpsStore', () => {
 
     const pushes = callsTo(invoke, 'push');
     expect(pushes).toEqual([
-      ['push', { repoId: 'repo-1', remote: 'origin', branch: 'main' }],
-      ['push', { repoId: 'repo-1', remote: 'origin', branch: 'feature' }],
-      ['push', { repoId: 'repo-1', remote: 'origin', branch: 'local-only' }],
+      [
+        'push',
+        {
+          repoId: 'repo-1',
+          remote: 'origin',
+          branch: 'main',
+          remoteBranch: 'main',
+          setUpstream: true,
+          tags: true,
+          force: true,
+        },
+      ],
+      [
+        'push',
+        {
+          repoId: 'repo-1',
+          remote: 'origin',
+          branch: 'feature',
+          remoteBranch: 'feature-x',
+          setUpstream: false,
+          tags: true,
+          force: true,
+        },
+      ],
+      [
+        'push',
+        {
+          repoId: 'repo-1',
+          remote: 'origin',
+          branch: 'local-only',
+          remoteBranch: '',
+          setUpstream: false,
+          tags: true,
+          force: true,
+        },
+      ],
     ]);
   });
 
-  it('surfaces NOT_IMPLEMENTED as a friendly opError and stops running', async () => {
+  it('surfaces a real failure opError as-is and stops running', async () => {
     const { bridge } = makeBridge({
-      pull: () => Promise.reject({ code: 'NOT_IMPLEMENTED', message: 'not implemented' }),
+      pull: () => Promise.reject({ code: 'PULL_FAILED', message: 'merge conflict' }),
     });
     const store = makeStore(bridge);
 
-    await store.runPull({ remote: 'origin', branch: 'main', intoLocalBranch: 'main' });
+    await store.runPull({
+      remote: 'origin',
+      branch: 'main',
+      intoLocalBranch: 'main',
+      noCommit: false,
+      log: false,
+      noFf: false,
+      rebase: false,
+    });
 
     expect(store.running()).toBe(false);
-    expect(store.opError()?.code).toBe('NOT_IMPLEMENTED');
-    expect(store.opError()?.message).toContain('Phase 6');
+    expect(store.opError()).toEqual({
+      code: 'PULL_FAILED',
+      message: 'merge conflict',
+      details: {},
+    });
     expect(store.offline()).toBe(false);
   });
 
-  it('rewrites NOT_IMPLEMENTED for fetch and push too', async () => {
+  it('surfaces fetch and push failures verbatim too', async () => {
     const { bridge: fetchBridge } = makeBridge({
-      fetch: () => Promise.reject({ code: 'NOT_IMPLEMENTED', message: 'not implemented' }),
+      fetch: () => Promise.reject({ code: 'FETCH_FAILED', message: 'network down' }),
     });
     const fetchStore = makeStore(fetchBridge);
-    await fetchStore.runFetch({ allRemotes: false, remote: 'origin', prune: false });
-    expect(fetchStore.opError()?.code).toBe('NOT_IMPLEMENTED');
-    expect(fetchStore.opError()?.message).toContain('Phase 6');
+    await fetchStore.runFetch({
+      allRemotes: false,
+      remote: 'origin',
+      prune: false,
+      tags: false,
+      force: false,
+    });
+    expect(fetchStore.opError()?.code).toBe('FETCH_FAILED');
+    expect(fetchStore.opError()?.message).toBe('network down');
 
     const { bridge: pushBridge } = makeBridge({
-      push: () => Promise.reject({ code: 'NOT_IMPLEMENTED', message: 'not implemented' }),
+      push: () => Promise.reject({ code: 'PUSH_FAILED', message: 'rejected' }),
     });
     const pushStore = makeStore(pushBridge);
     await pushStore.runPush({
       remote: 'origin',
+      tags: false,
+      force: false,
       branches: [{ localBranch: 'main', remoteBranch: 'main', track: false }],
     });
-    expect(pushStore.opError()?.code).toBe('NOT_IMPLEMENTED');
-    expect(pushStore.opError()?.message).toContain('Phase 6');
+    expect(pushStore.opError()?.code).toBe('PUSH_FAILED');
+    expect(pushStore.opError()?.message).toBe('rejected');
   });
 
   it('marks offline when a remote operation finds no bridge', async () => {
@@ -381,7 +462,7 @@ describe('RemoteOpsStore', () => {
     });
     const store = makeStore(bridge);
 
-    await store.runFetch({ allRemotes: false, remote: 'origin', prune: false });
+    await store.runFetch({ allRemotes: false, remote: 'origin', prune: false, tags: false, force: false });
 
     expect(store.offline()).toBe(true);
     expect(store.opError()).toBeNull();
@@ -398,8 +479,16 @@ describe('RemoteOpsStore', () => {
     });
     const store = makeStore(bridge);
 
-    const first = store.runPull({ remote: 'origin', branch: 'main', intoLocalBranch: 'main' });
-    await store.runPull({ remote: 'origin', branch: 'dev', intoLocalBranch: 'dev' });
+    const pullIntent = {
+      remote: 'origin',
+      intoLocalBranch: 'main',
+      noCommit: false,
+      log: false,
+      noFf: false,
+      rebase: false,
+    };
+    const first = store.runPull({ ...pullIntent, branch: 'main' });
+    await store.runPull({ ...pullIntent, branch: 'dev', intoLocalBranch: 'dev' });
 
     expect(store.running()).toBe(true);
     expect(callsTo(invoke, 'pull')).toHaveLength(1);
@@ -414,9 +503,22 @@ describe('RemoteOpsStore', () => {
     const { bridge, invoke } = makeBridge();
     const store = makeStore(bridge, makeRepoState(null));
 
-    await store.runFetch({ allRemotes: true, remote: '', prune: false });
-    await store.runPull({ remote: 'origin', branch: 'main', intoLocalBranch: 'main' });
-    await store.runPush({ remote: 'origin', branches: [{ localBranch: 'main', remoteBranch: 'main', track: false }] });
+    await store.runFetch({ allRemotes: true, remote: '', prune: false, tags: false, force: false });
+    await store.runPull({
+      remote: 'origin',
+      branch: 'main',
+      intoLocalBranch: 'main',
+      noCommit: false,
+      log: false,
+      noFf: false,
+      rebase: false,
+    });
+    await store.runPush({
+      remote: 'origin',
+      tags: false,
+      force: false,
+      branches: [{ localBranch: 'main', remoteBranch: 'main', track: false }],
+    });
 
     expect(invoke).not.toHaveBeenCalled();
     expect(store.running()).toBe(false);

@@ -121,7 +121,7 @@ describe('PushDialog', () => {
     ).toBe(true);
   });
 
-  it('submits only the checked rows, forcing the local branch as the remote target', async () => {
+  it('submits only the checked rows with their selected remote target', async () => {
     const fixture = await setup();
     const emitted: PushIntent[] = [];
     fixture.componentInstance.submitted.subscribe((intent) => emitted.push(intent));
@@ -135,36 +135,64 @@ describe('PushDialog', () => {
       {
         remote: 'origin',
         branches: [{ localBranch: 'main', remoteBranch: 'main', track: false }],
+        tags: false,
+        force: false,
       },
     ]);
   });
 
-  it('disables the deferred controls and shows their badges', async () => {
+  it('renders the remote-branch, track, tags and force controls enabled', async () => {
     const fixture = await setup();
 
     const remote = query<HTMLSelectElement>(fixture, 'push-row-remote-select')!;
-    expect(remote.disabled).toBe(true);
-    expect(remote.getAttribute('aria-disabled')).toBe('true');
-    expect(remote.getAttribute('title')).toContain('refspec');
+    expect(remote.disabled).toBe(false);
+    expect(remote.hasAttribute('aria-disabled')).toBe(false);
     expect(remote.value).toBe('main');
-    expect(query(fixture, 'push-row-remote-deferred')?.textContent).toContain('Deferred');
-    expect(query(fixture, 'push-row-remote-deferred')?.getAttribute('title')).toContain('refspec');
+    expect(query(fixture, 'push-row-remote-deferred')).toBeNull();
 
     const track = query<HTMLInputElement>(fixture, 'push-row-track')!;
-    expect(track.disabled).toBe(true);
-    expect(track.getAttribute('aria-disabled')).toBe('true');
-    expect(query(fixture, 'push-row-track-deferred')?.textContent).toContain('Deferred');
-    expect(query(fixture, 'push-row-track-deferred')?.getAttribute('title')).toContain('upstream');
+    expect(track.disabled).toBe(false);
+    expect(track.hasAttribute('aria-disabled')).toBe(false);
+    expect(track.checked).toBe(false);
+    expect(query(fixture, 'push-row-track-deferred')).toBeNull();
 
-    const tags = query<HTMLInputElement>(fixture, 'push-option-tags')!;
-    expect(tags.disabled).toBe(true);
-    expect(query(fixture, 'push-option-tags-deferred')?.textContent).toContain('Deferred');
-    expect(query(fixture, 'push-option-tags-deferred')?.getAttribute('title')).toContain('tags');
+    for (const id of ['push-option-tags', 'push-option-force']) {
+      const checkbox = query<HTMLInputElement>(fixture, id)!;
+      expect(checkbox.disabled).toBe(false);
+      expect(checkbox.hasAttribute('aria-disabled')).toBe(false);
+      expect(query(fixture, `${id}-deferred`)).toBeNull();
+    }
+  });
 
-    const force = query<HTMLInputElement>(fixture, 'push-option-force')!;
-    expect(force.disabled).toBe(true);
-    expect(query(fixture, 'push-option-force-deferred')?.textContent).toContain('Deferred');
-    expect(query(fixture, 'push-option-force-deferred')?.getAttribute('title')).toContain('force');
+  it('forwards remote branch, track, tags and force through the intent', async () => {
+    const fixture = await setup();
+    const emitted: PushIntent[] = [];
+    fixture.componentInstance.submitted.subscribe((intent) => emitted.push(intent));
+
+    const checkbox = queryAll<HTMLInputElement>(fixture, 'push-row-checkbox')[0];
+    setChecked(checkbox, true, fixture);
+
+    const remote = query<HTMLSelectElement>(fixture, 'push-row-remote-select')!;
+    remote.value = 'develop';
+    remote.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    const track = query<HTMLInputElement>(fixture, 'push-row-track')!;
+    setChecked(track, true, fixture);
+
+    setChecked(query<HTMLInputElement>(fixture, 'push-option-tags')!, true, fixture);
+    setChecked(query<HTMLInputElement>(fixture, 'push-option-force')!, true, fixture);
+
+    query<HTMLButtonElement>(fixture, 'push-submit')!.click();
+
+    expect(emitted).toEqual([
+      {
+        remote: 'origin',
+        branches: [{ localBranch: 'main', remoteBranch: 'develop', track: true }],
+        tags: true,
+        force: true,
+      },
+    ]);
   });
 
   it('emits closed when cancel is clicked', async () => {

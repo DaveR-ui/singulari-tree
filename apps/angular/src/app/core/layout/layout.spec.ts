@@ -410,6 +410,10 @@ describe('LayoutComponent', () => {
       remote: 'origin',
       branch: 'main',
       intoLocalBranch: 'main',
+      noCommit: false,
+      log: false,
+      noFf: false,
+      rebase: false,
     });
   });
 
@@ -442,6 +446,8 @@ describe('LayoutComponent', () => {
     expect(remoteOps.runPush).toHaveBeenCalledWith({
       remote: 'origin',
       branches: [{ localBranch: 'main', remoteBranch: 'main', track: false }],
+      tags: false,
+      force: false,
     });
   });
 
@@ -462,6 +468,8 @@ describe('LayoutComponent', () => {
       allRemotes: true,
       remote: 'origin',
       prune: false,
+      tags: false,
+      force: false,
     });
   });
 });
