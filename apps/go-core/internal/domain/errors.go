@@ -44,6 +44,7 @@ const (
 	ErrCodeCheckoutFailed    = "CHECKOUT_FAILED"
 	ErrCodeFetchFailed       = "FETCH_FAILED"
 	ErrCodePushFailed        = "PUSH_FAILED"
+	ErrCodePullFailed        = "PULL_FAILED"
 	ErrCodeDiffFailed        = "DIFF_FAILED"
 	ErrCodeWatchFailed       = "WATCH_FAILED"
 	ErrCodeUnauthenticated   = "UNAUTHENTICATED"

@@ -4,6 +4,7 @@ import * as http from 'node:http';
 import * as https from 'node:https';
 import { createMainWindow } from '../window/window';
 import { registerIpcHandlers } from '../ipc/handlers';
+import { sendProgress } from '../ipc/events';
 import { Supervisor } from './supervisor';
 import { buildAppMenu } from './app-menu';
 
@@ -99,6 +100,11 @@ async function bootstrap(): Promise<void> {
     token: process.env['GO_CORE_TOKEN'],
     protoDir: getProtoDir(),
     mock: process.env['MOCK_GO_CORE'] === '1',
+    // Fetch/Pull/Push progress → renderer `git:progress` event. Chosen approach
+    // (b): the supervisor has no window reference; this injected sink owns it.
+    onProgress: (payload) => {
+      if (mainWindow) sendProgress(mainWindow, payload);
+    },
   });
 
   // Fire-and-forget supervisor start; renderer will queue until GO_CORE_READY (mock resolves instantly)

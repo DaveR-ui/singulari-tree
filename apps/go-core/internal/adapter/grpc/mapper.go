@@ -103,6 +103,12 @@ func remoteToProto(r domain.Remote) *singularitreev1.Remote {
 	}
 }
 
+// progressToProto maps a streaming remote-operation progress chunk to its wire
+// form. Percent is in 0..100 and Message is the git progress line.
+func progressToProto(p domain.Progress) *singularitreev1.Progress {
+	return &singularitreev1.Progress{Percent: p.Percent, Message: p.Message}
+}
+
 // tagToProto maps a domain tag to its wire form. Tagger and message are
 // optional and only set for annotated tags.
 func tagToProto(t domain.Tag) *singularitreev1.Tag {
@@ -274,7 +280,7 @@ func grpcCodeFor(appCode string) codes.Code {
 		return codes.Unavailable
 	case domain.ErrCodeNotImplemented:
 		return codes.Unimplemented
-	case domain.ErrCodeFetchFailed, domain.ErrCodePushFailed:
+	case domain.ErrCodeFetchFailed, domain.ErrCodePushFailed, domain.ErrCodePullFailed:
 		return codes.Unavailable
 	default:
 		return codes.Internal

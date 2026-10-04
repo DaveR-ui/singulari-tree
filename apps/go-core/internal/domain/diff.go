@@ -50,6 +50,7 @@ type DiffPort interface {
 type GitPort interface {
 	DiffPort
 	CommitPort
+	RemoteOpsPort
 	// Resolve returns the repository top-level directory and its git common dir
 	// for a filesystem path, or ErrNotAGitRepo when the path is not a repo.
 	Resolve(ctx context.Context, fsPath string) (topLevel, commonDir string, err error)

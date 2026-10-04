@@ -1,6 +1,6 @@
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
-import { isStreamingRpc } from '../ipc/channels';
+import { isStreamingRpc, isUnimplementedStreamingRpc } from '../ipc/channels';
 
 /**
  * GoCoreClient — gRPC client for the `singularitree.v1.GitCore` service.
@@ -314,18 +314,42 @@ export interface CheckoutResponse {
 export interface FetchRequest {
   repoId: string;
   remote: string;
+  /** Previously-deferred `fetch.prune` — `git fetch --prune`. */
+  prune: boolean;
+  /** Previously-deferred `fetch.tags` — `git fetch --tags`. */
+  tags: boolean;
+  /** Previously-deferred `fetch.overwriteTags` — `git fetch --force`. */
+  force: boolean;
 }
 
 export interface PushRequest {
   repoId: string;
   remote: string;
   branch: string;
+  /** Target remote branch when it differs from `branch`; empty = same name. */
+  remoteBranch: string;
+  /** Previously-deferred `push.track` — `git push --set-upstream`. */
+  setUpstream: boolean;
+  /** Previously-deferred `push.tags` — `git push --tags`. */
+  tags: boolean;
+  /** Previously-deferred `push.force` — `git push --force`. */
+  force: boolean;
 }
 
 export interface PullRequest {
   repoId: string;
   remote: string;
   branch: string;
+  /** Local branch to integrate into; empty = currently checked-out branch. */
+  localBranch: string;
+  /** Previously-deferred `pull.commitMerged` — `git pull --no-commit`. */
+  noCommit: boolean;
+  /** Previously-deferred `pull.includeMergedMessages` — `git pull --log`. */
+  log: boolean;
+  /** Previously-deferred `pull.noFF` — `git pull --no-ff`. */
+  noFf: boolean;
+  /** Previously-deferred `pull.rebase` — `git pull --rebase`. */
+  rebase: boolean;
 }
 
 export interface Progress {
@@ -364,6 +388,15 @@ export interface GoCoreClientOptions {
   /** Per-call deadline in milliseconds (default 10s). */
   callTimeoutMs?: number;
   /**
+   * Per-call deadline for server-streaming RPCs (Fetch/Push/Pull), in ms.
+   * Defaults to `DEFAULT_STREAM_TIMEOUT_MS` (30 min). Remote operations can
+   * legitimately run for minutes, so the short unary default must NOT be
+   * applied to a stream; the deadline only ensures a stalled transport
+   * eventually rejects with DEADLINE_EXCEEDED instead of leaving the promise
+   * pending forever and wedging the renderer. Pass `0` to disable it explicitly.
+   */
+  streamTimeoutMs?: number;
+  /**
    * Which `singularitree.v1` service to bind to. Defaults to `'GitCore'`;
    * the supervisor creates a second client with `'Auth'`.
    */
@@ -371,6 +404,13 @@ export interface GoCoreClientOptions {
 }
 
 const DEFAULT_CALL_TIMEOUT_MS = 10_000;
+
+/**
+ * Default deadline for server-streaming RPCs (30 minutes). Generous enough for
+ * large fetches/pushes yet bounded so a stalled transport cannot hang forever;
+ * override per client with `streamTimeoutMs`, or pass `0` to disable.
+ */
+export const DEFAULT_STREAM_TIMEOUT_MS = 1_800_000;
 
 function notConnectedError(): AppError {
   return {
@@ -434,6 +474,7 @@ export class GoCoreClient {
   private target = '';
   private connected = false;
   private readonly callTimeoutMs: number;
+  private readonly streamTimeoutMs: number;
   private readonly serviceCtor: grpc.ServiceClientConstructor;
 
   constructor(private readonly opts: GoCoreClientOptions) {
@@ -441,6 +482,7 @@ export class GoCoreClient {
       throw new Error('GoCoreClient: protoDir is required');
     }
     this.callTimeoutMs = opts.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS;
+    this.streamTimeoutMs = opts.streamTimeoutMs ?? DEFAULT_STREAM_TIMEOUT_MS;
 
     const packageDefinition = protoLoader.loadSync([...GIT_CORE_PROTO_FILES], {
       includeDirs: [opts.protoDir],
@@ -492,6 +534,23 @@ export class GoCoreClient {
       this.client.close();
       this.client = null;
     }
+  }
+
+  /**
+   * Fresh per-call metadata cloned from the token-bearing instance.
+   *
+   * gRPC metadata is mutated by the library during a call; a server-streaming
+   * call is long-lived and may overlap other calls, so it must never share the
+   * single `this.metadata` instance. Returns `null` when not connected.
+   */
+  private newMetadata(): grpc.Metadata | null {
+    const current = this.metadata;
+    if (!current) return null;
+    const clone = new grpc.Metadata();
+    for (const [key, value] of Object.entries(current.getMap())) {
+      clone.set(key, value);
+    }
+    return clone;
   }
 
   /** Health check — real gRPC `Ping` (supervisor heartbeat). */
@@ -554,20 +613,85 @@ export class GoCoreClient {
   }
 
   /**
+   * Drive a server-streaming GitCore RPC (Fetch/Push/Pull) to completion.
+   *
+   * grpc-js exposes a server-streaming method as
+   * `(request, metadata, options) => ClientReadableStream` with NO callback.
+   * Each `data` message is passed to `onProgress`; the promise rejects with a
+   * normalized `AppError` on stream `error` and resolves on `end` (EOF), so the
+   * renderer's `Promise<void>` contract holds.
+   */
+  invokeStream(
+    rpcName: RpcName | string,
+    payload: unknown,
+    onProgress: (progress: Progress) => void,
+  ): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const client = this.client;
+      const metadata = this.newMetadata();
+      if (!client || !metadata) {
+        reject(notConnectedError());
+        return;
+      }
+      const method = (client as unknown as Record<string, unknown>)[rpcName];
+      if (typeof method !== 'function') {
+        reject({
+          code: 'UNKNOWN_RPC',
+          message: `Unknown gRPC method: ${rpcName}`,
+          details: {},
+        } as AppError);
+        return;
+      }
+      // Generous but bounded deadline: remote git operations may run for
+      // minutes, but a stalled transport must eventually fail rather than
+      // leave the renderer's `running()` state wedged forever.
+      const options: grpc.CallOptions = {};
+      if (this.streamTimeoutMs > 0) {
+        options.deadline = new Date(Date.now() + this.streamTimeoutMs);
+      }
+      const call = (method as (
+        request: unknown,
+        md: grpc.Metadata,
+        options: grpc.CallOptions,
+      ) => grpc.ClientReadableStream<Progress>).call(
+        client,
+        payload ?? {},
+        metadata,
+        options,
+      );
+      call.on('data', (msg: Progress) => {
+        onProgress({ percent: msg.percent, message: msg.message });
+      });
+      call.on('error', (err: grpc.ServiceError) => {
+        reject(normalizeGrpcError(err));
+      });
+      call.on('end', () => {
+        resolve();
+      });
+    });
+  }
+
+  /**
    * Generic unary dispatch used by the supervisor for the channel→RPC map.
    *
-   * Server-streaming RPCs (Fetch/Push/Pull/Watch/StreamCommits) cannot be driven
-   * by the unary callback path (it never settles). Reject them immediately with
-   * `NOT_IMPLEMENTED` — an honest error beats a promise that hangs forever.
-   * Dedicated streaming wiring lands in Phase 6.
+   * `StreamCommits` / `Watch` remain unimplemented over IPC and reject promptly
+   * with `NOT_IMPLEMENTED` (an honest error beats a promise that hangs). The
+   * `Fetch` / `Push` / `Pull` streams are real now: they route through
+   * `invokeStream` here with a no-op sink. The supervisor calls `invokeStream`
+   * directly so it can forward progress to the renderer.
    */
   invoke(rpcName: RpcName | string, payload: unknown): Promise<unknown> {
-    if (isStreamingRpc(rpcName)) {
+    if (isUnimplementedStreamingRpc(rpcName)) {
       return Promise.reject({
         code: 'NOT_IMPLEMENTED',
-        message: `${rpcName} streaming is Phase 6`,
+        message: `${rpcName} streaming is not implemented`,
         details: {},
       } as AppError);
+    }
+    if (isStreamingRpc(rpcName)) {
+      return this.invokeStream(rpcName, payload, () => {
+        // Progress is dropped on the generic path; supervisor uses invokeStream.
+      });
     }
     return this.unary<unknown>(rpcName, payload);
   }

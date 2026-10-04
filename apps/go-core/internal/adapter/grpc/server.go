@@ -187,6 +187,83 @@ func (s *Server) GetTags(ctx context.Context, req *singularitreev1.GetTagsReques
 	return out, nil
 }
 
+// Fetch runs `git fetch` and streams progress chunks to the client
+// (server-streaming RPC). Errors before streaming starts are returned with the
+// domain code attached as trailer metadata via appErrorToStatus.
+func (s *Server) Fetch(req *singularitreev1.FetchRequest, stream googlegrpc.ServerStreamingServer[singularitreev1.Progress]) error {
+	if s.gitSvc == nil {
+		return status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	opts := domain.RemoteOpOptions{
+		Prune: req.GetPrune(),
+		Tags:  req.GetTags(),
+		Force: req.GetForce(),
+	}
+	ch, err := s.gitSvc.Fetch(stream.Context(), domain.RepositoryId(req.GetRepoId()), req.GetRemote(), opts)
+	if err != nil {
+		return appErrorToStatus(stream.Context(), err)
+	}
+	return streamProgress(stream, ch)
+}
+
+// Push runs `git push` and streams progress chunks to the client.
+func (s *Server) Push(req *singularitreev1.PushRequest, stream googlegrpc.ServerStreamingServer[singularitreev1.Progress]) error {
+	if s.gitSvc == nil {
+		return status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	opts := domain.RemoteOpOptions{
+		SetUpstream:  req.GetSetUpstream(),
+		RemoteBranch: req.GetRemoteBranch(),
+		Tags:         req.GetTags(),
+		Force:        req.GetForce(),
+	}
+	ch, err := s.gitSvc.Push(stream.Context(), domain.RepositoryId(req.GetRepoId()), req.GetRemote(), req.GetBranch(), opts)
+	if err != nil {
+		return appErrorToStatus(stream.Context(), err)
+	}
+	return streamProgress(stream, ch)
+}
+
+// Pull runs `git pull` and streams progress chunks to the client.
+func (s *Server) Pull(req *singularitreev1.PullRequest, stream googlegrpc.ServerStreamingServer[singularitreev1.Progress]) error {
+	if s.gitSvc == nil {
+		return status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	opts := domain.RemoteOpOptions{
+		LocalBranch: req.GetLocalBranch(),
+		NoCommit:    req.GetNoCommit(),
+		Log:         req.GetLog(),
+		NoFF:        req.GetNoFf(),
+		Rebase:      req.GetRebase(),
+	}
+	ch, err := s.gitSvc.Pull(stream.Context(), domain.RepositoryId(req.GetRepoId()), req.GetRemote(), req.GetBranch(), opts)
+	if err != nil {
+		return appErrorToStatus(stream.Context(), err)
+	}
+	return streamProgress(stream, ch)
+}
+
+// streamProgress drains a domain RemoteOpResult channel, forwarding each
+// progress chunk as a proto Progress. A terminal result carrying an Err is
+// converted with appErrorToStatus so the client's Recv sees a non-OK status and
+// the typed domain code in the trailer; a clean close returns nil (success). It
+// returns early when Send fails or the context is cancelled, so no goroutine
+// leaks (R12).
+func streamProgress(stream googlegrpc.ServerStreamingServer[singularitreev1.Progress], ch <-chan domain.RemoteOpResult) error {
+	for r := range ch {
+		if r.Err != nil {
+			return appErrorToStatus(stream.Context(), r.Err)
+		}
+		if r.Progress == nil {
+			continue
+		}
+		if err := stream.Send(progressToProto(*r.Progress)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // UnaryAuthInterceptor validates `authorization: Bearer <token>` metadata.
 // When token is empty, authentication is disabled.
 func UnaryAuthInterceptor(token string) googlegrpc.UnaryServerInterceptor {

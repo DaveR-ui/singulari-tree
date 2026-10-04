@@ -77,10 +77,14 @@ export const AUTH_CHANNELS: ReadonlySet<string> = new Set<string>([
 /**
  * Server-streaming RPCs — declared `returns (stream ...)` in gitcore.proto.
  *
- * The Phase 0 unary invoke path cannot drive these: the callback passed to a
- * streaming method never settles, so a naive `unary()` dispatch would hang.
- * `supervisor.forwardToGo` and `GoCoreClient.invoke` therefore reject these
- * immediately with `NOT_IMPLEMENTED` (Phase 6 owns real streaming wiring).
+ * `Fetch` / `Push` / `Pull` are driven for real by `GoCoreClient.invokeStream`:
+ * the supervisor forwards each `Progress` message to the renderer over the
+ * `git:progress` event, and the invoke promise settles at stream EOF / error.
+ *
+ * `StreamCommits` and `Watch` are still not wired over IPC (see
+ * `UNIMPLEMENTED_STREAMING_RPCS`); the unary callback path cannot drive them
+ * because its callback never settles, so `invoke()` rejects them promptly
+ * rather than hanging forever.
  */
 export const STREAMING_RPCS = new Set<string>([
   'StreamCommits',
@@ -90,9 +94,23 @@ export const STREAMING_RPCS = new Set<string>([
   'Watch',
 ]);
 
+/**
+ * Server-streaming RPCs with no IPC wiring yet. `GoCoreClient.invoke` rejects
+ * these with `NOT_IMPLEMENTED` instead of hanging on the unary callback path.
+ */
+export const UNIMPLEMENTED_STREAMING_RPCS = new Set<string>([
+  'StreamCommits',
+  'Watch',
+]);
+
 /** True when `rpc` is a server-streaming GitCore method. */
 export function isStreamingRpc(rpc: string): boolean {
   return STREAMING_RPCS.has(rpc);
+}
+
+/** True when `rpc` is a server-streaming method still unimplemented over IPC. */
+export function isUnimplementedStreamingRpc(rpc: string): boolean {
+  return UNIMPLEMENTED_STREAMING_RPCS.has(rpc);
 }
 
 export function isValidChannel(channel: string): channel is ChannelName {

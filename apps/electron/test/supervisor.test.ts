@@ -6,20 +6,24 @@ vi.mock('electron', () => ({
   app: { getAppPath: () => '/tmp/singularitree-test' },
 }));
 
-import { Supervisor } from '../src/main/supervisor';
+import { Supervisor, type SupervisorOptions } from '../src/main/supervisor';
+import type { ProgressPayload } from '../src/ipc/events';
 
 /**
- * Guards the Phase 0 streaming contract: channels mapped to server-streaming
- * RPCs (Fetch/Push/Pull) must reject promptly with NOT_IMPLEMENTED instead of
- * hanging on the unary callback path (ipc-strategy.md §2.2).
+ * Guards the streaming dispatch contract: Fetch/Pull/Push are server-streaming
+ * RPCs driven through `GoCoreClient.invokeStream`, with progress forwarded to
+ * the injected sink. Unary/auth channels keep the queue-while-not-ready
+ * behaviour (ipc-strategy.md §2.2, §2.6).
  */
 
-function makeSupervisor(): Supervisor {
-  return new Supervisor({
-    goCoreBinary: '/nonexistent/go-core',
-    grpcAddr: '127.0.0.1:0',
-    httpAddr: '127.0.0.1:0',
-  });
+const BASE_OPTIONS: SupervisorOptions = {
+  goCoreBinary: '/nonexistent/go-core',
+  grpcAddr: '127.0.0.1:0',
+  httpAddr: '127.0.0.1:0',
+};
+
+function makeSupervisor(onProgress?: (payload: ProgressPayload) => void): Supervisor {
+  return new Supervisor({ ...BASE_OPTIONS, onProgress });
 }
 
 /** Resolve to a sentinel if the promise neither settles nor rejects promptly. */
@@ -33,36 +37,91 @@ async function settleWithin<T>(promise: Promise<T>, ms: number): Promise<string>
   ]);
 }
 
-describe('Supervisor.forwardToGo streaming guard', () => {
-  it('rejects git:fetch promptly with NOT_IMPLEMENTED (never pends)', async () => {
-    const supervisor = makeSupervisor();
-    const outcome = await settleWithin(supervisor.forwardToGo('git:fetch', {}), 1000);
-    expect(outcome).toBe('rejected:NOT_IMPLEMENTED');
-  });
+type ProgressFn = (p: { percent: number; message: string }) => void;
+interface FakeClient {
+  invokeStream: (
+    rpc: string,
+    payload: unknown,
+    onProgress: ProgressFn,
+  ) => Promise<void>;
+}
 
+/** Flip the supervisor to "ready" with a fake GitCore client. */
+function armReady(supervisor: Supervisor, client: FakeClient): void {
+  const internals = supervisor as unknown as { ready: boolean; client: FakeClient };
+  internals.ready = true;
+  internals.client = client;
+}
+
+describe('Supervisor.forwardToGo streaming dispatch', () => {
   it.each(['git:fetch', 'git:pull', 'git:push'])(
-    'rejects streaming channel %s immediately',
+    'queues streaming channel %s while go-core is not ready (no NOT_IMPLEMENTED)',
     async (channel) => {
       const supervisor = makeSupervisor();
-      await expect(supervisor.forwardToGo(channel, {})).rejects.toMatchObject({
-        code: 'NOT_IMPLEMENTED',
-      });
+      const outcome = await settleWithin(supervisor.forwardToGo(channel, {}), 50);
+      expect(outcome).toBe('pending');
     },
   );
 
-  it('still maps unary channels (no NOT_IMPLEMENTED at the streaming guard)', async () => {
+  it.each([
+    ['git:fetch', 'Fetch', 'fetch'],
+    ['git:pull', 'Pull', 'pull'],
+    ['git:push', 'Push', 'push'],
+  ])(
+    'drives %s over invokeStream and forwards progress as op=%s',
+    async (channel, rpc, op) => {
+      const progress: ProgressPayload[] = [];
+      const supervisor = makeSupervisor((p) => progress.push(p));
+      const invokeStream = vi.fn(
+        async (_rpc: string, _payload: unknown, onProgress: ProgressFn) => {
+          onProgress({ percent: 25, message: 'quarter' });
+          onProgress({ percent: 100, message: 'done' });
+        },
+      );
+      armReady(supervisor, { invokeStream });
+
+      const payload = { repoId: 'repo-1', remote: 'origin' };
+      await expect(supervisor.forwardToGo(channel, payload)).resolves.toBeUndefined();
+
+      expect(invokeStream).toHaveBeenCalledWith(rpc, payload, expect.any(Function));
+      expect(progress).toEqual([
+        { op, percent: 25, message: 'quarter' },
+        { op, percent: 100, message: 'done' },
+      ]);
+    },
+  );
+
+  it('propagates a stream error as the forwardToGo rejection', async () => {
     const supervisor = makeSupervisor();
-    // Not connected: a unary channel must not hit the streaming guard, so it
-    // queues (or rejects with a non-streaming code) rather than NOT_IMPLEMENTED.
-    const outcome = await settleWithin(supervisor.forwardToGo('git:getStatus', { repoId: 'x' }), 50);
+    const invokeStream = vi.fn(async () => {
+      throw { code: 'NETWORK_ERROR', message: 'boom', details: {} };
+    });
+    armReady(supervisor, { invokeStream });
+
+    await expect(supervisor.forwardToGo('git:fetch', {})).rejects.toMatchObject({
+      code: 'NETWORK_ERROR',
+    });
+  });
+
+  it('still maps unary channels (no streaming dispatch, queues while not ready)', async () => {
+    const supervisor = makeSupervisor();
+    const outcome = await settleWithin(
+      supervisor.forwardToGo('git:getStatus', { repoId: 'x' }),
+      50,
+    );
     expect(outcome).toBe('pending'); // queued while not ready
   });
 
-  it('routes an auth channel without hitting the GitCore streaming guard', async () => {
+  it('routes an auth channel without hitting the GitCore streaming path', async () => {
     const supervisor = makeSupervisor();
-    // Auth RPCs are unary: `auth:logout` must pass the streaming guard and queue
-    // while go-core is not ready — never reject NOT_IMPLEMENTED.
     const outcome = await settleWithin(supervisor.forwardToGo('auth:logout', {}), 50);
     expect(outcome).toBe('pending');
+  });
+
+  it('rejects an unknown channel with UNKNOWN_CHANNEL', async () => {
+    const supervisor = makeSupervisor();
+    await expect(supervisor.forwardToGo('git:nope', {})).rejects.toMatchObject({
+      code: 'UNKNOWN_CHANNEL',
+    });
   });
 });

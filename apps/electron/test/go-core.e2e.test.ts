@@ -269,6 +269,34 @@ describe.skipIf(!goAvailable)(
       ).rejects.toMatchObject({ code: 'REPO_NOT_FOUND' });
     });
 
+    it('streams Fetch progress against a local-path remote and resolves at EOF', async () => {
+      if (!client) throw new Error('client not initialised');
+
+      const repo = await client.openRepository({ fsPath: fixture.dir });
+      const progress: Array<{ percent: number; message: string }> = [];
+      await expect(
+        client.invokeStream(
+          'Fetch',
+          { repoId: repo.id, remote: 'origin' },
+          (p) => progress.push(p),
+        ),
+      ).resolves.toBeUndefined();
+
+      // The adapter always emits a synthetic "git fetch started" chunk, so a
+      // successful stream must deliver at least one Progress message.
+      expect(progress.length).toBeGreaterThan(0);
+      for (const p of progress) {
+        expect(typeof p.percent).toBe('number');
+        expect(typeof p.message).toBe('string');
+      }
+      expect(progress.some((p) => p.message.includes('git fetch started'))).toBe(true);
+
+      // The generic unary dispatch must also drive the stream to completion.
+      await expect(
+        client.invoke('Fetch', { repoId: repo.id, remote: 'origin' }),
+      ).resolves.toBeUndefined();
+    });
+
     it('preserves the domain error code NOT_A_GIT_REPO across the wire', async () => {
       if (!client) throw new Error('client not initialised');
 

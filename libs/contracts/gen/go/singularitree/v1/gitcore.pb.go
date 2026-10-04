@@ -1386,11 +1386,21 @@ func (*CheckoutResponse) Descriptor() ([]byte, []int) {
 	return file_gitcore_proto_rawDescGZIP(), []int{28}
 }
 
-// Fetch / Push / Pull with progress streaming
+// Fetch / Push / Pull with progress streaming.
+//
+// The additive fields below un-defer previously-deferred dialog options; each
+// maps to the named git flag. Field numbers on the original messages are frozen
+// (ADR-003); only new numbers are appended.
 type FetchRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RepoId        string                 `protobuf:"bytes,1,opt,name=repo_id,json=repoId,proto3" json:"repo_id,omitempty"`
-	Remote        string                 `protobuf:"bytes,2,opt,name=remote,proto3" json:"remote,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	RepoId string                 `protobuf:"bytes,1,opt,name=repo_id,json=repoId,proto3" json:"repo_id,omitempty"`
+	Remote string                 `protobuf:"bytes,2,opt,name=remote,proto3" json:"remote,omitempty"`
+	// Previously-deferred `fetch.prune` — map to `git fetch --prune`.
+	Prune bool `protobuf:"varint,3,opt,name=prune,proto3" json:"prune,omitempty"`
+	// Previously-deferred `fetch.tags` — map to `git fetch --tags`.
+	Tags bool `protobuf:"varint,4,opt,name=tags,proto3" json:"tags,omitempty"`
+	// Previously-deferred `fetch.overwriteTags` — map to `git fetch --force` (updates moved tags).
+	Force         bool `protobuf:"varint,5,opt,name=force,proto3" json:"force,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1439,11 +1449,43 @@ func (x *FetchRequest) GetRemote() string {
 	return ""
 }
 
+func (x *FetchRequest) GetPrune() bool {
+	if x != nil {
+		return x.Prune
+	}
+	return false
+}
+
+func (x *FetchRequest) GetTags() bool {
+	if x != nil {
+		return x.Tags
+	}
+	return false
+}
+
+func (x *FetchRequest) GetForce() bool {
+	if x != nil {
+		return x.Force
+	}
+	return false
+}
+
 type PushRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RepoId        string                 `protobuf:"bytes,1,opt,name=repo_id,json=repoId,proto3" json:"repo_id,omitempty"`
-	Remote        string                 `protobuf:"bytes,2,opt,name=remote,proto3" json:"remote,omitempty"`
-	Branch        string                 `protobuf:"bytes,3,opt,name=branch,proto3" json:"branch,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	RepoId string                 `protobuf:"bytes,1,opt,name=repo_id,json=repoId,proto3" json:"repo_id,omitempty"`
+	Remote string                 `protobuf:"bytes,2,opt,name=remote,proto3" json:"remote,omitempty"`
+	Branch string                 `protobuf:"bytes,3,opt,name=branch,proto3" json:"branch,omitempty"`
+	// Previously-deferred `push.remoteBranch` — target remote branch name when it
+	// differs from the local branch. Chosen over a free-form refspec so the core
+	// controls the mapping and rejects unsafe values; maps to `git push <remote>
+	// <branch>:<remote_branch>`. Empty means "same name as <branch>".
+	RemoteBranch string `protobuf:"bytes,4,opt,name=remote_branch,json=remoteBranch,proto3" json:"remote_branch,omitempty"`
+	// Previously-deferred `push.track` — map to `git push --set-upstream`.
+	SetUpstream bool `protobuf:"varint,5,opt,name=set_upstream,json=setUpstream,proto3" json:"set_upstream,omitempty"`
+	// Previously-deferred `push.tags` — map to `git push --tags`.
+	Tags bool `protobuf:"varint,6,opt,name=tags,proto3" json:"tags,omitempty"`
+	// Previously-deferred `push.force` — map to `git push --force`.
+	Force         bool `protobuf:"varint,7,opt,name=force,proto3" json:"force,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1499,11 +1541,52 @@ func (x *PushRequest) GetBranch() string {
 	return ""
 }
 
+func (x *PushRequest) GetRemoteBranch() string {
+	if x != nil {
+		return x.RemoteBranch
+	}
+	return ""
+}
+
+func (x *PushRequest) GetSetUpstream() bool {
+	if x != nil {
+		return x.SetUpstream
+	}
+	return false
+}
+
+func (x *PushRequest) GetTags() bool {
+	if x != nil {
+		return x.Tags
+	}
+	return false
+}
+
+func (x *PushRequest) GetForce() bool {
+	if x != nil {
+		return x.Force
+	}
+	return false
+}
+
 type PullRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RepoId        string                 `protobuf:"bytes,1,opt,name=repo_id,json=repoId,proto3" json:"repo_id,omitempty"`
-	Remote        string                 `protobuf:"bytes,2,opt,name=remote,proto3" json:"remote,omitempty"`
-	Branch        string                 `protobuf:"bytes,3,opt,name=branch,proto3" json:"branch,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	RepoId string                 `protobuf:"bytes,1,opt,name=repo_id,json=repoId,proto3" json:"repo_id,omitempty"`
+	Remote string                 `protobuf:"bytes,2,opt,name=remote,proto3" json:"remote,omitempty"`
+	Branch string                 `protobuf:"bytes,3,opt,name=branch,proto3" json:"branch,omitempty"`
+	// Previously-deferred `pull.intoLocal` — local branch to fast-forward/merge
+	// into; maps to `git pull <remote> <branch>:<local_branch>`. Empty means the
+	// currently checked-out branch.
+	LocalBranch string `protobuf:"bytes,4,opt,name=local_branch,json=localBranch,proto3" json:"local_branch,omitempty"`
+	// Previously-deferred `pull.commitMerged` — when true, do not commit the merge
+	// (maps to `git pull --no-commit`).
+	NoCommit bool `protobuf:"varint,5,opt,name=no_commit,json=noCommit,proto3" json:"no_commit,omitempty"`
+	// Previously-deferred `pull.includeMergedMessages` — map to `git pull --log`.
+	Log bool `protobuf:"varint,6,opt,name=log,proto3" json:"log,omitempty"`
+	// Previously-deferred `pull.noFF` — map to `git pull --no-ff`.
+	NoFf bool `protobuf:"varint,7,opt,name=no_ff,json=noFf,proto3" json:"no_ff,omitempty"`
+	// Previously-deferred `pull.rebase` — map to `git pull --rebase`.
+	Rebase        bool `protobuf:"varint,8,opt,name=rebase,proto3" json:"rebase,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1557,6 +1640,41 @@ func (x *PullRequest) GetBranch() string {
 		return x.Branch
 	}
 	return ""
+}
+
+func (x *PullRequest) GetLocalBranch() string {
+	if x != nil {
+		return x.LocalBranch
+	}
+	return ""
+}
+
+func (x *PullRequest) GetNoCommit() bool {
+	if x != nil {
+		return x.NoCommit
+	}
+	return false
+}
+
+func (x *PullRequest) GetLog() bool {
+	if x != nil {
+		return x.Log
+	}
+	return false
+}
+
+func (x *PullRequest) GetNoFf() bool {
+	if x != nil {
+		return x.NoFf
+	}
+	return false
+}
+
+func (x *PullRequest) GetRebase() bool {
+	if x != nil {
+		return x.Rebase
+	}
+	return false
 }
 
 type Progress struct {
@@ -1781,18 +1899,30 @@ const file_gitcore_proto_rawDesc = "" +
 	"\x0fCheckoutRequest\x12\x17\n" +
 	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x19\n" +
 	"\bref_name\x18\x02 \x01(\tR\arefName\"\x12\n" +
-	"\x10CheckoutResponse\"?\n" +
+	"\x10CheckoutResponse\"\x7f\n" +
 	"\fFetchRequest\x12\x17\n" +
 	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x16\n" +
-	"\x06remote\x18\x02 \x01(\tR\x06remote\"V\n" +
+	"\x06remote\x18\x02 \x01(\tR\x06remote\x12\x14\n" +
+	"\x05prune\x18\x03 \x01(\bR\x05prune\x12\x12\n" +
+	"\x04tags\x18\x04 \x01(\bR\x04tags\x12\x14\n" +
+	"\x05force\x18\x05 \x01(\bR\x05force\"\xc8\x01\n" +
 	"\vPushRequest\x12\x17\n" +
 	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x16\n" +
 	"\x06remote\x18\x02 \x01(\tR\x06remote\x12\x16\n" +
-	"\x06branch\x18\x03 \x01(\tR\x06branch\"V\n" +
+	"\x06branch\x18\x03 \x01(\tR\x06branch\x12#\n" +
+	"\rremote_branch\x18\x04 \x01(\tR\fremoteBranch\x12!\n" +
+	"\fset_upstream\x18\x05 \x01(\bR\vsetUpstream\x12\x12\n" +
+	"\x04tags\x18\x06 \x01(\bR\x04tags\x12\x14\n" +
+	"\x05force\x18\a \x01(\bR\x05force\"\xd5\x01\n" +
 	"\vPullRequest\x12\x17\n" +
 	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x16\n" +
 	"\x06remote\x18\x02 \x01(\tR\x06remote\x12\x16\n" +
-	"\x06branch\x18\x03 \x01(\tR\x06branch\">\n" +
+	"\x06branch\x18\x03 \x01(\tR\x06branch\x12!\n" +
+	"\flocal_branch\x18\x04 \x01(\tR\vlocalBranch\x12\x1b\n" +
+	"\tno_commit\x18\x05 \x01(\bR\bnoCommit\x12\x10\n" +
+	"\x03log\x18\x06 \x01(\bR\x03log\x12\x13\n" +
+	"\x05no_ff\x18\a \x01(\bR\x04noFf\x12\x16\n" +
+	"\x06rebase\x18\b \x01(\bR\x06rebase\">\n" +
 	"\bProgress\x12\x18\n" +
 	"\apercent\x18\x01 \x01(\rR\apercent\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\"'\n" +

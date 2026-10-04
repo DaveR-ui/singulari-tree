@@ -117,20 +117,54 @@ message CheckoutRequest {
 }
 message CheckoutResponse {}
 
-// Fetch / Push / Pull with progress streaming
+// Fetch / Push / Pull with progress streaming.
+//
+// The additive fields below un-defer previously-deferred dialog options; each
+// maps to the named git flag. Field numbers on the original messages are frozen
+// (ADR-003); only new numbers are appended.
 message FetchRequest {
   string repo_id = 1;
   string remote = 2;
+  // Previously-deferred `fetch.prune` — map to `git fetch --prune`.
+  bool prune = 3;
+  // Previously-deferred `fetch.tags` — map to `git fetch --tags`.
+  bool tags = 4;
+  // Previously-deferred `fetch.overwriteTags` — map to `git fetch --force` (updates moved tags).
+  bool force = 5;
 }
 message PushRequest {
   string repo_id = 1;
   string remote = 2;
   string branch = 3;
+  // Previously-deferred `push.remoteBranch` — target remote branch name when it
+  // differs from the local branch. Chosen over a free-form refspec so the core
+  // controls the mapping and rejects unsafe values; maps to `git push <remote>
+  // <branch>:<remote_branch>`. Empty means "same name as <branch>".
+  string remote_branch = 4;
+  // Previously-deferred `push.track` — map to `git push --set-upstream`.
+  bool set_upstream = 5;
+  // Previously-deferred `push.tags` — map to `git push --tags`.
+  bool tags = 6;
+  // Previously-deferred `push.force` — map to `git push --force`.
+  bool force = 7;
 }
 message PullRequest {
   string repo_id = 1;
   string remote = 2;
   string branch = 3;
+  // Previously-deferred `pull.intoLocal` — local branch to fast-forward/merge
+  // into; maps to `git pull <remote> <branch>:<local_branch>`. Empty means the
+  // currently checked-out branch.
+  string local_branch = 4;
+  // Previously-deferred `pull.commitMerged` — when true, do not commit the merge
+  // (maps to `git pull --no-commit`).
+  bool no_commit = 5;
+  // Previously-deferred `pull.includeMergedMessages` — map to `git pull --log`.
+  bool log = 6;
+  // Previously-deferred `pull.noFF` — map to `git pull --no-ff`.
+  bool no_ff = 7;
+  // Previously-deferred `pull.rebase` — map to `git pull --rebase`.
+  bool rebase = 8;
 }
 message Progress {
   uint32 percent = 1;

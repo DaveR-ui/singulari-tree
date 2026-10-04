@@ -211,18 +211,42 @@ export interface CheckoutRequest {
 export interface FetchRequest {
   repoId: string;
   remote: string;
+  /** Previously-deferred `fetch.prune` — `git fetch --prune`. */
+  prune: boolean;
+  /** Previously-deferred `fetch.tags` — `git fetch --tags`. */
+  tags: boolean;
+  /** Previously-deferred `fetch.overwriteTags` — `git fetch --force`. */
+  force: boolean;
 }
 
 export interface PullRequest {
   repoId: string;
   remote: string;
   branch: string;
+  /** Local branch to integrate into; empty = currently checked-out branch. */
+  localBranch: string;
+  /** Previously-deferred `pull.commitMerged` — `git pull --no-commit`. */
+  noCommit: boolean;
+  /** Previously-deferred `pull.includeMergedMessages` — `git pull --log`. */
+  log: boolean;
+  /** Previously-deferred `pull.noFF` — `git pull --no-ff`. */
+  noFf: boolean;
+  /** Previously-deferred `pull.rebase` — `git pull --rebase`. */
+  rebase: boolean;
 }
 
 export interface PushRequest {
   repoId: string;
   remote: string;
   branch: string;
+  /** Target remote branch when it differs from `branch`; empty = same name. */
+  remoteBranch: string;
+  /** Previously-deferred `push.track` — `git push --set-upstream`. */
+  setUpstream: boolean;
+  /** Previously-deferred `push.tags` — `git push --tags`. */
+  tags: boolean;
+  /** Previously-deferred `push.force` — `git push --force`. */
+  force: boolean;
 }
 
 /** Command acknowledgements (empty proto messages). */

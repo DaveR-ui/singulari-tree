@@ -8,6 +8,7 @@ import {
   isStreamingRpc,
   type ChannelName,
 } from '../ipc/channels';
+import type { ProgressPayload } from '../ipc/events';
 import { GoCoreClient } from './go-core-client';
 
 /**
@@ -34,6 +35,15 @@ export interface SupervisorOptions {
   protoDir?: string;
   /** Explicit opt-in mock mode (also `MOCK_GO_CORE=1`). Never the default. */
   mock?: boolean;
+  /**
+   * Progress sink for server-streaming GitCore RPCs (Fetch/Pull/Push).
+   *
+   * Chosen approach (b) from the slice task: the supervisor stays window- and
+   * Electron-free; `main.ts` injects a callback that forwards each
+   * `ProgressPayload` to the single main window via `events.sendProgress`
+   * (which emits on the `git:progress` channel). Tests inject a spy instead.
+   */
+  onProgress?: (payload: ProgressPayload) => void;
 }
 
 interface PendingRequest {
@@ -317,11 +327,8 @@ export class Supervisor {
     if (!rpc) {
       throw { code: 'UNKNOWN_CHANNEL', message: `No gRPC mapping for channel ${channel}` };
     }
-    if (isStreamingRpc(rpc)) {
-      // The unary invoke path cannot drive a server-streaming method (its
-      // callback never settles). Fail fast and honestly instead of hanging.
-      throw { code: 'NOT_IMPLEMENTED', message: `${rpc} streaming is Phase 6` };
-    }
+    // Queue (do not reject) while go-core is starting — streaming requests too,
+    // so a fetch/pull/push issued during startup still runs on GO_CORE_READY.
     if (!this.ready) {
       if (this.queue.length >= this.maxQueue) {
         throw { code: 'QUEUE_FULL', message: 'Go core unavailable and queue full' };
@@ -334,11 +341,34 @@ export class Supervisor {
       console.log(`[supervisor:mock] forward ${channel}`, payload);
       return { ok: true, channel, payload, mock: true };
     }
+    // Fetch/Pull/Push are server-streaming: drive the real gRPC stream so
+    // progress reaches the renderer and the promise settles at EOF/error.
+    if (isStreamingRpc(rpc)) {
+      return this.forwardStream(rpc, payload);
+    }
     // Auth channels bind to the Auth client; everything else stays on GitCore.
     const target = AUTH_CHANNELS.has(channel) ? this.authClient : this.client;
     if (!target) {
       throw { code: 'GO_CORE_UNAVAILABLE', message: 'Go core gRPC client not connected' };
     }
     return target.invoke(rpc, payload);
+  }
+
+  /**
+   * Drive a server-streaming GitCore RPC (Fetch/Pull/Push). Each `Progress`
+   * message is forwarded to the injected `onProgress` sink (wired in main.ts to
+   * `events.sendProgress`); the promise resolves at stream EOF and rejects on
+   * stream error, so the renderer's `Promise<void>` contract holds.
+   */
+  private async forwardStream(rpc: string, payload: unknown): Promise<void> {
+    // Streaming channels are all GitCore (never Auth).
+    const target = this.client;
+    if (!target) {
+      throw { code: 'GO_CORE_UNAVAILABLE', message: 'Go core gRPC client not connected' };
+    }
+    const op = rpc.toLowerCase();
+    await target.invokeStream(rpc, payload, (p) => {
+      this.opts.onProgress?.({ op, percent: p.percent, message: p.message });
+    });
   }
 }

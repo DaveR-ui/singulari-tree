@@ -149,22 +149,64 @@ export interface CheckoutRequest {
 export interface CheckoutResponse {
 }
 
-/** Fetch / Push / Pull with progress streaming */
+/**
+ * Fetch / Push / Pull with progress streaming.
+ *
+ * The additive fields below un-defer previously-deferred dialog options; each
+ * maps to the named git flag. Field numbers on the original messages are frozen
+ * (ADR-003); only new numbers are appended.
+ */
 export interface FetchRequest {
   repoId: string;
   remote: string;
+  /** Previously-deferred `fetch.prune` — map to `git fetch --prune`. */
+  prune: boolean;
+  /** Previously-deferred `fetch.tags` — map to `git fetch --tags`. */
+  tags: boolean;
+  /** Previously-deferred `fetch.overwriteTags` — map to `git fetch --force` (updates moved tags). */
+  force: boolean;
 }
 
 export interface PushRequest {
   repoId: string;
   remote: string;
   branch: string;
+  /**
+   * Previously-deferred `push.remoteBranch` — target remote branch name when it
+   * differs from the local branch. Chosen over a free-form refspec so the core
+   * controls the mapping and rejects unsafe values; maps to `git push <remote>
+   * <branch>:<remote_branch>`. Empty means "same name as <branch>".
+   */
+  remoteBranch: string;
+  /** Previously-deferred `push.track` — map to `git push --set-upstream`. */
+  setUpstream: boolean;
+  /** Previously-deferred `push.tags` — map to `git push --tags`. */
+  tags: boolean;
+  /** Previously-deferred `push.force` — map to `git push --force`. */
+  force: boolean;
 }
 
 export interface PullRequest {
   repoId: string;
   remote: string;
   branch: string;
+  /**
+   * Previously-deferred `pull.intoLocal` — local branch to fast-forward/merge
+   * into; maps to `git pull <remote> <branch>:<local_branch>`. Empty means the
+   * currently checked-out branch.
+   */
+  localBranch: string;
+  /**
+   * Previously-deferred `pull.commitMerged` — when true, do not commit the merge
+   * (maps to `git pull --no-commit`).
+   */
+  noCommit: boolean;
+  /** Previously-deferred `pull.includeMergedMessages` — map to `git pull --log`. */
+  log: boolean;
+  /** Previously-deferred `pull.noFF` — map to `git pull --no-ff`. */
+  noFf: boolean;
+  /** Previously-deferred `pull.rebase` — map to `git pull --rebase`. */
+  rebase: boolean;
 }
 
 export interface Progress {

@@ -35,6 +35,8 @@ export enum ErrorCode {
   GITHUB_RATE_LIMITED = 21,
   GITHUB_API_ERROR = 22,
   GITHUB_TOKEN_INVALID = 23,
+  /** PULL_FAILED - Additive: remote operations (Fetch/Push/Pull) carry a distinct pull code. */
+  PULL_FAILED = 24,
   UNRECOGNIZED = -1,
 }
 
