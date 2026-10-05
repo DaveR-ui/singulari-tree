@@ -1,6 +1,6 @@
 # SingulariTree
 
-> **SingulariTree = git-client monorepo** — SourceTree-inspired multiplatform desktop Git client.
+> **SingulariTree = git-client monorepo** — Multiplatform desktop Git client.
 > Greenfield design under `docs/context/git-client/` (see `docs/context/git-client/INDEX.md`).
 > Physical folder on disk is `SingulariTree/` (alias `git-client` per `docs/context/git-client/folder-structure.md §1`).
 > Module alias: **Singularitree** (Go module `github.com/SingulariTree/go-core`, proto package `singularitree.v1` aka `gitclient.v1` for compatibility).

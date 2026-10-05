@@ -1,6 +1,6 @@
 # Roadmap V1 — 16-20 semanas post-MVP
 
-> V1 = MVP + SourceTree paridad sustancial: merge/rebase/cherry-pick avanzados, conflicto UI, worktrees full, submodules, LFS awareness, SSH auth, signed commits, bisect/blame hooks, búsqueda/filtrado grafo, bisect, reflog, stash apply/pop, patch apply, remotos CRUD, settings, keybindings, packaging firmado, auto-update, perf large-repo 100k.
+> V1 = MVP : merge/rebase/cherry-pick avanzados, conflicto UI, worktrees full, submodules, LFS awareness, SSH auth, signed commits, bisect/blame hooks, búsqueda/filtrado grafo, bisect, reflog, stash apply/pop, patch apply, remotos CRUD, settings, keybindings, packaging firmado, auto-update, perf large-repo 100k.
 
 ## Fase V1.1 — Git avanzado (sem 1-6 post-MVP)
 

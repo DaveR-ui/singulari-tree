@@ -1,6 +1,6 @@
 # SingulariTree — Índice de documentación
 
-> **SingulariTree = git-client monorepo** — Cliente Git de escritorio multiplataforma inspirado en SourceTree.
+> **SingulariTree = git-client monorepo** — Cliente Git de escritorio multiplataforma.
 > Carpeta física: `SingulariTree/` · Alias lógico: `git-client` · Módulo Go: `github.com/SingulariTree/go-core` · Proto: `singularitree.v1` (alias `gitclient.v1`).
 
 ## Propósito

@@ -14,7 +14,7 @@ doc_language: es
 
 ## Overview
 
-SingulariTree es un **monorepo** de un cliente Git de escritorio multiplataforma inspirado en **SourceTree**. Forma del sistema:
+SingulariTree es un **monorepo** de un cliente Git de escritorio multiplataforma. Forma del sistema:
 
 > **el grafo/files son la verdad; SQLite solo guarda caché de metadata, NUNCA objetos Git.**
 

@@ -70,7 +70,7 @@
 
 - **Contexto:** Diff UX moderna, binarios, ficheros grandes.
 - **Decisión:** `libs/ui-kit/diff-viewer` wrapper `monaco-editor` + `monaco-workers` (web workers); `side-by-side`/`unified` toggle; límite 1MB/`5000` líneas → plain text fallback; syntax por extensión; hunks lazy.
-- **Consecuencias:** + UX SourceTree-like; + no freeze; − bundle Monaco pesado (lazy load).
+- **Consecuencias:** + UX moderna; + no freeze; − bundle Monaco pesado (lazy load).
 - **Alternativas:** CodeMirror (descartado: Monaco superior diff), plain `<pre>` (descartado: pobre).
 - **Estado:** Aceptado.
 
