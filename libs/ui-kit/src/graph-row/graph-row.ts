@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import type { Commit, Lane } from '@contracts/domain';
+import type { Commit, Lane } from '@singularitree/contracts/domain';
 import { laneColor } from './lane-palette';
 import { authorName, firstLine, formatShortDate, normalizeRefKind, shortOidHex } from './graph-row.utils';
 

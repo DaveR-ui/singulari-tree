@@ -8,6 +8,12 @@
     "@angular/common": "^21.0.0",
     "@angular/cdk": "^21.0.0"
   },
+  "devDependencies": {
+    "@angular/build": "^21.2.7",
+    "@angular/compiler-cli": "^21.2.8",
+    "@singularitree/contracts": "*",
+    "ng-packagr": "^21.2.7"
+  },
   "ngPackage": {
     "dest": "../../dist/libs/ui-kit",
     "lib": {
@@ -15,6 +21,6 @@
     }
   },
   "scripts": {
-    "build": "ng-packagr -p ng-package.json"
+    "build": "ng-packagr -p ng-package.json -c tsconfig.lib.json"
   }
 }

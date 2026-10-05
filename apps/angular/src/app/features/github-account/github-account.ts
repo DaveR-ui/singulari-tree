@@ -57,7 +57,7 @@ const SOURCE_LABELS: Record<AuthSource, string> = {
 
       <st-account-profile
         [status]="store.status() ?? null"
-        [sourceLabel]="sourceLabel(store.status()?.source)"
+        [sourceLabel]="sourceLabel($safeNavigationMigration(store.status()?.source))"
       />
 
       @if (rateLimit(); as limit) {
