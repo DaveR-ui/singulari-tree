@@ -551,3 +551,56 @@ func TestGetBranchesRemotesTagsUnbornRepo(t *testing.T) {
 		t.Errorf("tags len = %d, want 0 (%+v)", len(got), got)
 	}
 }
+
+// TestCheckoutNilGitService asserts the handler fails fast with
+// FailedPrecondition when no git service is wired, instead of panicking.
+func TestCheckoutNilGitService(t *testing.T) {
+	srv := grpcadapter.NewServer(nil, nil, nil, nil, nil, "")
+	_, err := srv.Checkout(context.Background(), &singularitreev1.CheckoutRequest{RepoId: "repo-1", RefName: "main"})
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("Checkout(nil gitSvc) code = %v, want FailedPrecondition (err=%v)", status.Code(err), err)
+	}
+}
+
+// TestCheckoutSwitchesBranch covers the end-to-end unary Checkout RPC: the
+// renderer sends refs/heads/<b> and the core switches HEAD. An unknown ref is a
+// typed CHECKOUT_FAILED (InvalidArgument) with the domain code in the trailer.
+func TestCheckoutSwitchesBranch(t *testing.T) {
+	addr := startServer(t)
+	fixture := initFixtureRepo(t)
+	gitRun(t, fixture, "branch", "-M", "main")
+	gitRun(t, fixture, "branch", "feature")
+
+	client, closeConn := newGitCoreClient(t, addr)
+	defer closeConn()
+	ctx := authed(context.Background())
+
+	repo, err := client.OpenRepository(ctx, &singularitreev1.OpenRepositoryRequest{FsPath: fixture})
+	if err != nil {
+		t.Fatalf("OpenRepository: %v", err)
+	}
+
+	resp, err := client.Checkout(ctx, &singularitreev1.CheckoutRequest{RepoId: repo.GetId(), RefName: "refs/heads/feature"})
+	if err != nil {
+		t.Fatalf("Checkout: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("Checkout returned nil response")
+	}
+	if got := gitRun(t, fixture, "symbolic-ref", "HEAD"); got != "refs/heads/feature" {
+		t.Fatalf("HEAD = %q, want refs/heads/feature", got)
+	}
+
+	var trailer metadata.MD
+	_, err = client.Checkout(
+		ctx,
+		&singularitreev1.CheckoutRequest{RepoId: repo.GetId(), RefName: "refs/heads/nope"},
+		googlegrpc.Trailer(&trailer),
+	)
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("Checkout(unknown) code = %v, want InvalidArgument (err=%v)", status.Code(err), err)
+	}
+	if got := trailer.Get("x-app-error-code"); len(got) == 0 || got[0] != "CHECKOUT_FAILED" {
+		t.Fatalf("trailer x-app-error-code = %v, want [CHECKOUT_FAILED]", got)
+	}
+}

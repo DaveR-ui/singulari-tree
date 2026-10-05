@@ -1,12 +1,12 @@
 import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Repository } from '@contracts/domain';
-import type { AppError } from '@core/services/ipc-bridge.service';
-import { LanguageService } from '@core/services/language.service';
+import { IpcBridge, type AppError, type MenuNavigatePayload } from '@core/services/ipc-bridge.service';
 import { RepoState } from '@core/services/repo-state.service';
+import { GithubAccountStore } from '@features/github-account/github-account.store';
 import { RemoteOpsStore } from '@features/remote/remote-ops.store';
 import type {
   PushRowView,
@@ -86,6 +86,7 @@ interface StubRepoStateOptions {
   reposError?: AppError | null;
   reposOffline?: boolean;
   removingId?: string | null;
+  checkoutError?: AppError | null;
 }
 
 function makeRepoState(opts: StubRepoStateOptions = {}) {
@@ -111,10 +112,14 @@ function makeRepoState(opts: StubRepoStateOptions = {}) {
     refsLoading: signal(opts.refsLoading ?? false),
     refsError: signal<AppError | null>(opts.refsError ?? null),
     refsOffline: signal(opts.refsOffline ?? false),
+    checkoutRunning: signal(false),
+    checkoutError: signal<AppError | null>(opts.checkoutError ?? null),
     loadRepositories: vi.fn(async () => {}),
     setActive: vi.fn(),
     loadRefs: vi.fn(async () => {}),
     removeRepository: vi.fn(async () => true),
+    checkoutBranch: vi.fn(async () => {}),
+    dismissCheckoutError: vi.fn(),
   };
 }
 
@@ -154,23 +159,51 @@ function makeRemoteOps(opts: StubRemoteOpsOptions = {}) {
   };
 }
 
+interface StubIpcBridge {
+  onMenuNavigate: ReturnType<typeof vi.fn>;
+  emitMenuNavigate: (payload: MenuNavigatePayload) => void;
+  unsubscribe: ReturnType<typeof vi.fn>;
+}
+
+/**
+ * `IpcBridge` stand-in that captures the single native-menu listener so tests
+ * can push `menu:navigate` payloads and assert the unsubscribe on destroy.
+ */
+function makeIpcBridge(): StubIpcBridge {
+  let listener: ((payload: MenuNavigatePayload) => void) | null = null;
+  const unsubscribe = vi.fn();
+  const onMenuNavigate = vi.fn((cb: (payload: MenuNavigatePayload) => void) => {
+    listener = cb;
+    return unsubscribe;
+  });
+  return {
+    onMenuNavigate,
+    emitMenuNavigate: (payload) => listener?.(payload),
+    unsubscribe,
+  };
+}
+
+/** `GithubAccountStore` stand-in exposing only the startup auto-connect hook. */
+function makeGithubAccount() {
+  return { autoConnectOnce: vi.fn(async () => {}) };
+}
+
 async function setup(
   repoStateOpts: StubRepoStateOptions = {},
   remoteOpsOpts: StubRemoteOpsOptions = {},
 ) {
   const repoState = makeRepoState(repoStateOpts);
   const remoteOps = makeRemoteOps(remoteOpsOpts);
-  const languageService = {
-    language: signal<'en' | 'es'>('en'),
-    setLanguage: vi.fn(),
-  };
+  const ipcBridge = makeIpcBridge();
+  const githubAccount = makeGithubAccount();
   await TestBed.configureTestingModule({
     providers: [
       provideZonelessChangeDetection(),
       provideRouter([{ path: '**', component: StubPageComponent }]),
       { provide: RepoState, useValue: repoState },
       { provide: RemoteOpsStore, useValue: remoteOps },
-      { provide: LanguageService, useValue: languageService },
+      { provide: IpcBridge, useValue: ipcBridge },
+      { provide: GithubAccountStore, useValue: githubAccount },
     ],
   }).compileComponents();
 
@@ -178,7 +211,7 @@ async function setup(
   fixture.detectChanges();
   await fixture.whenStable();
   fixture.detectChanges();
-  return { fixture, repoState, remoteOps, languageService };
+  return { fixture, repoState, remoteOps, ipcBridge, githubAccount };
 }
 
 function text(fixture: { nativeElement: unknown }): string {
@@ -528,29 +561,104 @@ describe('LayoutComponent', () => {
     });
   });
 
-  it('routes the language switch selection to LanguageService', async () => {
-    const { fixture, languageService } = await setup();
+  it('does not render the retired in-app chrome controls', async () => {
+    const { fixture } = await setup();
+    const el = fixture.nativeElement as HTMLElement;
 
-    const es = query<HTMLButtonElement>(fixture, 'language-es');
-    expect(es).not.toBeNull();
-    es!.click();
-    fixture.detectChanges();
-
-    expect(languageService.setLanguage).toHaveBeenCalledTimes(1);
-    expect(languageService.setLanguage).toHaveBeenCalledWith('es');
+    expect(el.querySelector('st-shell-menubar')).toBeNull();
+    expect(el.querySelector('[data-testid="theme-toggle"]')).toBeNull();
   });
 
-  it('reflects the active language in the menubar switch', async () => {
-    const { fixture, languageService } = await setup();
+  it('triggers the account auto-connect once at startup', async () => {
+    const { githubAccount } = await setup();
 
-    languageService.language.set('es');
+    expect(githubAccount.autoConnectOnce).toHaveBeenCalledTimes(1);
+  });
+
+  it('navigates on a known native-menu route', async () => {
+    const { fixture, ipcBridge } = await setup();
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
+
+    ipcBridge.emitMenuNavigate({ route: '/github-account' });
     fixture.detectChanges();
 
-    expect(query<HTMLButtonElement>(fixture, 'language-es')?.getAttribute('aria-pressed')).toBe(
-      'true',
+    expect(ipcBridge.onMenuNavigate).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledWith('/github-account');
+  });
+
+  it('ignores empty and unknown native-menu routes', async () => {
+    const { fixture, ipcBridge } = await setup();
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
+
+    ipcBridge.emitMenuNavigate({ route: '' });
+    ipcBridge.emitMenuNavigate({ route: '/nope' });
+    fixture.detectChanges();
+
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('unsubscribes from the native-menu listener on destroy', async () => {
+    const { fixture, ipcBridge } = await setup();
+
+    fixture.destroy();
+
+    expect(ipcBridge.unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it('checks out a local branch when its sidebar row is clicked', async () => {
+    const { fixture, repoState } = await setup({ branches: ['main', 'feature/x'] });
+
+    const row = query<HTMLElement>(fixture, 'st-sidebar-branch');
+    expect(row).not.toBeNull();
+    row!.click();
+
+    expect(repoState.checkoutBranch).toHaveBeenCalledTimes(1);
+    expect(repoState.checkoutBranch).toHaveBeenCalledWith('main', false);
+  });
+
+  it('checks out a remote-tracking branch when its sidebar row is clicked', async () => {
+    const { fixture, repoState } = await setup({
+      remotes: ['origin'],
+      remoteBranches: ['origin/david/topic'],
+    });
+
+    const row = query<HTMLElement>(fixture, 'st-sidebar-remote-branches');
+    expect(row).not.toBeNull();
+    row!.click();
+
+    expect(repoState.checkoutBranch).toHaveBeenCalledTimes(1);
+    expect(repoState.checkoutBranch).toHaveBeenCalledWith('origin/david/topic', true);
+  });
+
+  it('renders the checkout-error banner from RepoState and dismisses through the store', async () => {
+    const { fixture, repoState } = await setup({
+      checkoutError: {
+        code: 'CHECKOUT_FAILED',
+        message: 'Your local changes would be overwritten by checkout.',
+        details: { reason: 'dirty_working_tree', paths: 'src/a.ts\nsrc/b.ts' },
+      },
+    });
+
+    expect(query(fixture, 'checkout-error-message')?.textContent).toContain(
+      'Your local changes would be overwritten by checkout.',
     );
-    expect(query<HTMLButtonElement>(fixture, 'language-en')?.getAttribute('aria-pressed')).toBe(
-      'false',
-    );
+    const paths = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll(
+        '[data-testid="checkout-error-path"]',
+      ),
+    ).map((el) => el.textContent?.trim());
+    expect(paths).toEqual(['src/a.ts', 'src/b.ts']);
+
+    query<HTMLButtonElement>(fixture, 'checkout-error-dismiss')!.click();
+
+    expect(repoState.dismissCheckoutError).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not render the checkout-error banner when RepoState has no error', async () => {
+    const { fixture } = await setup();
+
+    expect(query(fixture, 'checkout-error-banner')).toBeNull();
   });
 });

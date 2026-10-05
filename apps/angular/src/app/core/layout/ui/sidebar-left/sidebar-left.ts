@@ -75,7 +75,14 @@ interface RemoteGroup {
           } @else {
             <ul class="st-left__list" data-testid="st-sidebar-branches">
               @for (branch of branches(); track branch) {
-                <li class="st-left__item st-left__sub">
+                <li
+                  class="st-left__item st-left__sub st-left__sub--clickable"
+                  data-testid="st-sidebar-branch"
+                  role="button"
+                  tabindex="0"
+                  (click)="selectBranch(branch)"
+                  (keydown)="onBranchKeydown($event, branch)"
+                >
                   {{ branch }}
                   @if (branch === currentBranch() && currentBranchBehind() > 0) {
                     <st-badge
@@ -139,8 +146,12 @@ interface RemoteGroup {
                   <li class="st-left__item st-left__sub">{{ group.remote }}</li>
                   @for (branch of group.branches; track branch) {
                     <li
-                      class="st-left__item st-left__sub st-left__sub--branch"
+                      class="st-left__item st-left__sub st-left__sub--branch st-left__sub--clickable"
                       data-testid="st-sidebar-remote-branches"
+                      role="button"
+                      tabindex="0"
+                      (click)="selectRemoteBranch(group.remote, branch)"
+                      (keydown)="onRemoteBranchKeydown($event, group.remote, branch)"
                     >
                       {{ branch }}
                     </li>
@@ -269,6 +280,17 @@ interface RemoteGroup {
       padding-left: 58px;
     }
 
+    /* Branch rows are actionable: brighter hover plus a keyboard focus ring. */
+    .st-left__sub--clickable:hover {
+      color: var(--st-color-text, #d6d6de);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .st-left__sub--clickable:focus-visible {
+      outline: 1px solid var(--st-color-accent, #0a84ff);
+      outline-offset: -1px;
+    }
+
     .st-left__empty {
       margin: 0;
       padding: 4px 10px 4px 28px;
@@ -331,6 +353,10 @@ export class SidebarLeft {
 
   readonly collapseToggle = output<void>();
   readonly workspaceSelected = output<string>();
+  /** Local branch display name requested for checkout. */
+  readonly branchSelected = output<string>();
+  /** Remote-tracking branch short name requested for checkout (`<remote>/<branch>`). */
+  readonly remoteBranchSelected = output<string>();
 
   /**
    * REMOTES groups: every configured remote (in order) plus any remote derived
@@ -378,5 +404,34 @@ export class SidebarLeft {
 
   selectWorkspace(kind: string): void {
     this.workspaceSelected.emit(kind);
+  }
+
+  /** Emit a local branch name for checkout. */
+  selectBranch(name: string): void {
+    this.branchSelected.emit(name);
+  }
+
+  /**
+   * Emit the `remote/branch` short name for checkout. REMOTES groups store
+   * prefix-stripped branch names, so the remote prefix is reconstructed here.
+   */
+  selectRemoteBranch(remote: string, shortName: string): void {
+    this.remoteBranchSelected.emit(`${remote}/${shortName}`);
+  }
+
+  /** Enter/Space activation for local branch rows (role="button"). */
+  onBranchKeydown(event: KeyboardEvent, name: string): void {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      this.selectBranch(name);
+    }
+  }
+
+  /** Enter/Space activation for remote branch rows (role="button"). */
+  onRemoteBranchKeydown(event: KeyboardEvent, remote: string, shortName: string): void {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      this.selectRemoteBranch(remote, shortName);
+    }
   }
 }

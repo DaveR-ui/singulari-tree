@@ -190,4 +190,59 @@ describe('SidebarLeft', () => {
     expandTags(fixture);
     expect(all(fixture, 'st-sidebar-refs-error')).toHaveLength(3);
   });
+
+  it('emits branchSelected when a local branch row is clicked', async () => {
+    const fixture = await setup({ branches: ['main', 'feature/x'] });
+    const emitted: string[] = [];
+    fixture.componentInstance.branchSelected.subscribe((name) => emitted.push(name));
+
+    const rows = all(fixture, 'st-sidebar-branch') as HTMLElement[];
+    expect(rows).toHaveLength(2);
+    rows[1].click();
+
+    expect(emitted).toEqual(['feature/x']);
+  });
+
+  it('marks local branch rows as keyboard-activatable buttons', async () => {
+    const fixture = await setup({ branches: ['main'] });
+    const emitted: string[] = [];
+    fixture.componentInstance.branchSelected.subscribe((name) => emitted.push(name));
+
+    const row = all(fixture, 'st-sidebar-branch')[0] as HTMLElement;
+    expect(row.getAttribute('role')).toBe('button');
+    expect(row.getAttribute('tabindex')).toBe('0');
+
+    row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    row.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+
+    expect(emitted).toEqual(['main', 'main']);
+  });
+
+  it('emits remoteBranchSelected with the reconstructed remote/branch name', async () => {
+    const fixture = await setup({
+      remotes: ['origin', 'upstream'],
+      remoteBranches: ['origin/main', 'origin/david/topic', 'upstream/develop'],
+    });
+    const emitted: string[] = [];
+    fixture.componentInstance.remoteBranchSelected.subscribe((name) => emitted.push(name));
+
+    const rows = all(fixture, 'st-sidebar-remote-branches') as HTMLElement[];
+    expect(rows).toHaveLength(3);
+    rows[0].click();
+    rows[2].click();
+
+    expect(emitted).toEqual(['origin/main', 'upstream/develop']);
+  });
+
+  it('activates a remote branch row with the keyboard', async () => {
+    const fixture = await setup({ remotes: ['origin'], remoteBranches: ['origin/feature'] });
+    const emitted: string[] = [];
+    fixture.componentInstance.remoteBranchSelected.subscribe((name) => emitted.push(name));
+
+    const row = all(fixture, 'st-sidebar-remote-branches')[0] as HTMLElement;
+    expect(row.getAttribute('role')).toBe('button');
+    row.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+
+    expect(emitted).toEqual(['origin/feature']);
+  });
 });

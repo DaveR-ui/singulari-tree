@@ -65,6 +65,9 @@ function normalizeStatus(status: AuthStatus | undefined): AuthStatus | undefined
 export class GithubAccountStore {
   private readonly bridge: IpcBridge;
 
+  /** Guards {@link autoConnectOnce} so the CLI connect runs at most once. */
+  private autoConnectAttempted = false;
+
   constructor(bridge: IpcBridge = inject(IpcBridge)) {
     this.bridge = bridge;
   }
@@ -84,6 +87,23 @@ export class GithubAccountStore {
   readonly hasMore = computed(() => this.pageInfo()?.hasMore ?? false);
 
   // -- actions -------------------------------------------------------------
+
+  /**
+   * Non-interactive startup connect: at most once per app lifetime, refresh
+   * the status and, only when the account is neither authenticated nor offline,
+   * run the non-interactive `gh auth token` connect.
+   *
+   * Never calls `connect()` when already authenticated. Every failure is
+   * captured on `offline`/`error` by the callees, so this never throws.
+   */
+  async autoConnectOnce(): Promise<void> {
+    if (this.autoConnectAttempted) return;
+    this.autoConnectAttempted = true;
+    await this.refreshStatus();
+    if (!this.authenticated() && !this.offline()) {
+      await this.connect();
+    }
+  }
 
   /** Fetch the current account status (`auth:getAuthStatus`). */
   async refreshStatus(): Promise<void> {

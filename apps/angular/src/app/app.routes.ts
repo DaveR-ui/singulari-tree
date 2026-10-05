@@ -20,6 +20,10 @@ export const routes: Routes = [
       import('./features/github-account/github-account.routes').then((m) => m.GITHUB_ACCOUNT_ROUTES),
   },
   {
+    path: 'settings',
+    loadChildren: () => import('./features/settings/settings.routes').then((m) => m.SETTINGS_ROUTES),
+  },
+  {
     path: '**',
     redirectTo: 'repo',
   },

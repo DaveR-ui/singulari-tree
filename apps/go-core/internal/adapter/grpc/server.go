@@ -264,6 +264,19 @@ func (s *Server) Pull(req *singularitreev1.PullRequest, stream googlegrpc.Server
 	return streamProgress(stream, ch)
 }
 
+// Checkout switches the repository's working tree to the requested ref. The
+// renderer sends the clicked ref verbatim; the adapter resolves local branches,
+// remote-tracking branches and detached refs.
+func (s *Server) Checkout(ctx context.Context, req *singularitreev1.CheckoutRequest) (*singularitreev1.CheckoutResponse, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	if err := s.gitSvc.Checkout(ctx, domain.RepositoryId(req.GetRepoId()), domain.RefName{Raw: req.GetRefName()}); err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return &singularitreev1.CheckoutResponse{}, nil
+}
+
 // streamProgress drains a domain RemoteOpResult channel, forwarding each
 // progress chunk as a proto Progress. A terminal result carrying an Err is
 // converted with appErrorToStatus so the client's Recv sees a non-OK status and

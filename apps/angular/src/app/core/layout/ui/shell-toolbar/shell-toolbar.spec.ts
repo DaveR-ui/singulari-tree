@@ -1,7 +1,7 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { provideRouter, Router } from '@angular/router';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ShellToolbar } from './shell-toolbar';
 
 async function setup(hasActiveRepo = true): Promise<ComponentFixture<ShellToolbar>> {
@@ -81,5 +81,23 @@ describe('ShellToolbar', () => {
     button(fixture, 'toolbar-pull').click();
 
     expect(pull).toBe(1);
+  });
+
+  it('routes the settings entry to /settings', async () => {
+    const fixture = await setup(true);
+    const router = TestBed.inject(Router);
+
+    const settings = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+      '[data-testid="toolbar-settings"]',
+    );
+    expect(settings).not.toBeNull();
+    expect(settings!.getAttribute('aria-label')).toBe('Settings');
+    expect(settings!.getAttribute('title')).toBe('Settings');
+
+    const navigate = vi.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
+    settings!.click();
+
+    expect(navigate).toHaveBeenCalled();
+    expect(navigate.mock.calls[0]?.[0]?.toString()).toBe('/settings');
   });
 });

@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   HostListener,
   OnInit,
   computed,
@@ -10,25 +11,26 @@ import {
 } from '@angular/core';
 import { Router, RouterOutlet } from '@angular/router';
 import type { RepoCardView } from '@singularitree/ui-kit';
-import { LanguageService } from '@core/services/language.service';
+import { IpcBridge, type MenuNavigatePayload } from '@core/services/ipc-bridge.service';
 import { RepoState } from '@core/services/repo-state.service';
-import { ThemeService } from '@core/services/theme.service';
+import { GithubAccountStore } from '@features/github-account/github-account.store';
 import { RemoteOpsStore } from '@features/remote/remote-ops.store';
 import { FetchDialog } from '@features/remote/ui/fetch-dialog/fetch-dialog';
 import { PullDialog } from '@features/remote/ui/pull-dialog/pull-dialog';
 import { PushDialog } from '@features/remote/ui/push-dialog/push-dialog';
 import { toLocalRepoCardView } from './local-repo-card-view';
+import { CheckoutErrorBanner } from './ui/checkout-error-banner/checkout-error-banner';
 import { RepoDrawer } from './ui/repo-drawer/repo-drawer';
 import { ShellHeader } from './ui/shell-header/shell-header';
-import { ShellMenubar } from './ui/shell-menubar/shell-menubar';
 import { ShellToolbar } from './ui/shell-toolbar/shell-toolbar';
 import { SidebarLeft } from './ui/sidebar-left/sidebar-left';
 
 /**
- * Application shell: header + menubar + toolbar chrome, a route-driven center
- * region and the local-repository drawer. Layout state (width/collapse) is
- * persisted to localStorage; drawer data AND the left sidebar's ref lists both
- * come from the root `RepoState`, the active-local-repository source of truth.
+ * Application shell: header + toolbar chrome, a route-driven center region and
+ * the local-repository drawer. Layout state (width/collapse) is persisted to
+ * localStorage; drawer data AND the left sidebar's ref lists both come from the
+ * root `RepoState`, the active-local-repository source of truth. The top-level
+ * menu is the OS-native one, so it is not rendered here.
  */
 @Component({
   selector: 'st-layout',
@@ -36,10 +38,10 @@ import { SidebarLeft } from './ui/sidebar-left/sidebar-left';
   imports: [
     RouterOutlet,
     ShellHeader,
-    ShellMenubar,
     ShellToolbar,
     SidebarLeft,
     RepoDrawer,
+    CheckoutErrorBanner,
     PullDialog,
     PushDialog,
     FetchDialog,
@@ -51,9 +53,17 @@ import { SidebarLeft } from './ui/sidebar-left/sidebar-left';
 export class LayoutComponent implements OnInit {
   readonly repoState = inject(RepoState);
   readonly remoteOps = inject(RemoteOpsStore);
-  readonly themeService = inject(ThemeService);
-  readonly languageService = inject(LanguageService);
+  private readonly githubAccount = inject(GithubAccountStore);
+  private readonly bridge = inject(IpcBridge);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
+
+  /** Top-level routes the OS-native menu may request. */
+  private static readonly MENU_ROUTES: ReadonlySet<string> = new Set([
+    '/repo',
+    '/repos',
+    '/github-account',
+  ]);
 
   // -- responsive --
   private readonly MOBILE_BP = 1024;
@@ -91,6 +101,11 @@ export class LayoutComponent implements OnInit {
         localStorage.setItem(this.LS_RIGHT_COL, String(c));
       } catch {}
     });
+
+    // Native-menu navigation from the Electron main process; subscribe once and
+    // unsubscribe on destroy.
+    const unsubscribeMenu = this.bridge.onMenuNavigate((payload) => this.onMenuNavigate(payload));
+    this.destroyRef.onDestroy(unsubscribeMenu);
   }
 
   async ngOnInit(): Promise<void> {
@@ -108,6 +123,28 @@ export class LayoutComponent implements OnInit {
     // Best-effort: publish persisted repositories so the drawer and sidebar
     // can resolve local repos and their refs.
     await this.repoState.loadRepositories();
+    // Best-effort, non-blocking: connect the Git account once at startup.
+    void this.githubAccount.autoConnectOnce();
+  }
+
+  /**
+   * Navigate to a route requested by the OS-native menu. Empty or unknown
+   * targets are ignored so a malformed payload cannot bounce the user.
+   */
+  onMenuNavigate(payload: MenuNavigatePayload): void {
+    const route = payload?.route;
+    if (typeof route !== 'string' || !LayoutComponent.MENU_ROUTES.has(route)) return;
+    void this.router.navigateByUrl(route);
+  }
+
+  /** Check out the local branch picked in the left sidebar. */
+  onBranchSelected(name: string): void {
+    void this.repoState.checkoutBranch(name, false);
+  }
+
+  /** Check out the remote-tracking branch picked in the left sidebar. */
+  onRemoteBranchSelected(name: string): void {
+    void this.repoState.checkoutBranch(name, true);
   }
 
   /** Activate the local repository picked in the drawer. */

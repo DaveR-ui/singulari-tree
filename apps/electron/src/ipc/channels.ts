@@ -44,6 +44,19 @@ export const DIALOG_CHANNELS = {
 export type DialogChannelName = (typeof DIALOG_CHANNELS)[keyof typeof DIALOG_CHANNELS];
 
 /**
+ * Local (non-gRPC) push channels: Electron main → renderer navigation intents.
+ *
+ * `menu:navigate` is a one-way push (no `ipcMain.handle`); the preload exposes
+ * `onMenuNavigate` so the renderer can subscribe. It intentionally lives outside
+ * `CHANNELS`/`CHANNEL_TO_RPC`, which are the strict Go RPC surface.
+ */
+export const MENU_CHANNELS = {
+  navigate: 'menu:navigate',
+} as const;
+
+export type MenuChannelName = (typeof MENU_CHANNELS)[keyof typeof MENU_CHANNELS];
+
+/**
  * IPC channel → owning service RPC method (`git:*` → `singularitree.v1.GitCore`,
  * `auth:*` → `singularitree.v1.Auth`; see `AUTH_CHANNELS`).
  *

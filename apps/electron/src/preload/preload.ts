@@ -430,6 +430,13 @@ export interface ChooseDirectoryResponse {
   path: string;
 }
 
+// --- Native menu wire types (local, non-gRPC — mirror src/main/app-menu) ---
+
+export interface MenuNavigatePayload {
+  /** Renderer route the native menu asked to open (e.g. `/github-account`). */
+  route: string;
+}
+
 // --- Bridge surface --------------------------------------------------------
 
 export interface GitClientApi {
@@ -465,6 +472,8 @@ export interface GitClientApi {
   onRepoChanged: (cb: (payload: RepoChangedPayload) => void) => () => void;
   onFsChanged: (cb: (payload: FsChangedPayload) => void) => () => void;
   onProgress: (cb: (payload: ProgressPayload) => void) => () => void;
+  /** Local (non-gRPC) push: native menu navigation intents. */
+  onMenuNavigate: (cb: (payload: MenuNavigatePayload) => void) => () => void;
 }
 
 const api: GitClientApi = {
@@ -506,6 +515,11 @@ const api: GitClientApi = {
     const handler = (_e: unknown, payload: ProgressPayload) => cb(payload);
     ipcRenderer.on('git:progress', handler);
     return () => ipcRenderer.removeListener('git:progress', handler);
+  },
+  onMenuNavigate: (cb) => {
+    const handler = (_e: unknown, payload: MenuNavigatePayload) => cb(payload);
+    ipcRenderer.on('menu:navigate', handler);
+    return () => ipcRenderer.removeListener('menu:navigate', handler);
   },
 };
 

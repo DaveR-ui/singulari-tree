@@ -6,7 +6,7 @@ import { BadgeComponent } from '@singularitree/ui-kit';
  * Git action toolbar. Pull/Push/Fetch emit request events (the shell opens the
  * matching remote dialog and disables them with `hasActiveRepo=false`); the
  * remaining Git actions are inert visual chrome for this iteration. Repo/GitHub
- * navigate to the routed feature pages.
+ * and Settings navigate to the routed feature pages.
  */
 @Component({
   selector: 'st-shell-toolbar',
@@ -74,7 +74,15 @@ import { BadgeComponent } from '@singularitree/ui-kit';
       >
         <i>🐙</i><span i18n>GitHub</span>
       </button>
-      <button class="st-tool st-tool--icon" type="button" aria-label="Settings" i18n-aria-label>
+      <button
+        class="st-tool st-tool--icon"
+        routerLink="/settings"
+        title="Settings"
+        aria-label="Settings"
+        i18n-title
+        i18n-aria-label
+        data-testid="toolbar-settings"
+      >
         ⚙
       </button>
     </div>

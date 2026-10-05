@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/SingulariTree/go-core/internal/domain"
 )
@@ -533,9 +534,271 @@ func (a *Adapter) BranchDelete(context.Context, domain.RepositoryId, domain.RefN
 	return notImplemented("BranchDelete")
 }
 
-// Checkout checks out a ref. Phase 5.
-func (a *Adapter) Checkout(context.Context, domain.RepositoryId, domain.RefName) error {
-	return notImplemented("Checkout")
+// maxCheckoutErrLen bounds the short CHECKOUT_FAILED message (validation
+// errors and one-line git summaries) so a noisy git stderr cannot bloat the
+// wire response. Path lists are never carried here, so this cap can never cut
+// a user-facing path; complete paths travel in Details.
+const maxCheckoutErrLen = 512
+
+// maxCheckoutRawLen bounds the raw git stderr retained for diagnostics only.
+// It is deliberately generous and applied on a line boundary so a conflicting
+// path is never cut mid-way.
+const maxCheckoutRawLen = 4096
+
+// maxCheckoutPaths bounds how many conflicting paths are listed in Details.
+// It sits far above realistic dirty-tree sizes; when exceeded, the list ends
+// with a single "… and N more" line rather than being truncated mid-path.
+const maxCheckoutPaths = 500
+
+// maxCheckoutPathsBytes bounds the total joined size of the path list carried
+// in Details["paths"]. The gRPC x-app-error-details trailer is an HTTP/2 header
+// and therefore size-limited, so a very large (yet count-bounded) list could be
+// silently dropped. The cap is applied on a path boundary; when hit, a single
+// "… and N more" line replaces the omitted paths, which are counted in full.
+const maxCheckoutPathsBytes = 8192
+
+// dirtyCheckoutMarker is the git stderr fragment emitted when checkout refuses
+// because uncommitted local changes would be overwritten. The conflicting paths
+// follow on tab-indented lines.
+const dirtyCheckoutMarker = "would be overwritten by checkout"
+
+// truncateValidUTF8 returns s unchanged when it fits within limit bytes;
+// otherwise it cuts at the largest rune boundary not exceeding limit. proto3
+// string fields must be valid UTF-8, so a mid-rune cut would make proto.Marshal
+// fail and lose the typed CHECKOUT_FAILED code.
+func truncateValidUTF8(s string, limit int) string {
+	if len(s) <= limit {
+		return s
+	}
+	cut := limit
+	for cut > 0 && !utf8.ValidString(s[:cut]) {
+		cut--
+	}
+	return s[:cut]
+}
+
+// checkoutFailed builds a typed CHECKOUT_FAILED error with a trimmed, bounded
+// message. It is used for validation errors and other short, path-free
+// summaries.
+func checkoutFailed(message string) domain.AppError {
+	msg := truncateValidUTF8(strings.TrimSpace(message), maxCheckoutErrLen)
+	return domain.AppError{Code: domain.ErrCodeCheckoutFailed, Message: msg}
+}
+
+// boundCheckoutRaw bounds the raw git stderr kept for diagnostics. It trims the
+// string, then cuts at the last line boundary within maxCheckoutRawLen (rune
+// safe) and marks the cut explicitly, so a path is never split across the
+// truncation.
+func boundCheckoutRaw(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if len(raw) <= maxCheckoutRawLen {
+		return raw
+	}
+	head := truncateValidUTF8(raw, maxCheckoutRawLen)
+	if i := strings.LastIndexByte(head, '\n'); i >= 0 {
+		head = head[:i]
+	}
+	return head + "\n… (truncated)"
+}
+
+// boundCheckoutPaths bounds the conflicting-path list carried in
+// Details["paths"]. It applies both the count cap (maxCheckoutPaths) and the
+// joined-size cap (maxCheckoutPathsBytes): paths are accumulated while the
+// running total, including the joining newline, stays within the byte budget,
+// so no individual path is ever cut mid-way. When at least one path is omitted
+// a single "… and N more" sentinel line is appended, where N counts every
+// omitted path (both byte- and count-capped). The sentinel itself is kept
+// inside the byte budget by dropping trailing paths if necessary, so the fully
+// joined value never exceeds maxCheckoutPathsBytes. It is a pure helper,
+// unit-tested without a git setup.
+func boundCheckoutPaths(paths []string) []string {
+	if len(paths) == 0 {
+		return paths
+	}
+	included := len(paths)
+	if included > maxCheckoutPaths {
+		included = maxCheckoutPaths
+	}
+	bounded := make([]string, 0, included)
+	total := 0 // sum of len(path)+1 per entry, i.e. joined length + 1
+	for _, p := range paths[:included] {
+		// The +1 accounts for the newline that joins adjacent entries.
+		if total+len(p)+1 > maxCheckoutPathsBytes {
+			break
+		}
+		bounded = append(bounded, p)
+		total += len(p) + 1
+	}
+	remaining := len(paths) - len(bounded)
+	if remaining == 0 {
+		return bounded
+	}
+	// Reserve room for the sentinel: drop trailing paths until the joined value
+	// (sentinel included) fits the byte budget. Each drop folds into remaining,
+	// so the sentinel count stays accurate.
+	for len(bounded) > 0 {
+		if total+len(fmt.Sprintf("… and %d more", remaining)) <= maxCheckoutPathsBytes {
+			break
+		}
+		last := bounded[len(bounded)-1]
+		bounded = bounded[:len(bounded)-1]
+		total -= len(last) + 1
+		remaining++
+	}
+	return append(bounded, fmt.Sprintf("… and %d more", remaining))
+}
+
+// parseDirtyCheckoutPaths extracts the conflicting paths from git's refusal
+// stderr. It locates the line containing dirtyCheckoutMarker and then consumes
+// the following tab-indented lines (one path each) until a line no longer
+// starts with a tab. Paths are preserved verbatim apart from the leading tab
+// and are returned in the order git emitted them.
+func parseDirtyCheckoutPaths(raw string) []string {
+	lines := strings.Split(raw, "\n")
+	start := -1
+	for i, line := range lines {
+		if strings.Contains(line, dirtyCheckoutMarker) {
+			start = i + 1
+			break
+		}
+	}
+	if start < 0 {
+		return nil
+	}
+	var paths []string
+	for _, line := range lines[start:] {
+		if !strings.HasPrefix(line, "\t") {
+			break
+		}
+		paths = append(paths, strings.TrimPrefix(line, "\t"))
+	}
+	return paths
+}
+
+// shortGitSummary distills the first recognizable git error/fatal line from the
+// runGit envelope (`git <args>: exit status N: <stderr>`) into a short,
+// meaningful message. It never returns the raw envelope.
+func shortGitSummary(raw string) string {
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		for _, marker := range []string{"error:", "fatal:"} {
+			if i := strings.Index(line, marker); i >= 0 {
+				return truncateValidUTF8(line[i:], maxCheckoutErrLen)
+			}
+		}
+	}
+	return "git checkout failed"
+}
+
+// checkoutFailedFromGit builds the CHECKOUT_FAILED error for the final
+// `git checkout` failure. When git refused because local changes would be
+// overwritten, the friendly headline sits in Message and the complete,
+// untruncated path list travels in Details; the raw stderr is retained there
+// for diagnostics only. Other failures keep a short summary plus the bounded
+// raw text.
+func checkoutFailedFromGit(rawErr string) domain.AppError {
+	raw := boundCheckoutRaw(rawErr)
+	paths := parseDirtyCheckoutPaths(rawErr)
+	if len(paths) > 0 {
+		bounded := boundCheckoutPaths(paths)
+		return domain.AppError{
+			Code:    domain.ErrCodeCheckoutFailed,
+			Message: "Cannot switch branch: local changes would be overwritten by checkout. Commit or stash them first.",
+			Details: map[string]string{
+				"reason": "dirty_working_tree",
+				"paths":  strings.Join(bounded, "\n"),
+				"raw":    raw,
+			},
+		}
+	}
+	return domain.AppError{
+		Code:    domain.ErrCodeCheckoutFailed,
+		Message: shortGitSummary(rawErr),
+		Details: map[string]string{
+			"reason": "git_error",
+			"raw":    raw,
+		},
+	}
+}
+
+// Checkout switches the working tree to ref (DWIM). The renderer sends the
+// clicked ref as-is and the core resolves it:
+//
+//   - refs/heads/<b>                 -> git checkout <b>
+//   - refs/remotes/<remote>/<branch> -> git checkout <branch> when a local
+//     counterpart exists, else git checkout -b <branch> --track
+//     <remote>/<branch>
+//   - tags / other refs / OIDs       -> git checkout <ref> (detached OK)
+//
+// Short inputs are canonicalized first via `git rev-parse --symbolic-full-name`
+// so e.g. `origin/foo` and `foo` resolve to their full refnames; inputs that
+// produce no symbolic name fall back to the raw value so OIDs and rev
+// expressions keep working. Ref-derived tokens that start with '-' or contain
+// control/whitespace characters are rejected to prevent option injection.
+func (a *Adapter) Checkout(ctx context.Context, repoID domain.RepositoryId, ref domain.RefName) error {
+	fsPath, err := a.resolvePath(ctx, repoID)
+	if err != nil {
+		return err
+	}
+	raw := strings.TrimSpace(ref.Raw)
+	if raw == "" {
+		return checkoutFailed("empty ref")
+	}
+	// Guard before rev-parse: a leading '-' would be parsed as an option.
+	if !checkSafeArg(raw) {
+		return checkoutFailed("invalid ref")
+	}
+
+	// Canonicalize to a full refname when possible; OIDs and unresolved
+	// revisions yield no symbolic name, so keep the raw input.
+	if full, ferr := runGit(ctx, fsPath, "rev-parse", "--symbolic-full-name", raw); ferr == nil {
+		if s := strings.TrimSpace(full); s != "" {
+			raw = s
+		}
+	}
+
+	args := []string{"checkout"}
+	switch {
+	case strings.HasPrefix(raw, "refs/heads/"):
+		branch := strings.TrimPrefix(raw, "refs/heads/")
+		if branch == "" || !checkSafeArg(branch) {
+			return checkoutFailed("invalid branch name")
+		}
+		args = append(args, branch)
+	case strings.HasPrefix(raw, "refs/remotes/"):
+		rest := strings.TrimPrefix(raw, "refs/remotes/")
+		// The remote is the first path component; the branch may contain
+		// slashes (e.g. refs/remotes/origin/david/topic).
+		slash := strings.IndexByte(rest, '/')
+		if slash <= 0 || slash == len(rest)-1 {
+			return checkoutFailed("malformed remote-tracking ref")
+		}
+		remote := rest[:slash]
+		branch := rest[slash+1:]
+		if branch == "HEAD" || !checkSafeArg(remote) || !checkSafeArg(branch) {
+			return checkoutFailed("invalid remote-tracking ref")
+		}
+		// A pre-existing local branch of the same name wins (no duplicate
+		// creation); otherwise create it tracking the remote branch.
+		if _, code, _ := runGitAllowExit(ctx, fsPath, "show-ref", "--verify", "--quiet", "refs/heads/"+branch); code == 0 {
+			args = append(args, branch)
+		} else {
+			args = append(args, "-b", branch, "--track", remote+"/"+branch)
+		}
+	default:
+		if !checkSafeArg(raw) {
+			return checkoutFailed("invalid ref")
+		}
+		args = append(args, raw)
+	}
+
+	if _, err := runGit(ctx, fsPath, args...); err != nil {
+		return checkoutFailedFromGit(err.Error())
+	}
+	return nil
 }
 
 // RemoteList lists configured remotes by folding `git config --get-regexp

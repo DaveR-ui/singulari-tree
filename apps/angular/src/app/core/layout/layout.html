@@ -1,23 +1,18 @@
 <div class="st-shell">
   <st-shell-header [tabs]="[]" />
 
-  <st-shell-menubar
-    [leftCollapsed]="leftCollapsed()"
-    [rightCollapsed]="rightCollapsed()"
-    [theme]="themeService.theme()"
-    [language]="languageService.language()"
-    (toggleLeft)="toggleLeft()"
-    (toggleRight)="toggleRight()"
-    (themeToggle)="themeService.toggle()"
-    (languageChange)="languageService.setLanguage($event)"
-  />
-
   <st-shell-toolbar
     [hasActiveRepo]="repoState.activeId() !== null"
     [pullPending]="repoState.currentBranchBehind()"
     (pullRequested)="remoteOps.openDialog('pull')"
     (pushRequested)="remoteOps.openDialog('push')"
     (fetchRequested)="remoteOps.openDialog('fetch')"
+  />
+
+  <!-- Prominent, dismissible checkout-failure banner for the active repo. -->
+  <st-checkout-error-banner
+    [error]="repoState.checkoutError()"
+    (dismiss)="repoState.dismissCheckoutError()"
   />
 
   <!-- BODY: left | center | right -->
@@ -36,6 +31,8 @@
       [error]="repoState.refsError()"
       (collapseToggle)="toggleLeft()"
       (workspaceSelected)="activeWorkspace.set($event)"
+      (branchSelected)="onBranchSelected($event)"
+      (remoteBranchSelected)="onRemoteBranchSelected($event)"
     />
 
     <!-- CENTER: always route-driven -->

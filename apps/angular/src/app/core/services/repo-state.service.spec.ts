@@ -80,6 +80,8 @@ function makeBridge(): IpcBridge & { invoke: Mock } {
         return { tags: [tag(`v1-${suffix}`)] };
       case 'listRepositories':
         return { repositories: [] };
+      case 'checkout':
+        return {};
       default:
         throw new Error(`unexpected method ${method}`);
     }
@@ -385,5 +387,189 @@ describe('RepoState', () => {
     expect(store.remotes()).toEqual(['origin-b']);
     expect(store.tags()).toEqual(['v1-b']);
     expect(store.refsLoading()).toBe(false);
+  });
+
+  it('exposes display-name -> full-ref maps for local and remote branches', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+
+    expect(store.localRefByName().get('main-a')).toBe('refs/heads/main-a');
+    expect(store.localRefByName().get('feature-a')).toBe('refs/heads/feature-a');
+    expect(store.remoteRefByName().get('origin/david/topic-a')).toBe(
+      'refs/remotes/origin/david/topic-a',
+    );
+    // The symbolic origin/HEAD never enters the map.
+    expect(store.remoteRefByName().has('origin/HEAD')).toBe(false);
+
+    await store.loadRefs();
+    expect(store.localRefByName().size).toBe(2);
+  });
+
+  it('checkoutBranch resolves the full local ref, calls checkout and reloads refs', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockClear();
+
+    await store.checkoutBranch('feature-a', false);
+
+    expect(bridge.invoke).toHaveBeenCalledWith('checkout', {
+      repoId: REPO_A.id,
+      refName: 'refs/heads/feature-a',
+    });
+    expect(bridge.invoke.mock.calls.filter((c) => c[0] === 'getBranches')).toHaveLength(1);
+    expect(store.checkoutError()).toBeNull();
+    expect(store.checkoutRunning()).toBe(false);
+  });
+
+  it('checkoutBranch resolves the raw remote-tracking ref', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockClear();
+
+    await store.checkoutBranch('origin/david/topic-a', true);
+
+    expect(bridge.invoke).toHaveBeenCalledWith('checkout', {
+      repoId: REPO_A.id,
+      refName: 'refs/remotes/origin/david/topic-a',
+    });
+  });
+
+  it('checkoutBranch falls back to the provided name when the map has no entry', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockClear();
+
+    await store.checkoutBranch('unmapped', false);
+
+    expect(bridge.invoke).toHaveBeenCalledWith('checkout', {
+      repoId: REPO_A.id,
+      refName: 'unmapped',
+    });
+  });
+
+  it('checkoutBranch no-ops without an active repo', async () => {
+    await store.checkoutBranch('main', false);
+
+    expect(bridge.invoke).not.toHaveBeenCalledWith('checkout', expect.anything());
+    expect(store.checkoutError()).toBeNull();
+    expect(store.checkoutRunning()).toBe(false);
+  });
+
+  it('checkoutBranch no-ops when the local click targets the current branch', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    store.currentBranch.set('main-a');
+    bridge.invoke.mockClear();
+
+    await store.checkoutBranch('main-a', false);
+
+    expect(bridge.invoke).not.toHaveBeenCalledWith('checkout', expect.anything());
+  });
+
+  it('checkoutBranch records refsOffline on IPC_UNAVAILABLE', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockImplementation(async (method: string) => {
+      if (method === 'checkout') throw { code: 'IPC_UNAVAILABLE', message: 'no bridge' } as AppError;
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    await store.checkoutBranch('feature-a', false);
+
+    expect(store.refsOffline()).toBe(true);
+    expect(store.checkoutError()).toBeNull();
+    expect(store.checkoutRunning()).toBe(false);
+  });
+
+  it('checkoutBranch records checkoutError on a generic failure', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockImplementation(async (method: string) => {
+      if (method === 'checkout') throw { code: 'GIT_FAILED', message: 'boom' } as AppError;
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    await store.checkoutBranch('feature-a', false);
+
+    expect(store.checkoutError()).toEqual({ code: 'GIT_FAILED', message: 'boom', details: {} });
+    expect(store.refsOffline()).toBe(false);
+    expect(store.checkoutRunning()).toBe(false);
+  });
+
+  it('checkoutBranch preserves the CHECKOUT_FAILED details on failure', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    const details = {
+      reason: 'dirty_working_tree',
+      paths: 'src/a.ts\nsrc/b.ts',
+      raw: 'fatal: your local changes would be overwritten',
+    };
+    bridge.invoke.mockImplementation(async (method: string) => {
+      if (method === 'checkout') {
+        throw {
+          code: 'CHECKOUT_FAILED',
+          message: 'Your local changes would be overwritten by checkout.',
+          details,
+        } as AppError;
+      }
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    await store.checkoutBranch('feature-a', false);
+
+    expect(store.checkoutError()).toEqual({
+      code: 'CHECKOUT_FAILED',
+      message: 'Your local changes would be overwritten by checkout.',
+      details,
+    });
+    expect(store.refsOffline()).toBe(false);
+    expect(store.checkoutRunning()).toBe(false);
+  });
+
+  it('dismissCheckoutError clears the recorded checkout failure', () => {
+    store.checkoutError.set({
+      code: 'CHECKOUT_FAILED',
+      message: 'boom',
+      details: { reason: 'git_error' },
+    });
+
+    store.dismissCheckoutError();
+
+    expect(store.checkoutError()).toBeNull();
+  });
+
+  it('loadRefs clears a prior checkout failure', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    store.checkoutError.set({ code: 'CHECKOUT_FAILED', message: 'boom' });
+
+    await store.loadRefs();
+
+    expect(store.checkoutError()).toBeNull();
+  });
+
+  it('checkoutBranch ignores a re-entrant call while running', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+
+    let resolveCheckout: (value: unknown) => void = () => {};
+    bridge.invoke.mockImplementation((method: string) => {
+      if (method === 'checkout') {
+        return new Promise((resolve) => {
+          resolveCheckout = resolve;
+        });
+      }
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    const first = store.checkoutBranch('feature-a', false);
+    expect(store.checkoutRunning()).toBe(true);
+
+    await store.checkoutBranch('feature-a', false);
+    expect(bridge.invoke.mock.calls.filter((c) => c[0] === 'checkout')).toHaveLength(1);
+
+    resolveCheckout({});
+    await first;
+    expect(store.checkoutRunning()).toBe(false);
   });
 });

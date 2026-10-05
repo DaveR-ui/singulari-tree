@@ -317,4 +317,82 @@ describe('GithubAccountStore', () => {
     expect(store.error()).toBeNull();
     expect(store.repos()).toEqual([]);
   });
+
+  it('autoConnectOnce() refreshes status then connects when unauthenticated', async () => {
+    const getAuthStatus = vi.fn(() =>
+      Promise.resolve({
+        authenticated: false,
+        login: '',
+        status: makeStatus({ authenticated: false }),
+      }),
+    );
+    const connectGitHubFromCLI = vi.fn(() =>
+      Promise.resolve({ status: makeStatus({ authenticated: true }), user: undefined }),
+    );
+    store = new GithubAccountStore(makeBridge({ getAuthStatus, connectGitHubFromCLI }));
+
+    await store.autoConnectOnce();
+
+    expect(getAuthStatus).toHaveBeenCalledTimes(1);
+    expect(connectGitHubFromCLI).toHaveBeenCalledTimes(1);
+    expect(store.authenticated()).toBe(true);
+  });
+
+  it('autoConnectOnce() does not connect when already authenticated', async () => {
+    const getAuthStatus = vi.fn(() =>
+      Promise.resolve({ authenticated: true, login: 'DaveR-ui', status: makeStatus() }),
+    );
+    const connectGitHubFromCLI = vi.fn();
+    store = new GithubAccountStore(makeBridge({ getAuthStatus, connectGitHubFromCLI }));
+
+    await store.autoConnectOnce();
+
+    expect(getAuthStatus).toHaveBeenCalledTimes(1);
+    expect(connectGitHubFromCLI).not.toHaveBeenCalled();
+    expect(store.authenticated()).toBe(true);
+  });
+
+  it('autoConnectOnce() does not connect when the bridge is unavailable', async () => {
+    const getAuthStatus = vi.fn(() => {
+      throw { code: 'IPC_UNAVAILABLE', message: 'Not running inside Electron' };
+    });
+    const connectGitHubFromCLI = vi.fn();
+    store = new GithubAccountStore(makeBridge({ getAuthStatus, connectGitHubFromCLI }));
+
+    await store.autoConnectOnce();
+
+    expect(store.offline()).toBe(true);
+    expect(connectGitHubFromCLI).not.toHaveBeenCalled();
+  });
+
+  it('autoConnectOnce() is idempotent per app lifetime', async () => {
+    const getAuthStatus = vi.fn(() =>
+      Promise.resolve({
+        authenticated: false,
+        login: '',
+        status: makeStatus({ authenticated: false }),
+      }),
+    );
+    const connectGitHubFromCLI = vi.fn(() =>
+      Promise.resolve({ status: makeStatus({ authenticated: false }), user: undefined }),
+    );
+    store = new GithubAccountStore(makeBridge({ getAuthStatus, connectGitHubFromCLI }));
+
+    await store.autoConnectOnce();
+    await store.autoConnectOnce();
+
+    expect(getAuthStatus).toHaveBeenCalledTimes(1);
+    expect(connectGitHubFromCLI).toHaveBeenCalledTimes(1);
+  });
+
+  it('autoConnectOnce() never throws when refresh fails', async () => {
+    const getAuthStatus = vi.fn(() => Promise.reject({ code: 'GITHUB_API_ERROR', message: 'boom' }));
+    const connectGitHubFromCLI = vi.fn(() =>
+      Promise.reject({ code: 'GITHUB_API_ERROR', message: 'connect boom' }),
+    );
+    store = new GithubAccountStore(makeBridge({ getAuthStatus, connectGitHubFromCLI }));
+
+    await expect(store.autoConnectOnce()).resolves.toBeUndefined();
+    expect(store.error()).toEqual({ code: 'GITHUB_API_ERROR', message: 'connect boom', details: {} });
+  });
 });

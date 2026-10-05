@@ -58,6 +58,15 @@ export interface ChooseDirectoryResponse {
   path: string;
 }
 
+/**
+ * Payload pushed by the Electron main process when the OS-native File menu
+ * requests navigation (channel `menu:navigate`). `route` is an absolute
+ * renderer route such as `/github-account` or `/repos`.
+ */
+export interface MenuNavigatePayload {
+  route: string;
+}
+
 // Typed mirror of the preload bridge (`window.gitClientApi`, ipc-strategy.md §1.2).
 // Channel -> proto request/response pulled from the generated contracts. `fetch`,
 // `pull` and `push` are server-streaming in proto; progress arrives via `onProgress`
@@ -87,6 +96,8 @@ export interface GitClientApi {
   onRepoChanged: (cb: (payload: Repository) => void) => () => void;
   onFsChanged: (cb: (payload: FsChangedEvent) => void) => () => void;
   onProgress: (cb: (payload: Progress) => void) => () => void;
+  /** Native-menu navigation pushed from the Electron main process (channel `menu:navigate`). */
+  onMenuNavigate: (cb: (payload: MenuNavigatePayload) => void) => () => void;
   /** Native folder picker exposed by the Electron shell (channel `dialog:chooseDirectory`). */
   chooseDirectory: (req: ChooseDirectoryRequest) => Promise<ChooseDirectoryResponse>;
 }
@@ -235,5 +246,11 @@ export class IpcBridge {
     const api = this.api;
     if (!api?.onProgress) return () => {};
     return api.onProgress(cb);
+  }
+
+  onMenuNavigate(cb: (payload: MenuNavigatePayload) => void): () => void {
+    const api = this.api;
+    if (!api?.onMenuNavigate) return () => {};
+    return api.onMenuNavigate(cb);
   }
 }

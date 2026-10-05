@@ -67,6 +67,20 @@ export class RepoState {
   /** True when the renderer runs without the Electron preload bridge. */
   readonly refsOffline = signal(false);
 
+  // -- checkout ------------------------------------------------------------
+  /** True while a `checkout` call is in flight. */
+  readonly checkoutRunning = signal(false);
+  /** Last checkout failure, or null when idle/successful. */
+  readonly checkoutError = signal<AppError | null>(null);
+
+  // -- ref name maps (display name -> full ref) ----------------------------
+  private readonly localRefState = signal<ReadonlyMap<string, string>>(new Map());
+  private readonly remoteRefState = signal<ReadonlyMap<string, string>>(new Map());
+  /** Local branch display name -> full local ref (`refs/heads/<name>`). */
+  readonly localRefByName = this.localRefState.asReadonly();
+  /** Remote-tracking display name -> raw ref (e.g. `refs/remotes/origin/foo`). */
+  readonly remoteRefByName = this.remoteRefState.asReadonly();
+
   readonly activeRepo = computed(() => {
     const id = this.activeId();
     if (!id) return null;
@@ -156,6 +170,9 @@ export class RepoState {
     const id = this.activeId();
     const generation = ++this.refsGeneration;
     this.refsError.set(null);
+    // A ref (re)load means the user moved on or a checkout succeeded, so any
+    // previously surfaced checkout failure is stale and must be cleared.
+    this.checkoutError.set(null);
 
     if (!id) {
       this.refsOffline.set(false);
@@ -175,19 +192,23 @@ export class RepoState {
       if (generation !== this.refsGeneration) return;
       this.refsOffline.set(false);
       const refs = branches.branches ?? [];
-      this.branches.set(refs.filter((b) => !b.isRemote).map((b) => b.name));
-      // The current branch drives the toolbar/sidebar pull-pending badge; only
-      // the current local branch is badged, and only when it is behind.
-      const current = refs.find((b) => b.isCurrent && !b.isRemote);
-      this.currentBranch.set(current?.name ?? '');
-      this.currentBranchBehind.set(current?.behind ?? 0);
+      const localRefs = refs.filter((b) => !b.isRemote);
       // Defensive: never surface the symbolic `origin/HEAD` remote ref
       // (matched on the raw ref so it holds regardless of short-name form).
-      this.remoteBranches.set(
-        refs
-          .filter((b) => b.isRemote && !b.refName.endsWith('/HEAD'))
-          .map((b) => b.name),
+      const remoteRefs = refs.filter((b) => b.isRemote && !b.refName.endsWith('/HEAD'));
+      this.branches.set(localRefs.map((b) => b.name));
+      // The current branch drives the toolbar/sidebar pull-pending badge; only
+      // the current local branch is badged, and only when it is behind.
+      const current = localRefs.find((b) => b.isCurrent);
+      this.currentBranch.set(current?.name ?? '');
+      this.currentBranchBehind.set(current?.behind ?? 0);
+      this.remoteBranches.set(remoteRefs.map((b) => b.name));
+      // Retain display-name -> full-ref mappings so a later checkout can send
+      // the full ref (locals are `refs/heads/<name>`; remotes keep the raw ref).
+      this.localRefState.set(
+        new Map(localRefs.map((b) => [b.name, b.refName || `refs/heads/${b.name}`])),
       );
+      this.remoteRefState.set(new Map(remoteRefs.map((b) => [b.name, b.refName || b.name])));
       this.tags.set(tags.tags.map((t) => t.name));
       this.remotes.set(remotes.remotes.map((r) => r.name));
     } catch (err) {
@@ -212,5 +233,47 @@ export class RepoState {
     this.remotes.set([]);
     this.currentBranch.set('');
     this.currentBranchBehind.set(0);
+    this.localRefState.set(new Map());
+    this.remoteRefState.set(new Map());
+  }
+
+  /**
+   * Check out a local or remote-tracking branch on the active repository.
+   *
+   * No-ops without an active repo, while another checkout is running, or when a
+   * local click targets the already-current branch (avoids a duplicate
+   * checkout). The full ref is resolved from the retained display-name map,
+   * falling back to `name` (the Go adapter resolves short names defensively).
+   * On success the ref lists are reloaded; on failure `IPC_UNAVAILABLE` maps to
+   * `refsOffline` and any other error to `checkoutError`.
+   */
+  async checkoutBranch(name: string, isRemote: boolean): Promise<void> {
+    const repoId = this.activeId();
+    if (!repoId || this.checkoutRunning()) return;
+    // A local click on the current branch is a no-op (no duplicate checkout).
+    if (!isRemote && name === this.currentBranch()) return;
+
+    const map = isRemote ? this.remoteRefByName() : this.localRefByName();
+    const refName = map.get(name) ?? name;
+
+    this.checkoutRunning.set(true);
+    this.checkoutError.set(null);
+    try {
+      await this.bridge.invoke('checkout', { repoId, refName });
+      await this.loadRefs();
+    } catch (err) {
+      if (isIpcUnavailable(err)) {
+        this.refsOffline.set(true);
+      } else {
+        this.checkoutError.set(toAppError(err));
+      }
+    } finally {
+      this.checkoutRunning.set(false);
+    }
+  }
+
+  /** Clear a displayed checkout failure (e.g. the shell banner was dismissed). */
+  dismissCheckoutError(): void {
+    this.checkoutError.set(null);
   }
 }
