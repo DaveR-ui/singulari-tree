@@ -1,101 +1,101 @@
-# Decisiones de diseño — ADRs
+# Design decisions — ADRs
 
-> Formato ADR: Context → Decision → Consequences → Alternatives. Todas justifican por qué se eligió y qué se sacrificó.
+> ADR format: Context → Decision → Consequences → Alternatives. All justify why it was chosen and what was sacrificed.
 
-## ADR-001 — Hexagonal (Ports & Adapters) con Go headless
+## ADR-001 — Hexagonal (Ports & Adapters) with headless Go
 
-- **Contexto:** Frontend nunca debe ejecutar Git directo; Electron debe ser reemplazable; Go debe correr sin UI.
-- **Decisión:** `domain` puro sin imports externos; `service` orquesta ports; `adapter` implementa; `cmd/go-core/main.go` es composition root. Angular/Electron solo conocen `window.gitClientApi`.
-- **Consecuencias:** + testeabilidad (mocks ports), + sustituibilidad (Tauri/React), + headless proof `--headless`; − boilerplate interfaces, − curva hexagonal para contributors nuevos.
-- **Alternativas:** MVC monolítico Electron (descartado: acopla Git a UI, no headless).
-- **Estado:** Aceptado.
+- **Context:** The frontend must never run Git directly; Electron must be replaceable; Go must run without a UI.
+- **Decision:** pure `domain` with no external imports; `service` orchestrates ports; `adapter` implements; `cmd/go-core/main.go` is the composition root. Angular/Electron only know `window.gitClientApi`.
+- **Consequences:** + testability (port mocks), + substitutability (Tauri/React), + headless proof `--headless`; − interface boilerplate, − hexagonal learning curve for new contributors.
+- **Alternatives:** monolithic Electron MVC (rejected: couples Git to the UI, not headless).
+- **Status:** Accepted.
 
-## ADR-002 — Monorepo npm workspaces + go.work
+## ADR-002 — npm workspaces monorepo + go.work
 
-- **Contexto:** Necesidad de contratos atómicos Angular↔Go y tooling único.
-- **Decisión:** `package.json` workspaces (`angular`, `electron`, `contracts`, `ui-kit`) + `go.work` (`use ./apps/go-core`).
-- **Consecuencias:** + `buf generate` atomiza `gen/go+gen/ts`; + CI único; − `go.work` requiere Go 1.18+ (ok 1.25+).
-- **Alternativas:** Polyrepo (descartado: drift contratos).
-- **Estado:** Aceptado.
+- **Context:** Need for atomic Angular↔Go contracts and a single toolchain.
+- **Decision:** `package.json` workspaces (`angular`, `electron`, `contracts`, `ui-kit`) + `go.work` (`use ./apps/go-core`).
+- **Consequences:** + `buf generate` atomizes `gen/go+gen/ts`; + single CI; − `go.work` requires Go 1.18+ (ok 1.25+).
+- **Alternatives:** Polyrepo (rejected: contract drift).
+- **Status:** Accepted.
 
-## ADR-003 — Contratos proto únicos con buf (singularitree.v1 alias gitclient.v1)
+## ADR-003 — Single proto contracts with buf (singularitree.v1 alias gitclient.v1)
 
-- **Contexto:** Tipado entre Go y TS, breaking changes controlados.
-- **Decisión:** `libs/contracts/proto/*.proto` fuente única; `buf.yaml` v2 (`STANDARD`, `breaking: FILE`) + `buf.gen.yaml` (`go`, `grpc/go`, `ts-proto`) → `gen/go` + `gen/ts`; `buf lint` + `buf breaking` en `tools/ci/verify-contracts.sh`; paquete `singularitree.v1`, alias `gitclient.v1` en comentarios.
-- **Consecuencias:** + breaking check; + `gen` no editable; − dependencia `buf` CLI.
-- **Alternativas:** OpenAPI/JSON Schema (descartado: streaming débil).
-- **Estado:** Aceptado.
+- **Context:** Typing between Go and TS, controlled breaking changes.
+- **Decision:** `libs/contracts/proto/*.proto` single source; `buf.yaml` v2 (`STANDARD`, `breaking: FILE`) + `buf.gen.yaml` (`go`, `grpc/go`, `ts-proto`) → `gen/go` + `gen/ts`; `buf lint` + `buf breaking` in `tools/ci/verify-contracts.sh`; package `singularitree.v1`, alias `gitclient.v1` in comments.
+- **Consequences:** + breaking check; + `gen` not editable; − `buf` CLI dependency.
+- **Alternatives:** OpenAPI/JSON Schema (rejected: weak streaming).
+- **Status:** Accepted.
 
-## ADR-004 — IPC gRPC primario (unix socket/named pipe) + HTTP fallback
+## ADR-004 — gRPC IPC primary (unix socket/named pipe) + HTTP fallback
 
-- **Contexto:** Streaming (`Watch`, `Fetch` progress, `StreamCommits`) y tipado; compatibilidad debug.
-- **Decisión:** gRPC en unix socket (Linux/macOS) / named pipe `\\.\pipe\singularitree-go-core` (Windows) primario; HTTP fallback siempre en `127.0.0.1:0` con JSON; token `authorization: Bearer`. Scaffold mapea unix→TCP para buildability.
-- **Consecuencias:** + streaming nativo + interceptors; + `curl` fallback; − gRPC complejidad vs REST; − unix socket perms en Windows.
-- **Alternativas:** Solo HTTP REST/SSE (descartado: streaming frágil, tipado manual).
-- **Estado:** Aceptado.
+- **Context:** Streaming (`Watch`, `Fetch` progress, `StreamCommits`) and typing; debug compatibility.
+- **Decision:** gRPC on unix socket (Linux/macOS) / named pipe `\\.\pipe\singularitree-go-core` (Windows) primary; HTTP fallback always on `127.0.0.1:0` with JSON; token `authorization: Bearer`. Scaffold maps unix→TCP for buildability.
+- **Consequences:** + native streaming + interceptors; + `curl` fallback; − gRPC complexity vs REST; − unix socket perms on Windows.
+- **Alternatives:** HTTP REST/SSE only (rejected: fragile streaming, manual typing).
+- **Status:** Accepted.
 
-## ADR-005 — Preload único + contextIsolation + CSP
+## ADR-005 — Single preload + contextIsolation + CSP
 
-- **Contexto:** Seguridad Electron, una superficie IPC.
-- **Decisión:** `preload.ts` único `contextBridge.exposeInMainWorld('gitClientApi', api)`; `BrowserWindow` `contextIsolation:true, nodeIntegration:false, sandbox:true`; CSP en `window/csp.ts`; validación `channels.ts:validate` antes de forward.
-- **Consecuencias:** + minimiza attack surface; + tipado; − no exponer `ipcRenderer` directo.
-- **Alternativas:** `nodeIntegration:true` (descartado: inseguro).
-- **Estado:** Aceptado.
+- **Context:** Electron security, one IPC surface.
+- **Decision:** single `preload.ts` `contextBridge.exposeInMainWorld('gitClientApi', api)`; `BrowserWindow` `contextIsolation:true, nodeIntegration:false, sandbox:true`; CSP in `window/csp.ts`; `channels.ts:validate` validation before forward.
+- **Consequences:** + minimizes attack surface; + typing; − do not expose `ipcRenderer` directly.
+- **Alternatives:** `nodeIntegration:true` (rejected: insecure).
+- **Status:** Accepted.
 
-## ADR-006 — SQLite WAL per-user para metadata cache (nunca Git objects)
+## ADR-006 — Per-user SQLite WAL for metadata cache (never Git objects)
 
-- **Contexto:** Persistir recents/favorites/prefs/UI-state + commit window cache sin servidor; Git data queda en `.git`.
-- **Decisión:** SQLite WAL (`journal_mode=WAL`, `synchronous=NORMAL`, `foreign_keys=ON`, `busy_timeout=5000`) en `~/.local/share/singularitree/cache.db` (Linux), `Application Support` (macOS), `%APPDATA%` (Win); `data/sqlite/migrations/001_initial.sql` migra `repos`, `commit_cache`, `file_status`, `stash_cache`; `modernc.org/sqlite` (pure Go) o `mattn/go-sqlite3`; un solo writer (Go).
-- **Consecuencias:** + sin servidor, + WAL concurrencia lecturas; + migraciones versionadas; − no multi-writer; − path per-OS.
-- **Alternativas:** LevelDB/IndexedDB (descartado: query SQL útil para commits), Postgres (descartado: servidor).
-- **Estado:** Aceptado.
+- **Context:** Persist recents/favorites/prefs/UI-state + commit window cache without a server; Git data stays in `.git`.
+- **Decision:** SQLite WAL (`journal_mode=WAL`, `synchronous=NORMAL`, `foreign_keys=ON`, `busy_timeout=5000`) in `~/.local/share/singularitree/cache.db` (Linux), `Application Support` (macOS), `%APPDATA%` (Win); `data/sqlite/migrations/001_initial.sql` migrates `repos`, `commit_cache`, `file_status`, `stash_cache`; `modernc.org/sqlite` (pure Go) or `mattn/go-sqlite3`; single writer (Go).
+- **Consequences:** + no server, + WAL concurrency for reads; + versioned migrations; − no multi-writer; − per-OS path.
+- **Alternatives:** LevelDB/IndexedDB (rejected: SQL queries useful for commits), Postgres (rejected: server).
+- **Status:** Accepted.
 
-## ADR-007 — Go core headless con GO_CORE_READY + supervisor Ping 5s + token rotation
+## ADR-007 — Headless Go core with GO_CORE_READY + 5s Ping supervisor + token rotation
 
-- **Contexto:** Go debe vivir sin Electron y ser supervisado.
-- **Decisión:** `cmd/go-core/main.go` flag `--headless` → bindea gRPC+HTTP, imprime `GO_CORE_READY addr=... http=... token=...` (parseable), `signal.NotifyContext` graceful 5s; `supervisor.ts` awaitReady 15s, heartbeat Ping 5s, backoff `[200,500,1000,2000,5000]`, queue 100, token 32B hex rotado por restart.
-- **Consecuencias:** + headless proof testeable (`go run --headless | grep GO_CORE_READY`); + auto-recover; − parsing stdout frágil (mitigado regex estricta).
-- **Alternativas:** stdio JSON-RPC (descartado: menos estándar que gRPC).
-- **Estado:** Aceptado (scaffold ya implementa stub TCP; producción pasará a unix socket real).
+- **Context:** Go must live without Electron and be supervised.
+- **Decision:** `cmd/go-core/main.go` flag `--headless` → binds gRPC+HTTP, prints `GO_CORE_READY addr=... http=... token=...` (parseable), `signal.NotifyContext` graceful 5s; `supervisor.ts` awaitReady 15s, heartbeat Ping 5s, backoff `[200,500,1000,2000,5000]`, queue 100, token 32B hex rotated per restart.
+- **Consequences:** + testable headless proof (`go run --headless | grep GO_CORE_READY`); + auto-recover; − fragile stdout parsing (mitigated with strict regex).
+- **Alternatives:** stdio JSON-RPC (rejected: less standard than gRPC).
+- **Status:** Accepted (scaffold already implements a TCP stub; production will move to a real unix socket).
 
-## ADR-008 — Grafo lanes en Go + virtualization Angular (CDK/canvas) + LRU windowed 200+100
+## ADR-008 — Lanes graph in Go + Angular virtualization (CDK/canvas) + LRU windowed 200+100
 
-- **Contexto:** 50k commits con merges, render fluido, <100ms.
-- **Decisión:** `GraphService.Lanes` calcula lanes O(n) en Go (equivalente `git log --graph`); Angular virtualiza con `cdk-virtual-scroll-viewport itemSize=28` + `graph-row` SVG/canvas; paginación `200` inicial + `100` prefetch + `IntersectionObserver`; LRU memory 300.
-- **Consecuencias:** + lanes <50ms en Go; + DOM solo ~30 nodos; − `cdk-virtual-scroll` no canvas (fallback canvas si no suficiente).
-- **Alternativas:** Lanes en TS (descartado: bloquea main), paginación no virtualizada (descartado: DOM thrash).
-- **Estado:** Aceptado.
+- **Context:** 50k commits with merges, fluid render, <100ms.
+- **Decision:** `GraphService.Lanes` computes lanes O(n) in Go (equivalent to `git log --graph`); Angular virtualizes with `cdk-virtual-scroll-viewport itemSize=28` + `graph-row` SVG/canvas; pagination `200` initial + `100` prefetch + `IntersectionObserver`; LRU memory 300.
+- **Consequences:** + lanes <50ms in Go; + DOM only ~30 nodes; − `cdk-virtual-scroll` not canvas (canvas fallback if not enough).
+- **Alternatives:** Lanes in TS (rejected: blocks main), non-virtualized pagination (rejected: DOM thrash).
+- **Status:** Accepted.
 
-## ADR-009 — Monaco diff con workers + chunking + fallback 1MB
+## ADR-009 — Monaco diff with workers + chunking + 1MB fallback
 
-- **Contexto:** Diff UX moderna, binarios, ficheros grandes.
-- **Decisión:** `libs/ui-kit/diff-viewer` wrapper `monaco-editor` + `monaco-workers` (web workers); `side-by-side`/`unified` toggle; límite 1MB/`5000` líneas → plain text fallback; syntax por extensión; hunks lazy.
-- **Consecuencias:** + UX moderna; + no freeze; − bundle Monaco pesado (lazy load).
-- **Alternativas:** CodeMirror (descartado: Monaco superior diff), plain `<pre>` (descartado: pobre).
-- **Estado:** Aceptado.
+- **Context:** Modern diff UX, binaries, large files.
+- **Decision:** `libs/ui-kit/diff-viewer` wrapper `monaco-editor` + `monaco-workers` (web workers); `side-by-side`/`unified` toggle; 1MB/`5000` line limit → plain text fallback; syntax by extension; lazy hunks.
+- **Consequences:** + modern UX; + no freeze; − heavy Monaco bundle (lazy load).
+- **Alternatives:** CodeMirror (rejected: Monaco superior for diff), plain `<pre>` (rejected: poor).
+- **Status:** Accepted.
 
-## ADR-010 — File watchers fsnotify con coalescing 150-300ms + index.lock guard
+## ADR-010 — fsnotify file watchers with 150-300ms coalescing + index.lock guard
 
-- **Contexto:** Cambios realtime `.git/HEAD`, `refs/*`, `index` sin thrash; `index.lock` burst.
-- **Decisión:** `adapter/watcher` `fsnotify` watch `.git/HEAD`, `refs/**`, `index`, `logs/HEAD`; debounce 200ms (150-300 configurable) coalescing burst → un `FsChangedEvent{paths[]}`; filtro `index.lock` ignore; invalida `CacheService`; push vía `Watch` streaming → `fs:changed`.
-- **Consecuencias:** + realtime sin polling; + burst coalescado; − `fsnotify` inestable en macOS FSEvents (fallback poll).
-- **Alternativas:** Polling 1s (descartado: latencia, CPU).
-- **Estado:** Aceptado.
+- **Context:** Realtime changes to `.git/HEAD`, `refs/*`, `index` without thrash; `index.lock` burst.
+- **Decision:** `adapter/watcher` `fsnotify` watch `.git/HEAD`, `refs/**`, `index`, `logs/HEAD`; debounce 200ms (150-300 configurable) coalescing bursts → one `FsChangedEvent{paths[]}`; `index.lock` ignore filter; invalidates `CacheService`; push via `Watch` streaming → `fs:changed`.
+- **Consequences:** + realtime without polling; + coalesced bursts; − `fsnotify` unstable on macOS FSEvents (fallback poll).
+- **Alternatives:** 1s polling (rejected: latency, CPU).
+- **Status:** Accepted.
 
 ## ADR-011 — Testing: vitest (Angular) + go test/ testify + playwright e2e + buf CI
 
-- **Contexto:** Confianza, maintainability, modern UX.
-- **Decisión:** Angular `vitest` (`@testing-library/angular`, `jsdom`, mock `window.gitClientApi`); Go `go test -race` + `testify` + `bufconn` gRPC + repo temp real; SQLite `:memory:`; `testcontainers` opcional; Playwright Electron `launch`; `tools/ci/verify-contracts.sh` `buf lint/breaking`; coverage 80%; CI matrix 3 OS.
-- **Consecuencias:** + pirámide equilibrada; + `buf breaking` previene drift; − Playwright Electron setup.
-- **Alternativas:** Karma/Jest (descartado: vitest más rápido Vite), Cypress (descartado: Playwright mejor Electron).
-- **Estado:** Aceptado.
+- **Context:** Confidence, maintainability, modern UX.
+- **Decision:** Angular `vitest` (`@testing-library/angular`, `jsdom`, mock `window.gitClientApi`); Go `go test -race` + `testify` + `bufconn` gRPC + real temp repo; SQLite `:memory:`; optional `testcontainers`; Playwright Electron `launch`; `tools/ci/verify-contracts.sh` `buf lint/breaking`; coverage 80%; CI matrix 3 OS.
+- **Consequences:** + balanced pyramid; + `buf breaking` prevents drift; − Playwright Electron setup.
+- **Alternatives:** Karma/Jest (rejected: vitest faster with Vite), Cypress (rejected: Playwright better for Electron).
+- **Status:** Accepted.
 
-## ADR-012 — Estilo: Angular latest stable Signals zoneless + SCSS + TypeScript strict
+## ADR-012 — Style: Angular latest stable Signals zoneless + SCSS + strict TypeScript
 
-- **Contexto:** Modern UX, performance, maintainability.
-- **Decisión:** Angular `^21` `standalone` `zoneless` `signals` + `signalStore` por feature; SCSS; `strict: true`; `libs/ui-kit` dumb components.
-- **Consecuencias:** + reactivity sin Zone; + signals fine-grained; − zoneless requiere `provideZonelessChangeDetection` awareness.
-- **Estado:** Aceptado.
+- **Context:** Modern UX, performance, maintainability.
+- **Decision:** Angular `^21` `standalone` `zoneless` `signals` + `signalStore` per feature; SCSS; `strict: true`; `libs/ui-kit` dumb components.
+- **Consequences:** + reactivity without Zone; + fine-grained signals; − zoneless requires `provideZonelessChangeDetection` awareness.
+- **Status:** Accepted.
 
 ## ADR-013 — MCP surface as an optional inbound adapter over the Go core
 
@@ -125,4 +125,4 @@ SingulariTree exposes its Git core as a contract-first gRPC service (`singularit
 
 ---
 
-> Todas las ADRs tienen traceability a `architecture.md`, `ipc-strategy.md`, `service-design.md`, `domain-model.md`, y skeleton físico (`supervisor.ts`, `main.go`, `preload.ts`, `*.proto`, `001_initial.sql`).
+> All ADRs have traceability to `architecture.md`, `ipc-strategy.md`, `service-design.md`, `domain-model.md`, and the physical skeleton (`supervisor.ts`, `main.go`, `preload.ts`, `*.proto`, `001_initial.sql`).

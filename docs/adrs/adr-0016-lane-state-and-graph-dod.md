@@ -8,71 +8,71 @@ version: 1.0
 status: active
 ---
 
-# ADR-0016: Estado de lanes por repo + alcance del DoD del grafo
+# ADR-0016: Per-repo lane state + graph DoD scope
 
 ## Problem
 
-Dos decisiones quedaron implícitas al implementar el grafo y, sin registro, se pierden. (a) La asignación de columnas (lanes) sufría *seams* de re-layout porque el algoritmo era local a cada ventana: el mismo commit podía caer en una columna distinta según qué ventana de scroll lo pidiera. (b) El DoD de la Semana 1-2 prometía paridad visual con `git log --graph --oneline`, que dibuja diagonales de convergencia y cruces, cuando el contrato de transporte `Lane{index,color,continues}` no porta geometría de aristas y esas diagonales no son representables.
+Two decisions were left implicit while implementing the graph and, without a record, they are lost. (a) Column (lane) assignment suffered *seams* of re-layout because the algorithm was local to each window: the same commit could land in a different column depending on which scroll window requested it. (b) The Week 1-2 DoD promised visual parity with `git log --graph --oneline`, which draws convergence diagonals and crossings, while the wire contract `Lane{index,color,continues}` does not carry edge geometry and those diagonals are not representable.
 
 ## Solution
 
-Dos decisiones, itemizadas.
+Two decisions, itemized.
 
-### (a) Ownership del estado de lanes — `GraphService` stateful por repo
+### (a) Lane state ownership — stateful `GraphService` per repo
 
-1. Las lanes se computan **solo en Go** (ADR-008); el renderer nunca re-deriva columnas.
-2. `GraphService` mantiene un **estado de fold por repositorio** (slots de lane) más el **vector de lanes acumulado**, resuelto desde HEAD.
-3. La columna de un commit depende **solo de la historia desde HEAD**, no de qué ventana la pidió — se eliminan los *seams* de re-layout de la computación puramente window-local previa.
-4. El estado se **invalida** por eventos del watcher y por movimientos de HEAD: las operaciones mutantes de `GitService` emiten un evento de watcher, y `main.go` cablea `WatcherService.OnChange → GraphService.Invalidate`.
-5. **Concurrencia:** mutex por servicio; `go test -race` se mantiene verde.
-6. **Caché solo en memoria**; SQLite sigue siendo caché de metadata de commits y **nunca** guarda objetos Git (anti-goal del entry point).
+1. Lanes are computed **only in Go** (ADR-008); the renderer never re-derives columns.
+2. `GraphService` keeps a **fold state per repository** (lane slots) plus the **accumulated lane vector**, resolved from HEAD.
+3. A commit's column depends **only on the history from HEAD**, not on which window requested it — the re-layout *seams* of the previous purely window-local computation are eliminated.
+4. State is **invalidated** by watcher events and HEAD moves: `GitService` mutating operations emit a watcher event, and `main.go` wires `WatcherService.OnChange → GraphService.Invalidate`.
+5. **Concurrency:** mutex per service; `go test -race` stays green.
+6. **In-memory cache only**; SQLite remains a commit-metadata cache and **never** stores Git objects (entry-point anti-goal).
 
-### (b) Scoping del DoD — columnas verticales; geometría de aristas diferida
+### (b) DoD scoping — vertical columns; edge geometry deferred
 
-7. El contrato de wire `Lane{index,color,continues}` **no porta geometría de aristas**, así que convergencias y cruces no pueden dibujarse como diagonales.
-8. El DoD de la Semana 1-2 se **acota a columnas de lane verticales**: asignación de columna correcta y continua entre ventanas.
-9. La **paridad visual completa** con las diagonales/cruces de `git log --graph` queda diferida como **deuda aceptada** (ver [[accepted-debt]]).
-10. **No hubo cambio de contrato** (ni `LaneRow` ni segmentos): fue una decisión deliberada (Opción B) para no congelar un contrato de wire incompleto.
+7. The wire contract `Lane{index,color,continues}` **does not carry edge geometry**, so convergences and crossings cannot be drawn as diagonals.
+8. The Week 1-2 DoD is **scoped to vertical lane columns**: correct and continuous column assignment across windows.
+9. Full **visual parity** with the diagonals/crossings of `git log --graph` is deferred as **accepted debt** (see [[accepted-debt]]).
+10. **There was no contract change** (neither `LaneRow` nor segments): it was a deliberate decision (Option B) not to freeze an incomplete wire contract.
 
 ## When to use
 
-- Al tocar `GraphService.Lanes`, su estado de fold, su invalidación o su benchmark.
-- Al evaluar si el DoD del grafo exige diagonales/cruces (hoy: no; es deuda aceptada).
+- When touching `GraphService.Lanes`, its fold state, its invalidation or its benchmark.
+- When evaluating whether the graph DoD requires diagonals/crossings (today: no; it is accepted debt).
 
 ## When not to use
 
-- No para rediseñar la UI del grafo ni asumir paridad con `git log --graph`.
-- No para introducir `LaneRow`/segmentos sin un ADR sucesor que superseda a este.
-- No para mover el cómputo de lanes al renderer: viola ADR-008.
+- Not to redesign the graph UI nor assume parity with `git log --graph`.
+- Not to introduce `LaneRow`/segments without a successor ADR that supersedes this one.
+- Not to move lane computation into the renderer: violates ADR-008.
 
 ## Examples
 
-Estado per-repo e invalidación:
+Per-repo state and invalidation:
 
 ```go
-// GraphService: fold state por repo + lane vector acumulado, resuelto desde HEAD.
+// GraphService: fold state per repo + accumulated lane vector, resolved from HEAD.
 func (s *GraphService) Invalidate(repoID string) { /* drop fold state -> recompute from HEAD */ }
 
-// main.go: un cambio del watcher dispara la invalidación.
+// main.go: a watcher change triggers invalidation.
 watcher.OnChange(func(ev Event) { graph.Invalidate(ev.RepoID) })
 ```
 
-Ciclo de verificación:
+Verification cycle:
 
 ```bash
-cd apps/go-core && go test -race ./...   # el mutex del estado se mantiene verde
+cd apps/go-core && go test -race ./...   # the state mutex stays green
 ```
 
 ## Common mistakes
 
-- **Meter el estado de fold en la ventana** en vez de en el servicio: reintroduce los *seams* entre scrolls.
-- **Olvidar invalidar en HEAD moves**: una operación mutante sin evento de watcher deja lanes obsoletas.
-- **Cachear objetos Git en SQLite** "para acelerar": viola el anti-goal; SQLite es solo metadata.
-- **Prometer diagonales** con el contrato actual: `Lane` no lleva geometría de aristas.
+- **Putting the fold state in the window** instead of the service: reintroduces the *seams* between scrolls.
+- **Forgetting to invalidate on HEAD moves**: a mutating operation without a watcher event leaves stale lanes.
+- **Caching Git objects in SQLite** "to speed things up": violates the anti-goal; SQLite is metadata only.
+- **Promising diagonals** with the current contract: `Lane` carries no edge geometry.
 
 ## References
 
-- Deuda aceptada (paridad de aristas): [[accepted-debt]]
-- Hub de ADRs: [[adr-index]]
-- Contrato del corpus: [documentation-system.md](../context/documentation-system.md)
-- Diseño legacy de servicios: [service-design.md](../context/git-client/service-design.md)
+- Accepted debt (edge parity): [[accepted-debt]]
+- ADR hub: [[adr-index]]
+- Corpus contract: [documentation-system.md](../context/documentation-system.md)
+- Legacy service design: [service-design.md](../context/git-client/service-design.md)

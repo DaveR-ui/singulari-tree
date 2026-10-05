@@ -1,4 +1,4 @@
-# Diagrama de módulos — C4 + Hexagonal + IPC
+# Module diagram — C4 + Hexagonal + IPC
 
 ## 1. C4 Container (mermaid)
 
@@ -7,7 +7,7 @@ C4Context
   title SingulariTree — Containers
   Person(dev, "Developer", "Linux/Win/macOS")
   System_Boundary(app, "SingulariTree Desktop") {
-    Container(angular, "Angular Renderer", "Angular 21 + Signals + SCSS", "Grafo, Monaco diff, status/stage")
+    Container(angular, "Angular Renderer", "Angular 21 + Signals + SCSS", "Graph, Monaco diff, status/stage")
     Container(electron, "Electron Main + Preload", "Node + Electron", "Shell, supervisor, IPC bridge")
     Container(gocore, "Go Core Headless", "Go 1.25+", "Git, lanes, cache, watchers")
     ContainerDb(sqlite, "SQLite WAL", "file per-user", "config/recents/cache — NO Git objects")
@@ -16,7 +16,7 @@ C4Context
   System_Ext(gitfs, ".git / Worktrees", "Git objects")
   System_Ext(remotes, "Git Remotes", "fetch/pull/push")
 
-  Rel(dev, angular, "usa")
+  Rel(dev, angular, "uses")
   Rel(angular, electron, "window.gitClientApi.invoke / on", "IPC invoke/handle")
   Rel(electron, gocore, "gRPC unix socket + HTTP fallback", "singularitree.v1 + token")
   Rel(gocore, sqlite, "database/sql", "WAL")
@@ -34,10 +34,10 @@ flowchart TB
   subgraph Driving["Driving (primary) adapters"]
     A["Angular Signals Stores\n(IpcBridge)"]
     E["Electron ipcMain.handle\n(channels.ts/handlers.ts)"]
-    M["adapter/mcp\n(opcional, stdio)"]
+    M["adapter/mcp\n(optional, stdio)"]
   end
 
-  subgraph Hex["Hexágono — Services (use cases)"]
+  subgraph Hex["Hexagon — Services (use cases)"]
     S1["RepoService"]
     S2["GitService"]
     S3["GraphService"]
@@ -73,23 +73,23 @@ flowchart TB
   class A,E,D1,D2,D3,D4,M adapter
 ```
 
-**Prueba de sustituibilidad:**
+**Substitutability proof:**
 
-| Cambio | Solo tocas | No tocas |
+| Change | You only touch | You do NOT touch |
 |--------|-----------|----------|
 | Angular → React | `A` + `libs/ui-kit` | `Hex`, `Ports`, `Driven` |
 | Electron → Tauri | `E` + `supervisor.ts` | `Hex`, `Ports` |
 | `go-git` → exec git | `D1` | `S*`, `P1` |
-| gRPC → solo HTTP | `D4` | `S*` |
-| Añadir superficie MCP (opcional) | `adapter/mcp` + `cmd/mcp-server` | `Hex`, `Ports`, `Driven` |
+| gRPC → HTTP only | `D4` | `S*` |
+| Add MCP surface (optional) | `adapter/mcp` + `cmd/mcp-server` | `Hex`, `Ports`, `Driven` |
 
-`domain/` no importa `service/` ni `adapter/`; `service` solo conoce interfaces.
+`domain/` does not import `service/` or `adapter/`; `service` only knows interfaces.
 
-> MCP es un inbound adapter **opcional** sobre el mismo core Go (no altera el spine gRPC/`--headless`); ver ADR-013.
+> MCP is an **optional** inbound adapter over the same Go core (it does not alter the gRPC/`--headless` spine); see ADR-013.
 
-## 3. Secuencia IPC (request/response + streaming + watcher)
+## 3. IPC sequence (request/response + streaming + watcher)
 
-### 3.1 Request/response paginado (GetCommits)
+### 3.1 Paginated request/response (GetCommits)
 
 ```mermaid
 sequenceDiagram
@@ -183,14 +183,14 @@ sequenceDiagram
   E->>SUP: stop() → kill SIGTERM → graceful 5s
 ```
 
-## 4. Módulos Angular (features verticales)
+## 4. Angular modules (vertical features)
 
 ```
 features/repo/
   ├── repo.routes.ts      <- lazy load
-  ├── repo.service.ts     <- facade sobre IpcBridge (getCommits, getStatus…)
+  ├── repo.service.ts     <- facade over IpcBridge (getCommits, getStatus…)
   ├── repo-models.ts      <- ViewModels (CommitRow, Lane)
-  ├── page/repo-page.ts   <- orquesta graph + status + diff
+  ├── page/repo-page.ts   <- orchestrates graph + status + diff
   └── ui/
       ├── graph/          <- virtual scroll + lanes canvas
       ├── status/         <- stage/unstage, file list
@@ -199,35 +199,35 @@ features/repo/
       └── toolbar/        <- fetch/pull/push + progress bar
 ```
 
-Cada feature tiene su **Signals store** (ver `service-design.md §2`): `GraphStore`, `StatusStore`, `DiffStore`, `BranchStore`.
+Each feature has its own **Signals store** (see `service-design.md §2`): `GraphStore`, `StatusStore`, `DiffStore`, `BranchStore`.
 
-## 5. Módulos Go (internal)
+## 5. Go modules (internal)
 
-| Módulo | Depende de | Expone |
+| Module | Depends on | Exposes |
 |--------|------------|--------|
-| `domain` | nada (puro) | entidades, VOs, ports interfaces, errores |
-| `service` | `domain` ports | casos de uso, validación, transacciones |
-| `repository` | `domain`, `database/sql` | SQLite impl de `RepoPort`, `CachePort` |
+| `domain` | nothing (pure) | entities, VOs, port interfaces, errors |
+| `service` | `domain` ports | use cases, validation, transactions |
+| `repository` | `domain`, `database/sql` | SQLite impl of `RepoPort`, `CachePort` |
 | `adapter/git` | `domain` | `GitPort` via exec/go-git |
-| `adapter/grpc` | `service`, `gen/go` | `GitCore` gRPC server, interceptors token/auth |
-| `adapter/http` | `service` | fallback REST `/health`, `/commits`, etc. |
+| `adapter/grpc` | `service`, `gen/go` | `GitCore` gRPC server, token/auth interceptors |
+| `adapter/http` | `service` | REST fallback `/health`, `/commits`, etc. |
 | `adapter/watcher` | `domain` | `WatcherPort` fsnotify |
-| `adapter/mcp` *(opcional)* | `service`, `gen/go` | MCP server (stdio), tools `git_<verb>` — ver ADR-013 |
+| `adapter/mcp` *(optional)* | `service`, `gen/go` | MCP server (stdio), tools `git_<verb>` — see ADR-013 |
 | `config` | Viper, flags | `Config` struct |
-| `cmd/go-core` | todos | DI wiring, listeners, graceful shutdown |
-| `cmd/mcp-server` *(opcional)* | todos | composition root MCP; wiring compartido vía `internal/bootstrap` |
+| `cmd/go-core` | all | DI wiring, listeners, graceful shutdown |
+| `cmd/mcp-server` *(optional)* | all | MCP composition root; shared wiring via `internal/bootstrap` |
 
-## 6. Dependencias externas
+## 6. External dependencies
 
-- `modernc.org/sqlite` o `mattn/go-sqlite3` (CGO) + `fsnotify`
-- `google.golang.org/grpc` + `connect` opcional
-- `spf13/viper` + `spf13/cobra` o `flag`
+- `modernc.org/sqlite` or `mattn/go-sqlite3` (CGO) + `fsnotify`
+- `google.golang.org/grpc` + optional `connect`
+- `spf13/viper` + `spf13/cobra` or `flag`
 - `buf` (Contracts) + `stephenh/ts-proto` (gen/ts)
-- Angular CDK (virtual scroll) o canvas; `monaco-editor` + `monaco-workers`
+- Angular CDK (virtual scroll) or canvas; `monaco-editor` + `monaco-workers`
 
-## 7. Verificación del diagrama
+## 7. Diagram verification
 
-- `domain/` no importa `service/` ni `adapter/` → `go vet ./...` + import cycle check.
-- Angular `ng build` sin Electron — `window.gitClientApi` mockeado en `environments`.
-- Go `go run --headless` sin Angular/Electron — `GO_CORE_READY` emitido.
+- `domain/` does not import `service/` or `adapter/` → `go vet ./...` + import cycle check.
+- Angular `ng build` without Electron — `window.gitClientApi` mocked in `environments`.
+- Go `go run --headless` without Angular/Electron — `GO_CORE_READY` emitted.
 ```

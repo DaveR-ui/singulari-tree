@@ -1,154 +1,154 @@
-# GitHub como fuente de datos real — conexión vía `gh` CLI
+# GitHub as a real data source — connection via `gh` CLI
 
-> **Plan de diseño para validación humana antes de implementar.** Este documento NO describe código existente: propone un diseño y sus adiciones de contrato. Nada aquí debe implementarse hasta que un humano apruebe la sección 11. Convive con los docs legacy de `git-client/` (sin frontmatter, excluidos del validador).
+> **Design plan for human validation before implementing.** This document does NOT describe existing code: it proposes a design and its contract additions. Nothing here should be implemented until a human approves section 11. It coexists with the legacy docs in `git-client/` (no frontmatter, excluded from the validator).
 
-## 1. Objetivo y alcance
+## 1. Objective and scope
 
-Conectar SingulariTree a GitHub usando el **CLI `gh` como fuente de token** y obtener **los repositorios de la cuenta autenticada como datos reales** (no mock), más las adiciones de contrato proto necesarias.
+Connect SingulariTree to GitHub using the **`gh` CLI as token source** and obtain **the repositories of the authenticated account as real data** (not mock), plus the necessary proto contract additions.
 
-**Incluido:**
+**Included:**
 
-- Diseño del flujo end-to-end Angular → Electron → Go core → `api.github.com`.
-- Adiciones **aditivas** a `libs/contracts/proto/auth.proto` y `libs/contracts/proto/errors.proto`.
-- Plan de migración del renderer de datos mock a datos reales.
-- Resolución documentada de los hot spots de diseño (sección 7).
+- Design of the end-to-end flow Angular → Electron → Go core → `api.github.com`.
+- **Additive** additions to `libs/contracts/proto/auth.proto` and `libs/contracts/proto/errors.proto`.
+- Migration plan for the renderer from mock data to real data.
+- Documented resolution of the design hot spots (section 7).
 
-**Explícitamente fuera (ver sección 9):**
+**Explicitly out (see section 9):**
 
-- Implementación de adapters, IPC, handlers o renderer (solo diseño).
-- Regeneración de stubs `gen/{go,ts}`.
-- OAuth app flow (solo evolución futura, no esta iteración).
-- Migración SQLite y wiring de `buf` en CI.
+- Implementation of adapters, IPC, handlers or renderer (design only).
+- Regeneration of `gen/{go,ts}` stubs.
+- OAuth app flow (future evolution only, not this iteration).
+- SQLite migration and `buf` wiring in CI.
 
-Referencias hermanas: flujo OAuth y endpoints/códigos de error reutilizados en [`./github-oauth-guide.md`](./github-oauth-guide.md); transporte IPC en [`./ipc-strategy.md`](./ipc-strategy.md); puertos hexagonales en [`./service-design.md`](./service-design.md) y [`./domain-model.md`](./domain-model.md).
+Sibling references: OAuth flow and reused endpoints/error codes in [`./github-oauth-guide.md`](./github-oauth-guide.md); IPC transport in [`./ipc-strategy.md`](./ipc-strategy.md); hexagonal ports in [`./service-design.md`](./service-design.md) and [`./domain-model.md`](./domain-model.md).
 
-## 2. Decisiones congeladas (input humano)
+## 2. Frozen decisions (human input)
 
-Estas decisiones ya fueron tomadas por el humano y son restricciones de entrada, no propuestas a debatir.
+These decisions were already made by the human and are input constraints, not proposals to debate.
 
-| Decisión | Valor congelado |
+| Decision | Frozen value |
 |---|---|
-| Fuente de token | CLI `gh` — token obtenido con `gh auth token` (sin OAuth app). |
-| Cuenta objetivo | `DaveR-ui` (cuenta autenticada en la máquina local). |
-| Scopes del token | `gist, read:org, repo, workflow` — **sin** `read:user`. |
-| OAuth app flow | Fuera de esta iteración; solo evolución futura. |
-| Alcance de datos | Repositorios de la cuenta autenticada (`GET /user/repos`), no repos de terceros. |
+| Token source | `gh` CLI — token obtained with `gh auth token` (no OAuth app). |
+| Target account | `DaveR-ui` (authenticated account on the local machine). |
+| Token scopes | `gist, read:org, repo, workflow` — **without** `read:user`. |
+| OAuth app flow | Out of this iteration; future evolution only. |
+| Data scope | Repositories of the authenticated account (`GET /user/repos`), not third-party repos. |
 
-No se persisten secretos en código, docs ni logs: el token vive en memoria en el Go core y nunca se serializa al renderer.
+No secrets are persisted in code, docs or logs: the token lives in memory in the Go core and is never serialized to the renderer.
 
-## 3. Flujo end-to-end
+## 3. End-to-end flow
 
-Canal IPC propuesto `auth:*`, simétrico al `git:*` existente. El dueño de la red es el Go core: Electron nunca llama a GitHub.
+Proposed IPC channel `auth:*`, symmetric to the existing `git:*`. The network owner is the Go core: Electron never calls GitHub.
 
-| # | Acción Angular | Canal IPC (`auth:*`) | Electron | Go core | Red | Slice |
+| # | Angular action | IPC channel (`auth:*`) | Electron | Go core | Network | Slice |
 |---|---|---|---|---|---|---|
-| 1 | `GithubAccountStore.connect()` en `apps/angular/src/app/features/github-account/github-account.store.ts` (nuevo) llama a `IpcBridge` | `auth:connectGitHubFromCLI` | — | — | — | renderer |
-| 2 | `IpcBridge.invoke('auth:connectGitHubFromCLI', {ghBinary:'gh', verify:true})` en `apps/angular/src/app/core/services/ipc-bridge.service.ts` | `auth:connectGitHubFromCLI` | — | — | — | renderer |
-| 3 | — | — | `preload.ts` expone el método en `GitClientApi` (`apps/electron/src/preload/preload.ts`) | — | — | desktop-shell |
-| 4 | — | — | `channels.ts` declara `auth:*` + `CHANNEL_TO_RPC` (`apps/electron/src/ipc/channels.ts`) | — | — | desktop-shell |
-| 5 | — | — | `handlers.ts` valida y reenvía (`apps/electron/src/ipc/handlers.ts`) | — | — | desktop-shell |
-| 6 | — | — | `supervisor.forwardToGo()` dispatch gRPC (`apps/electron/src/main/supervisor.ts`) | — | — | desktop-shell |
-| 7 | — | — | `go-core-client.ts` construye además el cliente `Auth` (`apps/electron/src/main/go-core-client.ts`) | — | — | desktop-shell |
-| 8 | — | — | — | `AuthService.ConnectFromCLI()` (`apps/go-core/internal/service/auth_service.go`, nuevo) | — | core |
-| 9 | — | — | — | `TokenSource.Token()` vía `apps/go-core/internal/adapter/ghcli/` (nuevo) ejecuta `gh auth token` | — | core |
-| 10 | — | — | — | `AuthPort.GetUser()` / `ListRepos()` en `apps/go-core/internal/adapter/github/` (nuevo) detrás de `domain.AuthPort` (`apps/go-core/internal/domain/auth.go`) | `GET https://api.github.com/user` y `GET /user/repos` | core |
-| 11 | — | — | — | `grpc.AuthServer` registrado en `apps/go-core/internal/adapter/grpc/server.go` (gap actual, ver §5) | — | core |
+| 1 | `GithubAccountStore.connect()` in `apps/angular/src/app/features/github-account/github-account.store.ts` (new) calls `IpcBridge` | `auth:connectGitHubFromCLI` | — | — | — | renderer |
+| 2 | `IpcBridge.invoke('auth:connectGitHubFromCLI', {ghBinary:'gh', verify:true})` in `apps/angular/src/app/core/services/ipc-bridge.service.ts` | `auth:connectGitHubFromCLI` | — | — | — | renderer |
+| 3 | — | — | `preload.ts` exposes the method in `GitClientApi` (`apps/electron/src/preload/preload.ts`) | — | — | desktop-shell |
+| 4 | — | — | `channels.ts` declares `auth:*` + `CHANNEL_TO_RPC` (`apps/electron/src/ipc/channels.ts`) | — | — | desktop-shell |
+| 5 | — | — | `handlers.ts` validates and forwards (`apps/electron/src/ipc/handlers.ts`) | — | — | desktop-shell |
+| 6 | — | — | `supervisor.forwardToGo()` gRPC dispatch (`apps/electron/src/main/supervisor.ts`) | — | — | desktop-shell |
+| 7 | — | — | `go-core-client.ts` additionally builds the `Auth` client (`apps/electron/src/main/go-core-client.ts`) | — | — | desktop-shell |
+| 8 | — | — | — | `AuthService.ConnectFromCLI()` (`apps/go-core/internal/service/auth_service.go`, new) | — | core |
+| 9 | — | — | — | `TokenSource.Token()` via `apps/go-core/internal/adapter/ghcli/` (new) runs `gh auth token` | — | core |
+| 10 | — | — | — | `AuthPort.GetUser()` / `ListRepos()` in `apps/go-core/internal/adapter/github/` (new) behind `domain.AuthPort` (`apps/go-core/internal/domain/auth.go`) | `GET https://api.github.com/user` and `GET /user/repos` | core |
+| 11 | — | — | — | `grpc.AuthServer` registered in `apps/go-core/internal/adapter/grpc/server.go` (current gap, see §5) | — | core |
 
-**Camino de retorno:** `api.github.com` → `adapter/github` (parseo + `ETag`/rate limit) → `AuthService` → respuesta gRPC `singularitree.v1.Auth` → `go-core-client.ts` → `supervisor` → `handlers.ts` → `preload.ts` → `IpcBridge` → señales de `GithubAccountStore` → UI.
+**Return path:** `api.github.com` → `adapter/github` (parsing + `ETag`/rate limit) → `AuthService` → gRPC response `singularitree.v1.Auth` → `go-core-client.ts` → `supervisor` → `handlers.ts` → `preload.ts` → `IpcBridge` → `GithubAccountStore` signals → UI.
 
-## 4. Endpoints GitHub
+## 4. GitHub endpoints
 
-| Endpoint | Uso | Parámetros / notas |
+| Endpoint | Use | Parameters / notes |
 |---|---|---|
-| `GET https://api.github.com/user` | Perfil de la cuenta autenticada | Sin params. Requiere token. `email` puede venir vacío (ver §8). |
-| `GET https://api.github.com/user/repos` | Repositorios de la cuenta | Query: `per_page`, `page`, `sort` (`created`\|`updated`\|`pushed`\|`full_name`), `direction` (`asc`\|`desc`), `affiliation` (`owner,collaborator,organization_member`), `visibility` (`all`\|`public`\|`private`), `type` (`all`\|`owner`\|`public`\|`private`\|`member`). |
-| `GET https://api.github.com/rate_limit` (opcional) | Snapshot de cuota sin gastar request de datos | Útil para precargar `X-RateLimit-*` cuando no hay respuesta previa. |
+| `GET https://api.github.com/user` | Profile of the authenticated account | No params. Requires token. `email` may come empty (see §8). |
+| `GET https://api.github.com/user/repos` | Account repositories | Query: `per_page`, `page`, `sort` (`created`\|`updated`\|`pushed`\|`full_name`), `direction` (`asc`\|`desc`), `affiliation` (`owner,collaborator,organization_member`), `visibility` (`all`\|`public`\|`private`), `type` (`all`\|`owner`\|`public`\|`private`\|`member`). |
+| `GET https://api.github.com/rate_limit` (optional) | Quota snapshot without spending a data request | Useful to preload `X-RateLimit-*` when there is no previous response. |
 
-**Paginación (Link header):** la respuesta de `user/repos` incluye `Link: <...&page=2>; rel="next"`. El adapter parsea `rel="next"` y lo expone como `PageInfo.next_page` + `PageInfo.has_more`. Ausencia de `rel="next"` ⇒ `next_page=0`, `has_more=false`.
+**Pagination (Link header):** the `user/repos` response includes `Link: <...&page=2>; rel="next"`. The adapter parses `rel="next"` and exposes it as `PageInfo.next_page` + `PageInfo.has_more`. Absence of `rel="next"` ⇒ `next_page=0`, `has_more=false`.
 
-**Rate limits:** headers `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` (epoch) y, en 403/429 con abuso secundario, `Retry-After`. Se mapean a `RateLimit{resource, limit, remaining, reset, reset_at}`; `reset` es epoch y `reset_at` es ISO-8601.
+**Rate limits:** headers `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` (epoch) and, on 403/429 with secondary abuse, `Retry-After`. They are mapped to `RateLimit{resource, limit, remaining, reset, reset_at}`; `reset` is epoch and `reset_at` is ISO-8601.
 
-**Requests condicionales:** guardar el `ETag` de la última respuesta por usuario y enviar `If-None-Match`; `304 Not Modified` reutiliza el payload cacheado y no descuenta cuota contra el límite primario.
+**Conditional requests:** cache the `ETag` of the last response per user and send `If-None-Match`; `304 Not Modified` reuses the cached payload and does not count against the primary limit.
 
-**Hogar de implementación:** `apps/go-core/internal/adapter/github/` implementa `domain.AuthPort` y `TokenStore`; `apps/go-core/internal/adapter/ghcli/` implementa el `TokenSource`. Endpoints y códigos de error reutilizados se documentan en [`./github-oauth-guide.md`](./github-oauth-guide.md).
+**Implementation home:** `apps/go-core/internal/adapter/github/` implements `domain.AuthPort` and `TokenStore`; `apps/go-core/internal/adapter/ghcli/` implements the `TokenSource`. Reused endpoints and error codes are documented in [`./github-oauth-guide.md`](./github-oauth-guide.md).
 
-## 5. Adiciones de contrato propuestas (proto)
+## 5. Proposed contract additions (proto)
 
-Todas las adiciones son **aditivas** (`append` de campos nuevos, nunca reutilizar números ni renombrar). **`gen/{go,ts}` NO se regenera en esta iteración**: los stubs actuales siguen gobernando el wire hasta una aprobación separada con `buf generate`.
+All additions are **additive** (`append` of new fields, never reuse numbers or rename). **`gen/{go,ts}` is NOT regenerated in this iteration**: the current stubs keep governing the wire until a separate approval with `buf generate`.
 
 ### 5.1 `libs/contracts/proto/auth.proto`
 
-`service Auth`: agregar RPC; los RPC OAuth existentes se retienen.
+`service Auth`: add RPC; the existing OAuth RPCs are retained.
 
 ```proto
 service Auth {
-  // ... RPC actuales (GetAuthStatus, StartGitHubOAuth, ExchangeCode, GetGitHubUser, ListGitHubRepos, Logout) se conservan ...
-  rpc ConnectGitHubFromCLI(ConnectGitHubFromCLIRequest) returns (ConnectGitHubFromCLIResponse); // NUEVO
+  // ... current RPCs (GetAuthStatus, StartGitHubOAuth, ExchangeCode, GetGitHubUser, ListGitHubRepos, Logout) are preserved ...
+  rpc ConnectGitHubFromCLI(ConnectGitHubFromCLIRequest) returns (ConnectGitHubFromCLIResponse); // NEW
 }
 ```
 
-`GetAuthStatusResponse`: adicionar campo 3; 1-2 se retienen.
+`GetAuthStatusResponse`: add field 3; 1-2 are retained.
 
 ```proto
 message GetAuthStatusResponse {
-  bool authenticated = 1; // retenido
-  string login = 2;       // retenido
-  AuthStatus status = 3;  // NUEVO
+  bool authenticated = 1; // retained
+  string login = 2;       // retained
+  AuthStatus status = 3;  // NEW
 }
 ```
 
-`ListGitHubReposRequest`: adicionar 3-7; 1-2 se retienen.
+`ListGitHubReposRequest`: add 3-7; 1-2 are retained.
 
 ```proto
 message ListGitHubReposRequest {
-  uint32 per_page = 1;                      // retenido
-  uint32 page = 2;                          // retenido
-  string sort = 3;                           // NUEVO: created|updated|pushed|full_name
-  string direction = 4;                      // NUEVO: asc|desc
-  string affiliation = 5;                    // NUEVO: owner,collaborator,organization_member
-  string visibility = 6;                     // NUEVO: all|public|private
-  string type = 7;                           // NUEVO: all|owner|public|private|member
+  uint32 per_page = 1;                      // retained
+  uint32 page = 2;                          // retained
+  string sort = 3;                           // NEW: created|updated|pushed|full_name
+  string direction = 4;                      // NEW: asc|desc
+  string affiliation = 5;                    // NEW: owner,collaborator,organization_member
+  string visibility = 6;                     // NEW: all|public|private
+  string type = 7;                           // NEW: all|owner|public|private|member
 }
 ```
 
-`ListGitHubReposResponse`: adicionar 2-3; 1 se retiene.
+`ListGitHubReposResponse`: add 2-3; 1 is retained.
 
 ```proto
 message ListGitHubReposResponse {
-  repeated GitHubRepo repos = 1; // retenido
-  PageInfo page_info = 2;        // NUEVO
-  RateLimit rate_limit = 3;      // NUEVO
+  repeated GitHubRepo repos = 1; // retained
+  PageInfo page_info = 2;        // NEW
+  RateLimit rate_limit = 3;      // NEW
 }
 ```
 
-`GitHubRepo`: adicionar campos 10-28; 1-9 se retienen.
+`GitHubRepo`: add fields 10-28; 1-9 are retained.
 
 ```proto
 message GitHubRepo {
-  // 1-9 retenidos: id, name, full_name, private, html_url, description, language, stargazers_count, updated_at
-  string node_id = 10;             // NUEVO
-  string default_branch = 11;      // NUEVO
-  string owner_login = 12;         // NUEVO
-  string owner_avatar_url = 13;    // NUEVO
-  string visibility = 14;          // NUEVO
-  bool fork = 15;                  // NUEVO
-  bool archived = 16;              // NUEVO
-  bool disabled = 17;              // NUEVO
-  string clone_url = 18;           // NUEVO
-  string ssh_url = 19;             // NUEVO
-  string git_url = 20;             // NUEVO
-  string pushed_at = 21;           // NUEVO
-  string created_at = 22;          // NUEVO
-  int32 forks_count = 23;          // NUEVO
-  int32 open_issues_count = 24;    // NUEVO
-  repeated string topics = 25;     // NUEVO
-  string license_spdx_id = 26;     // NUEVO
-  bool is_template = 27;           // NUEVO
-  string homepage = 28;            // NUEVO
+  // 1-9 retained: id, name, full_name, private, html_url, description, language, stargazers_count, updated_at
+  string node_id = 10;             // NEW
+  string default_branch = 11;      // NEW
+  string owner_login = 12;         // NEW
+  string owner_avatar_url = 13;    // NEW
+  string visibility = 14;          // NEW
+  bool fork = 15;                  // NEW
+  bool archived = 16;              // NEW
+  bool disabled = 17;              // NEW
+  string clone_url = 18;           // NEW
+  string ssh_url = 19;             // NEW
+  string git_url = 20;             // NEW
+  string pushed_at = 21;           // NEW
+  string created_at = 22;          // NEW
+  int32 forks_count = 23;          // NEW
+  int32 open_issues_count = 24;    // NEW
+  repeated string topics = 25;     // NEW
+  string license_spdx_id = 26;     // NEW
+  bool is_template = 27;           // NEW
+  string homepage = 28;            // NEW
 }
 ```
 
-Mensajes y enum nuevos de nivel top (sin colisión de números: `GitHubRepo` llega hasta 28; los mensajes nuevos son tipos independientes):
+New top-level messages and enum (no number collision: `GitHubRepo` reaches 28; the new messages are independent types):
 
 ```proto
 enum AuthSource {
@@ -164,14 +164,14 @@ message AuthStatus {
   string account_login = 3;
   string name = 4;
   string avatar_url = 5;
-  string email = 6;              // opcional: puede venir vacío (ver §8)
+  string email = 6;              // optional: may come empty (see §8)
   repeated string scopes = 7;
   RateLimit rate_limit = 8;
 }
 
 message ConnectGitHubFromCLIRequest {
   string gh_binary = 1;          // default "gh"
-  bool verify = 2;               // si true, valida el token con GET /user
+  bool verify = 2;               // if true, validates the token with GET /user
 }
 
 message ConnectGitHubFromCLIResponse {
@@ -182,27 +182,27 @@ message ConnectGitHubFromCLIResponse {
 message PageInfo {
   uint32 page = 1;
   uint32 per_page = 2;
-  uint32 next_page = 3;          // 0 si no hay siguiente
+  uint32 next_page = 3;          // 0 if there is no next
   bool has_more = 4;
-  uint32 total = 5;              // 0 si GitHub no lo provee
+  uint32 total = 5;              // 0 if GitHub does not provide it
 }
 
 message RateLimit {
   string resource = 1;           // "core" | "search" | ...
   uint32 limit = 2;
   uint32 remaining = 3;
-  int64 reset = 4;               // epoch segundos
+  int64 reset = 4;               // epoch seconds
   string reset_at = 5;           // ISO-8601
 }
 ```
 
 ### 5.2 `libs/contracts/proto/errors.proto`
 
-`ErrorCode`: adicionar 19-23; 0-18 se retienen.
+`ErrorCode`: add 19-23; 0-18 are retained.
 
 ```proto
 enum ErrorCode {
-  // 0-18 retenidos
+  // 0-18 retained
   GH_CLI_NOT_FOUND = 19;
   GH_CLI_UNAUTHENTICATED = 20;
   GITHUB_RATE_LIMITED = 21;
@@ -211,137 +211,137 @@ enum ErrorCode {
 }
 ```
 
-### 5.3 Gap de wiring confirmado
+### 5.3 Confirmed wiring gap
 
-Aunque `libs/contracts/gen/go/singularitree/v1/auth_grpc.pb.go` ya expone `RegisterAuthServer`, el servicio `Auth` **no está registrado**:
+Although `libs/contracts/gen/go/singularitree/v1/auth_grpc.pb.go` already exposes `RegisterAuthServer`, the `Auth` service **is not registered**:
 
-- `apps/go-core/internal/adapter/grpc/server.go` solo llama a `singularitreev1.RegisterGitCoreServer` (no hay `server.RegisterAuth` ni un `AuthServer` embebido).
-- `apps/electron/src/main/go-core-client.ts` construye únicamente el cliente `singularitree.v1.GitCore` (`GIT_CORE_RPC_METHODS`, `GIT_CORE_PROTO_FILES`), sin cliente `Auth`.
+- `apps/go-core/internal/adapter/grpc/server.go` only calls `singularitreev1.RegisterGitCoreServer` (there is no `server.RegisterAuth` nor an embedded `AuthServer`).
+- `apps/electron/src/main/go-core-client.ts` builds only the `singularitree.v1.GitCore` client (`GIT_CORE_RPC_METHODS`, `GIT_CORE_PROTO_FILES`), with no `Auth` client.
 
-Cerrar este gap es prerequisito de cualquier implementación y debe ir en un cambio aparte, tras aprobación. Los stubs actuales se usan tal cual; no se regeneran.
+Closing this gap is a prerequisite for any implementation and must go in a separate change, after approval. The current stubs are used as-is; they are not regenerated.
 
-## 6. Cómo el renderer pasa a datos reales
+## 6. How the renderer moves to real data
 
-**Estado actual (mock):**
+**Current state (mock):**
 
-- `apps/angular/src/app/core/layout/layout.ts` hardcodea `repoCards` (líneas ~69-74) y `commits` (~76-85); `layout.html` los renderiza (repo list en `.st-right__list`, graph en `.st-graph__rows`).
-- `apps/angular/src/app/features/repo/data/mock-repos.ts` (+ re-export `apps/angular/src/app/features/repo/mock-data.ts`) está **huérfano**: ya no alimenta al layout ni al `GraphStore`.
+- `apps/angular/src/app/core/layout/layout.ts` hardcodes `repoCards` (lines ~69-74) and `commits` (~76-85); `layout.html` renders them (repo list in `.st-right__list`, graph in `.st-graph__rows`).
+- `apps/angular/src/app/features/repo/data/mock-repos.ts` (+ re-export `apps/angular/src/app/features/repo/mock-data.ts`) is **orphaned**: it no longer feeds the layout or the `GraphStore`.
 
-**Plan propuesto:**
+**Proposed plan:**
 
-1. **Nueva vertical `apps/angular/src/app/features/github-account/`** — `github-account.store.ts` (señales `status`, `repos`, `pageInfo`, `rateLimit`, `loading`, `error`) + componente de cuenta que consume los canales `auth:*`. Es el único punto que habla con el `Auth` service (vía `IpcBridge`).
-2. **Lista de repos del layout** — `LayoutComponent` deja `repoCards` y pasa a leer `RepoState.repos` (`apps/angular/src/app/core/services/repo-state.service.ts`, ya cableado a `git:listRepositories`). "Local repositories" = repos trackeados en el core (SQLite), NO la cuenta GitHub.
-3. **Commit graph del layout** — reemplazar `commits` mock por `GraphStore` (`apps/angular/src/app/features/repo/graph/graph.store.ts`), que ya usa IPC real (`getCommits` + paginación por ventana).
-4. **Eliminar mock huérfano** — borrar `features/repo/data/mock-repos.ts` y `features/repo/mock-data.ts` cuando ningún consumidor los referencie (borrado = acción humana, ver reglas de seguridad).
+1. **New vertical `apps/angular/src/app/features/github-account/`** — `github-account.store.ts` (signals `status`, `repos`, `pageInfo`, `rateLimit`, `loading`, `error`) + an account component that consumes the `auth:*` channels. It is the only point that talks to the `Auth` service (via `IpcBridge`).
+2. **Layout repo list** — `LayoutComponent` drops `repoCards` and reads `RepoState.repos` (`apps/angular/src/app/core/services/repo-state.service.ts`, already wired to `git:listRepositories`). "Local repositories" = repos tracked in the core (SQLite), NOT the GitHub account.
+3. **Layout commit graph** — replace the mock `commits` with `GraphStore` (`apps/angular/src/app/features/repo/graph/graph.store.ts`), which already uses real IPC (`getCommits` + window pagination).
+4. **Remove orphaned mock** — delete `features/repo/data/mock-repos.ts` and `features/repo/mock-data.ts` once no consumer references them (deletion = human action, see safety rules).
 
-**Distinción explícita de vocabulario:**
+**Explicit vocabulary distinction:**
 
-| Concepto | Fuente | UI |
+| Concept | Source | UI |
 |---|---|---|
-| **Local repositories** | `git:listRepositories` → `RepoState.repos` | Drawer derecho "Local repositories" |
-| **GitHub account repos** | `auth:listGitHubRepos` → `GithubAccountStore.repos` | Nueva vista/drawer de cuenta |
-| Commit graph | `git:getCommits` → `GraphStore` | Panel central de historial |
+| **Local repositories** | `git:listRepositories` → `RepoState.repos` | Right drawer "Local repositories" |
+| **GitHub account repos** | `auth:listGitHubRepos` → `GithubAccountStore.repos` | New account view/drawer |
+| Commit graph | `git:getCommits` → `GraphStore` | Central history panel |
 
-## 7. Hot spots y branch-map (resueltos)
+## 7. Hot spots and branch-map (resolved)
 
-| ID | Hot spot | Opciones evaluadas | Elegido | Rationale | Riesgo |
+| ID | Hot spot | Options evaluated | Chosen | Rationale | Risk |
 |---|---|---|---|---|---|
-| **HS1** | Frontera de adquisición del token | `gh-cli-in-core` vs Electron lee `gh` vs renderer | **`gh-cli-in-core`** | El Go core es el único dueño de la red y del `TokenStore` in-memory; el token nunca cruza IPC al renderer. | Si `gh` no está instalado/autenticado → `GH_CLI_NOT_FOUND` / `GH_CLI_UNAUTHENTICATED`. |
-| **HS2** | Forma de paginación | `page` solo vs `page + Link rel=next` vs cursor | **`page + link-next_page`** | GitHub pagina por `Link`; exponer `next_page`/`has_more` evita que el renderer adivine el fin de lista. | Proxies que reescriben `Link` romperían el parseo (fallback: `has_more` por longitud). |
-| **HS3** | Estrategia de rate limit | reintento ciego vs `headers + ETag` vs backoff fijo | **`headers + etag-conditional-backoff`** | `X-RateLimit-*`/`Retry-After` + `If-None-Match` minimizan consumo y respetan cuotas. | Estado de `ETag` debe invalidarse al cambiar de cuenta (`GITHUB_TOKEN_INVALID`). |
-| **HS4** | Dueño del cache | renderer vs Electron vs core en memoria vs SQLite | **`core-sqlite-metadata-cache`** | El core ya persiste metadata (repos); cachear ahí unifica y sobrevive reinicios. | **Implica una migración SQLite FUTURA, sujeta a aprobación separada**; esta iteración solo la declara. |
+| **HS1** | Token acquisition boundary | `gh-cli-in-core` vs Electron reads `gh` vs renderer | **`gh-cli-in-core`** | The Go core is the sole owner of the network and the in-memory `TokenStore`; the token never crosses IPC to the renderer. | If `gh` is not installed/authenticated → `GH_CLI_NOT_FOUND` / `GH_CLI_UNAUTHENTICATED`. |
+| **HS2** | Pagination shape | `page` only vs `page + Link rel=next` vs cursor | **`page + link-next_page`** | GitHub paginates via `Link`; exposing `next_page`/`has_more` stops the renderer from guessing the end of the list. | Proxies that rewrite `Link` would break parsing (fallback: `has_more` by length). |
+| **HS3** | Rate limit strategy | blind retry vs `headers + ETag` vs fixed backoff | **`headers + etag-conditional-backoff`** | `X-RateLimit-*`/`Retry-After` + `If-None-Match` minimize consumption and respect quotas. | `ETag` state must be invalidated when switching accounts (`GITHUB_TOKEN_INVALID`). |
+| **HS4** | Cache owner | renderer vs Electron vs in-memory core vs SQLite | **`core-sqlite-metadata-cache`** | The core already persists metadata (repos); caching there unifies and survives restarts. | **Implies a FUTURE SQLite migration, subject to separate approval**; this iteration only declares it. |
 
-## 8. Supuesto oculto / caveat
+## 8. Hidden assumption / caveat
 
-Los scopes congelados (`gist, read:org, repo, workflow`) **omiten `read:user`**. Consecuencia: `GET https://api.github.com/user` puede devolver `email` vacío o nulo.
+The frozen scopes (`gist, read:org, repo, workflow`) **omit `read:user`**. Consequence: `GET https://api.github.com/user` may return `email` empty or null.
 
-- El contrato trata `email` como **opcional** (`AuthStatus.email`, `GitHubUser.email` pueden ser `""`).
-- La UI no debe asumir email presente; degradar a "no disponible".
-- Opt-in posterior: `gh auth refresh -s read:user` para poblar el email. Fuera de esta iteración.
+- The contract treats `email` as **optional** (`AuthStatus.email`, `GitHubUser.email` may be `""`).
+- The UI must not assume email is present; degrade to "not available".
+- Later opt-in: `gh auth refresh -s read:user` to populate the email. Out of this iteration.
 
-## 9. Fuera de alcance
+## 9. Out of scope
 
-- Implementación de adapters, IPC, handlers, supervisor o renderer.
-- Regeneración de stubs `gen/go` y `gen/ts` (requiere `buf generate` y aprobación aparte).
-- OAuth app flow (solo evolución futura; los RPC OAuth se conservan, no se cablean).
-- Migración a SQLite como cache de metadata (ver HS4).
-- Wiring de `buf` en CI.
+- Implementation of adapters, IPC, handlers, supervisor or renderer.
+- Regeneration of `gen/go` and `gen/ts` stubs (requires `buf generate` and separate approval).
+- OAuth app flow (future evolution only; OAuth RPCs are preserved, not wired).
+- SQLite migration as metadata cache (see HS4).
+- `buf` wiring in CI.
 
-## 10. Verificación
+## 10. Verification
 
-**Ahora (solo diseño):** ejecutar desde la raíz del repo; `buf` y `go` no están instalados en este entorno, así que hoy solo corren `protoc` + `node tools/docs/validate.js`.
+**Now (design only):** run from the repo root; `buf` and `go` are not installed in this environment, so today only `protoc` + `node tools/docs/validate.js` run.
 
 ```bash
 protoc --proto_path=libs/contracts/proto --descriptor_set_out=/dev/null \
-  domain.proto errors.proto auth.proto gitcore.proto                   # parse completo (gitcore importa domain)
-node tools/docs/validate.js                                            # corpus (este doc está excluido)
+  domain.proto errors.proto auth.proto gitcore.proto                   # full parse (gitcore imports domain)
+node tools/docs/validate.js                                            # corpus (this doc is excluded)
 ```
 
-**Tras validación humana e implementación (buf no instalado hoy):**
+**After human validation and implementation (buf not installed today):**
 
 ```bash
-buf lint && buf generate                                              # contratos (cuando buf esté disponible)
+buf lint && buf generate                                              # contracts (when buf is available)
 cd apps/go-core && go vet ./... && go test ./...                      # core
 npm run typecheck --workspace=@singularitree/electron && npm test     # desktop-shell
 npm test --workspace=@singularitree/angular                           # renderer (vitest)
-# e2e live: gh auth status && <connect> && listar repos reales sin error
+# e2e live: gh auth status && <connect> && list real repos without error
 ```
 
-## 11. Pendiente de validación humana
+## 11. Pending human validation
 
-- Aprobar las adiciones de contrato de la sección 5 (numeración de campos y mensajes nuevos).
-- Aprobar `gh-cli-in-core` como frontera de token (HS1) y `core-sqlite-metadata-cache` como dueño de cache (HS4, con su migración futura).
-- Aprobar el mapeo de canales `auth:*` y la nueva vertical `features/github-account/`.
-- Confirmar la decisión de NO regenerar `gen/{go,ts}` en esta iteración.
-- Confirmar la distinción de vocabulario "local repositories" vs "GitHub account repos".
-- Confirmar tratamiento opcional de `email` y el opt-in `gh auth refresh -s read:user` (sección 8).
-- Aprobar el retiro de los mocks huérfanos como acción humana separada.
+- Approve the contract additions in section 5 (field numbering and new messages).
+- Approve `gh-cli-in-core` as the token boundary (HS1) and `core-sqlite-metadata-cache` as the cache owner (HS4, with its future migration).
+- Approve the `auth:*` channel mapping and the new `features/github-account/` vertical.
+- Confirm the decision NOT to regenerate `gen/{go,ts}` in this iteration.
+- Confirm the vocabulary distinction "local repositories" vs "GitHub account repos".
+- Confirm optional treatment of `email` and the opt-in `gh auth refresh -s read:user` (section 8).
+- Approve the retirement of the orphaned mocks as a separate human action.
 
-## 12. Revisión independiente (analista) — ajustes solicitados antes de implementar
+## 12. Independent review (analyst) — adjustments requested before implementing
 
-Una segunda opinión independiente (modelo de otra familia) revisó este plan: **veredicto `revise`**, confianza 0.72. El diseño es direccionalmente correcto, pero exige seis ajustes antes de implementar. Se registran aquí para la validación humana.
+An independent second opinion (model from another family) reviewed this plan: **verdict `revise`**, confidence 0.72. The design is directionally correct, but it demands six adjustments before implementing. They are recorded here for human validation.
 
-1. **`gh` y el PATH del hijo (HS1).** El supervisor lanza go-core con `spawn(bin, args)` sin `env` explícito (`apps/electron/src/main/supervisor.ts`), por lo que el core hereda el entorno de Electron. En macOS lanzado desde Finder/Launcher, el PATH es el stub (`/usr/bin:/bin:/usr/sbin:/sbin`) y `gh` (Homebrew, `/opt/homebrew/bin`) no sería encontrado. Ajuste: añadir un knob de configuración `SINGULARITREE_GH_PATH` (patrón `getEnv` de `internal/config/config.go`, patrón de `gh_binary` ya en `ConnectGitHubFromCLIRequest`), incluir el PATH buscado en `error.details` de `GH_CLI_NOT_FOUND`, y una comprobación temprana para diagnosticar en los primeros segundos.
-2. **Paginación (HS2).** `total` es incognoscible en `/user/repos` (no hay `X-Total-Count`). Ajuste: documentar `PageInfo.total` como "best-effort, 0 = desconocido" (ya anotado en proto §5), **fijar el default de `sort`** (`full_name`) para que los bordes de página sean estables, y notar que GitHub clampea `per_page` a 100.
-3. **Corrección del cache/ETag (HS3+HS4).** Un `304` no trae cuerpo: hay que persistir de forma atómica `(clave, etag, body)`. Ajuste: honrar `304` solo si existe cuerpo para ese `etag`; **invalidar filas incluyendo los etags** al cambiar de cuenta/token; y **clavar la cache por cuenta** (`account_login`) para que un token nuevo no sirva datos de otra cuenta.
-4. **Servicio `Auth` separado (HS1/HS6).** Se confirma como la opción de menor riesgo (aditiva; `auth.proto` ya declara `service Auth`). Ajuste de implementación: el refactor service-aware debe mantener verde el chequeo `satisfies Record<ChannelName, string>` de `channels.ts` para ambos servicios y no dejar caer `auth:*` en el guard `isStreamingRpc` (que es de forma GitCore); el segundo cliente debe seguir el mismo camino de reconexión (`supervisor.ts` → `connectClient`).
-5. **Superficie de secreto.** `ExchangeCodeResponse.access_token` (`auth.proto` línea 42) permanece **sin cablear/no usada** en el flujo `gh`; declararlo explícitamente. Además, los `error.details` nunca deben volcar `stderr` crudo de `gh` (puede repetir el usuario): solo fields estructurados.
-6. **Corrección de alcance (HS8/§6).** `LayoutComponent` es un shell **completamente estático** (tabs, árboles de sidebar y pane de diff hardcodeados, sin inyección de stores), no un consumidor delgado de `mock-repos.ts`. "Cambiar el layout a `RepoState`/`GraphStore`" es un esfuerzo a escala de feature y NO debe viajar en la misma vertical que el account linking. Retirar `features/repo/data/mock-repos.ts` es la limpieza trivial (verificar antes que ningún spec lo importe).
+1. **`gh` and the child's PATH (HS1).** The supervisor launches go-core with `spawn(bin, args)` without an explicit `env` (`apps/electron/src/main/supervisor.ts`), so the core inherits Electron's environment. On macOS launched from Finder/Launcher, the PATH is the stub (`/usr/bin:/bin:/usr/sbin:/sbin`) and `gh` (Homebrew, `/opt/homebrew/bin`) would not be found. Adjustment: add a configuration knob `SINGULARITREE_GH_PATH` (pattern `getEnv` from `internal/config/config.go`, pattern of `gh_binary` already in `ConnectGitHubFromCLIRequest`), include the searched PATH in `error.details` of `GH_CLI_NOT_FOUND`, and an early check to diagnose within the first seconds.
+2. **Pagination (HS2).** `total` is unknowable in `/user/repos` (there is no `X-Total-Count`). Adjustment: document `PageInfo.total` as "best-effort, 0 = unknown" (already annotated in proto §5), **set the default of `sort`** (`full_name`) so that page boundaries are stable, and note that GitHub clamps `per_page` to 100.
+3. **Cache/ETag correction (HS3+HS4).** A `304` brings no body: `(key, etag, body)` must be persisted atomically. Adjustment: honor `304` only if a body exists for that `etag`; **invalidate rows including the etags** when switching account/token; and **pin the cache per account** (`account_login`) so that a new token does not serve data from another account.
+4. **Separate `Auth` service (HS1/HS6).** It is confirmed as the lowest-risk option (additive; `auth.proto` already declares `service Auth`). Implementation adjustment: the service-aware refactor must keep the `satisfies Record<ChannelName, string>` check of `channels.ts` green for both services and must not drop `auth:*` into the `isStreamingRpc` guard (which is GitCore-shaped); the second client must follow the same reconnection path (`supervisor.ts` → `connectClient`).
+5. **Secret surface.** `ExchangeCodeResponse.access_token` (`auth.proto` line 42) remains **unwired/unused** in the `gh` flow; declare it explicitly. Also, the `error.details` must never dump raw `stderr` from `gh` (it may echo the user): only structured fields.
+6. **Scope correction (HS8/§6).** `LayoutComponent` is a **completely static** shell (hardcoded tabs, sidebar trees and diff pane, with no store injection), not a thin consumer of `mock-repos.ts`. "Changing the layout to `RepoState`/`GraphStore`" is a feature-scale effort and must NOT travel in the same vertical as the account linking. Retiring `features/repo/data/mock-repos.ts` is the trivial cleanup (verify first that no spec imports it).
 
-**Estado de la verificación independiente:** los cuatro hot spots siguen resueltos; el veredicto `revise` es de ajustes de diseño/alcance, no un abandono. La aprobación humana de §11 debe incorporar estos seis puntos.
+**Status of the independent verification:** the four hot spots remain resolved; the `revise` verdict is about design/scope adjustments, not an abandonment. Human approval of §11 must incorporate these six points.
 
-## 13. Estado de implementación
+## 13. Implementation status
 
-El plan §1-§12 fue **aprobado e implementado end-to-end** en esta iteración, con los ajustes de §12 aplicados; este documento deja de ser solo diseño.
+The plan §1-§12 was **approved and implemented end-to-end** in this iteration, with the adjustments from §12 applied; this document is no longer design-only.
 
-| Área | Estado |
+| Area | Status |
 |---|---|
-| Contratos proto | Adiciones **aditivas** a `auth.proto` (§5.1) y `errors.proto` (§5.2) + regeneración de `gen/{go,ts}` vía `buf generate`. |
-| Go core — servicio `Auth` | `RegisterAuthServer` registrado junto a `GitCore` en `apps/go-core/internal/adapter/grpc/server.go`. |
-| Go core — token | Token vía `gh auth token` en `apps/go-core/internal/adapter/ghcli/`, con el knob `SINGULARITREE_GH_PATH` (§12.1). |
-| Go core — REST GitHub | `apps/go-core/internal/adapter/github/`: paginación por `Link rel="next"`, rate-limit por headers y cache **ETag in-memory**. |
-| Go core — servicio | `AuthService` (`apps/go-core/internal/service/auth_service.go`). |
-| Electron | Segundo cliente gRPC `Auth` + canales `auth:*` **no-streaming** (no caen en el guard `isStreamingRpc` de GitCore). |
-| Renderer | Vertical `features/github-account/` con los cuatro métodos del bridge. |
-| Limpieza | Mocks huérfanos `features/repo/data/mock-repos.ts` + `mock-data.ts` retirados. |
+| Contracts proto | **Additive** additions to `auth.proto` (§5.1) and `errors.proto` (§5.2) + regeneration of `gen/{go,ts}` via `buf generate`. |
+| Go core — `Auth` service | `RegisterAuthServer` registered alongside `GitCore` in `apps/go-core/internal/adapter/grpc/server.go`. |
+| Go core — token | Token via `gh auth token` in `apps/go-core/internal/adapter/ghcli/`, with the `SINGULARITREE_GH_PATH` knob (§12.1). |
+| Go core — GitHub REST | `apps/go-core/internal/adapter/github/`: pagination via `Link rel="next"`, rate limit by headers and **in-memory ETag** cache. |
+| Go core — service | `AuthService` (`apps/go-core/internal/service/auth_service.go`). |
+| Electron | Second gRPC client `Auth` + `auth:*` **non-streaming** channels (they do not fall into GitCore's `isStreamingRpc` guard). |
+| Renderer | Vertical `features/github-account/` with the four bridge methods. |
+| Cleanup | Orphaned mocks `features/repo/data/mock-repos.ts` + `mock-data.ts` retired. |
 
-**Ajustes de §12 aplicados:**
+**Adjustments from §12 applied:**
 
-1. **(a) `gh` y PATH del hijo** — resolución de `gh` con el knob `SINGULARITREE_GH_PATH`; `GH_CLI_NOT_FOUND.details` incluye el PATH buscado.
-2. **(b) Paginación** — `PageInfo.total` best-effort (`0` = desconocido); default de `sort` = `full_name`; `per_page` clampeado a 100 por GitHub.
-3. **(c) Cache/ETag** — `304` honrado solo con cuerpo para ese `etag`; cache clavada por `account_login` e invalidada al cambiar de token.
-4. **(d) Servicio `Auth` separado** — el `satisfies Record<ChannelName, string>` de `channels.ts` se mantiene verde para ambos servicios; el segundo cliente sigue el mismo camino de reconexión (`supervisor.ts` → `connectClient`).
-5. **(e) Superficie de secreto** — `ExchangeCodeResponse.access_token` sin cablear; `error.details` solo con fields estructurados (nunca `stderr` crudo de `gh`).
-6. **(f) Alcance** — la migración del shell/mocks se separa de la vertical de account linking (ver deuda).
+1. **(a) `gh` and child PATH** — `gh` resolution with the `SINGULARITREE_GH_PATH` knob; `GH_CLI_NOT_FOUND.details` includes the searched PATH.
+2. **(b) Pagination** — `PageInfo.total` best-effort (`0` = unknown); default `sort` = `full_name`; `per_page` clamped to 100 by GitHub.
+3. **(c) Cache/ETag** — `304` honored only with a body for that `etag`; cache pinned by `account_login` and invalidated on token change.
+4. **(d) Separate `Auth` service** — the `satisfies Record<ChannelName, string>` of `channels.ts` stays green for both services; the second client follows the same reconnection path (`supervisor.ts` → `connectClient`).
+5. **(e) Secret surface** — `ExchangeCodeResponse.access_token` unwired; `error.details` with structured fields only (never raw `stderr` from `gh`).
+6. **(f) Scope** — the shell/mocks migration is separated from the account linking vertical (see debt).
 
-**Diferido / deuda aceptada:**
+**Deferred / accepted debt:**
 
-- **Migración SQLite (HS4)** para persistir el cache ETag: esta iteración usa cache **in-memory** con `TODO(HS4)`, sujeta a aprobación separada.
-- **Migración de `LayoutComponent`/static shell a `RepoState`/`GraphStore`** (§12f): el outlet del shell sigue oculto; la vertical se alcanza en `/github-account`.
-- **Flujo OAuth app** y `ExchangeCodeResponse.access_token` permanecen sin cablear.
-- **Resolución de `gh` en Windows**: el chequeo de bit ejecutable POSIX es poco fiable; revisar al empaquetar.
+- **SQLite migration (HS4)** to persist the ETag cache: this iteration uses an **in-memory** cache with `TODO(HS4)`, subject to separate approval.
+- **Migration of `LayoutComponent`/static shell to `RepoState`/`GraphStore`** (§12f): the shell outlet is still hidden; the vertical is reached at `/github-account`.
+- **OAuth app flow** and `ExchangeCodeResponse.access_token` remain unwired.
+- **`gh` resolution on Windows**: the POSIX executable bit check is unreliable; revisit at packaging time.
 
-**Verificación canónica ejecutada (todo verde):**
+**Canonical verification executed (all green):**
 
 ```bash
 ./tools/ci/verify-contracts.sh

@@ -14,7 +14,7 @@ Necomat `frontend/` (Angular 21 SPA `spa-necomat`) and `backend/` (Go 1.24 API `
 ```
 SingulariTree/                         <- monorepo root (physical folder SingulariTree, logical git-client)
 ├── apps/
-│   ├── angular/                       <- Angular 21 renderer (zoneless signals, standalone)
+│   ├── angular/                       <- Angular 22 renderer (zoneless signals, standalone)
 │   │   └── src/app/{app,core,features/<feature>,shared,environments}
 │   ├── electron/                      <- Electron shell (main + preload + ipc + window, supervisor)
 │   │   └── src/{main,preload,ipc,window}

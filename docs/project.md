@@ -6,7 +6,7 @@ tags:
 - project
 - entry-point
 - singularitree
-version: 1.1
+version: 1.1.1
 doc_language: en
 ---
 
@@ -33,7 +33,7 @@ SingulariTree is a **monorepo** for a cross-platform desktop Git client. System 
 | Area | Technology |
 |---|---|
 | JS runtime | Node >=20 (npm workspaces) |
-| Renderer | Angular 21 (zoneless, standalone, signals) + TypeScript ~5.9 |
+| Renderer | Angular 22 (zoneless, standalone, signals) + TypeScript ~5.9 |
 | Shell | Electron ^32 with TypeScript |
 | Core | Go 1.25 (module `github.com/SingulariTree/go-core`) in a Go 1.26 workspace (`go.work`) |
 | Transport | gRPC (`google.golang.org/grpc` 1.84) with HTTP fallback |
@@ -49,7 +49,7 @@ SingulariTree is a **monorepo** for a cross-platform desktop Git client. System 
 | contracts | Single source of proto contracts (buf) and generated Go/TS stubs; compatibility boundary between core, shell and renderer. | proto, buf, singularitree.v1, gitclient.v1, grpc, generated, gen/go, gen/ts, breaking | `libs/contracts/`, `libs/contracts/proto/`, `libs/contracts/gen/` | coder, tester, reviewer |
 | core | Headless Go core: domain, services, SQLite repository and git/grpc/http/watcher adapters. | go, domain, service, repository, sqlite, wal, adapter, git, watcher, grpc, http, headless, hexagonal | `apps/go-core/`, `apps/go-core/internal/`, `data/sqlite/` | coder, tester, reviewer |
 | desktop-shell | Electron shell: window lifecycle, preload/IPC, Go core supervisor, menu and CSP. | electron, preload, ipc, supervisor, window, menu, csp, main, GO_CORE_READY | `apps/electron/`, `apps/electron/src/main/`, `apps/electron/src/ipc/` | coder, tester |
-| renderer | Angular 21 SPA (zoneless, signals, standalone), features and stores; shared UI kit. | angular, signals, zoneless, standalone, component, route, store, vitest, ui-kit | `apps/angular/`, `libs/ui-kit/` | coder, tester |
+| renderer | Angular 22 SPA (zoneless, signals, standalone), features and stores; shared UI kit. | angular, signals, zoneless, standalone, component, route, store, vitest, ui-kit | `apps/angular/`, `libs/ui-kit/` | coder, tester |
 | tooling | Build/generation scripts, CI and validations (contracts, migrations, docs). | ci, script, build, verify, workspace, go.work, npm, buf, validate | `tools/`, `tools/ci/`, `tools/scripts/` | coder, reviewer |
 | docs | Documentation corpus, slices, ADRs, protocols and generated indexes. | docs, frontmatter, hub, index, adr, tag, protocol, slice, onrails | `docs/`, `docs/context/`, `docs/protocols/`, `docs/adrs/` | documenter, explorer |
 
@@ -79,7 +79,7 @@ SingulariTree is a **monorepo** for a cross-platform desktop Git client. System 
 ```
 SingulariTree/
 ├── apps/
-│   ├── angular/        # Angular 21 renderer SPA (zoneless, signals, standalone)
+│   ├── angular/        # Angular 22 renderer SPA (zoneless, signals, standalone)
 │   ├── electron/       # Electron shell: main, preload, ipc, supervisor
 │   └── go-core/        # headless Go core (domain, service, repository, adapter)
 ├── libs/
@@ -139,4 +139,4 @@ SingulariTree/
 | I'm about to create a new note | [docs/protocols/new-note-protocol.md#solution](protocols/new-note-protocol.md#solution) |
 | The docs validator fails with `metadata-outside-contract` | [docs/protocols/docs-review-protocol.md#solution](protocols/docs-review-protocol.md#solution) |
 | I want to regenerate the documentation index | [docs/context/documentation-system.md#solution](context/documentation-system.md#solution) |
-| `go-core` does not start headless (missing `GO_CORE_READY`) | [docs/context/git-client/architecture.md#5-headless-proof-5-del-readmemd--contrato-ejecutable](context/git-client/architecture.md#5-headless-proof-5-del-readmemd--contrato-ejecutable) |
+| `go-core` does not start headless (missing `GO_CORE_READY`) | [docs/context/git-client/architecture.md#5-headless-proof-readmemd-5--executable-contract](context/git-client/architecture.md#5-headless-proof-readmemd-5--executable-contract) |

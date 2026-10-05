@@ -7,7 +7,7 @@ tags:
 - contract
 - structure
 - onrails
-version: 1.1
+version: 1.2
 related:
 - accepted-debt
 ---
@@ -49,7 +49,7 @@ Rules: **one topic per file**, reference instead of duplicating, maximum 3 nesti
 ### Lifecycle
 
 - `status` ∈ `draft` | `active` | `superseded` | `expired`. Supersede, don't rewrite: the successor declares `supersedes` and the predecessor changes state.
-- **ADRs are append-only** by contract: an addendum, never edit the original text.
+- **ADRs are append-only** by contract: an addendum, never edit the original text. Sole exception: a **translation-only** transform of a historical ADR body (language change, no decision change) — see [[adr-0019-adr-translation-authorization]].
 
 ### Ratchet
 

@@ -14,7 +14,7 @@ related:
 - renderer-slice
 - tooling-slice
 - docs-slice
-version: 1.0.1
+version: 1.0.2
 status: active
 ---
 
@@ -27,7 +27,7 @@ status: active
 - [[contracts-slice]] — single source of proto contracts and generated stubs; the compatibility boundary between the Go core, the Electron shell and the Angular renderer.
 - [[core-slice]] — headless Go core: domain, services, repository and adapters.
 - [[desktop-shell-slice]] — Electron shell: main, preload, IPC, supervisor, window, menu and CSP.
-- [[renderer-slice]] — Angular 21 SPA (zoneless, standalone, signals), features, stores and shared UI kit.
+- [[renderer-slice]] — Angular 22 SPA (zoneless, standalone, signals), features, stores and shared UI kit.
 - [[tooling-slice]] — build/generation scripts and CI.
 - [[docs-slice]] — documentation corpus: entry point, context, slices, protocols, ADRs and generated indexes.
 

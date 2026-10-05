@@ -9,8 +9,8 @@
 
 ### Overview
 
-- Markdown files: 21
-- Context docs: 3 | Notes: 6 | Hubs: 2 | adrs: 5 | templates: 0 | protocols: 3
+- Markdown files: 22
+- Context docs: 3 | Notes: 6 | Hubs: 2 | adrs: 6 | templates: 0 | protocols: 3
 
 ### Tree
 
@@ -22,6 +22,7 @@
   - adr-0016-lane-state-and-graph-dod.md — adr, id: `adr-0016-lane-state-and-graph-dod`
   - adr-0017-docs-language-en.md — adr, id: `adr-0017-docs-language-en`
   - adr-0018-renderer-i18n-locale-switch.md — adr, id: `adr-0018-renderer-i18n-locale-switch`
+  - adr-0019-adr-translation-authorization.md — adr, id: `adr-0019-adr-translation-authorization`
   - adr-index.md — hub, id: `adr-index`
 - context/
   - accepted-debt.md — context-doc

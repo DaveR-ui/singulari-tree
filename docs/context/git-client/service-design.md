@@ -1,22 +1,22 @@
-# Diseño de servicios — Go + Angular
+# Service design — Go + Angular
 
-## 1. Servicios Go (`apps/go-core/internal/service`)
+## 1. Go services (`apps/go-core/internal/service`)
 
-Hexagonal: services orquestan ports (`domain/*Port`), nunca detalles `adapter`.
+Hexagonal: services orchestrate ports (`domain/*Port`), never `adapter` details.
 
 ### 1.1 RepoService
 
 ```go
 type RepoService struct { repoPort RepoPort; gitPort GitPort }
 func (s *RepoService) Open(ctx, fsPath) (*Repository, error) {
-  // valida .git existe (git rev-parse --git-common-dir), normaliza, persiste repos table
+  // validates .git exists (git rev-parse --git-common-dir), normalizes, persists repos table
 }
 func (s *RepoService) List(ctx) ([]Repository, error)
 func (s *RepoService) Remove(ctx, id) error
 ```
 
-- `Open` es idempotente: si `fs_path` ya existe, actualiza `last_opened_at`.
-- `common_dir` resuelve worktrees (`git rev-parse --git-common-dir`).
+- `Open` is idempotent: if `fs_path` already exists, it updates `last_opened_at`.
+- `common_dir` resolves worktrees (`git rev-parse --git-common-dir`).
 
 ### 1.2 GitService
 
@@ -31,12 +31,12 @@ func (s *GitService) Checkout(ctx, repoID, refName) error
 func (s *GitService) Fetch/Push/Pull(ctx, repoID, remote, branch) (<-chan Progress, error) // streaming
 ```
 
-- `Stage/Unstage` invalida `file_status` cache.
-- `Commit` valida `message` no vacío, hook errors → `COMMIT_FAILED`.
+- `Stage/Unstage` invalidates the `file_status` cache.
+- `Commit` validates `message` is not empty; hook errors → `COMMIT_FAILED`.
 
 ### 1.3 GraphService (commit graph + lanes)
 
-**Problema:** miles de commits, grafo con merges/crossovers, render <100ms para 50k.
+**Problem:** thousands of commits, graph with merges/crossovers, render <100ms for 50k.
 
 ```go
 type GraphService struct { gitPort GitPort; cachePort CachePort }
@@ -49,17 +49,17 @@ func (s *GraphService) Commits(ctx, repoID, offset, limit) ([]Commit, int, error
 func (s *GraphService) Lanes(ctx, repoID, commits []Commit) ([]Lane, error)
 ```
 
-**Algoritmo lanes (equivalente `git log --graph`):**
-- Input: commits topológicamente ordenados (`git log --topo-order` o `git rev-list`).
-- Estado: `lanes[]` slots (columnas), `nextFree` pool, `commitToLane` map.
-- Por cada commit:
-  1. Asigna lane: si commit es hijo directo del anterior en mismo lane → reuse; si merge → abre nueva lane; si orphan → `nextFree`.
-  2. Para cada parent, asigna lane continuada; si múltiples parents (merge), las lanes extra continúan.
-  3. Cierra lanes que no tienen commit vivo.
-- Complejidad O(n * avgParents) ~ O(n).
-- Output `Lane{Index, Color, Continues}` por commit, que Angular usa para dibujar líneas.
+**Lanes algorithm (equivalent to `git log --graph`):**
+- Input: commits in topological order (`git log --topo-order` or `git rev-list`).
+- State: `lanes[]` slots (columns), `nextFree` pool, `commitToLane` map.
+- For each commit:
+  1. Assign lane: if the commit is a direct child of the previous one in the same lane → reuse; if merge → open a new lane; if orphan → `nextFree`.
+  2. For each parent, assign a continued lane; if multiple parents (merge), the extra lanes continue.
+  3. Close lanes that have no live commit.
+- Complexity O(n * avgParents) ~ O(n).
+- Output `Lane{Index, Color, Continues}` per commit, which Angular uses to draw lines.
 
-**Alternativa considerada:** derivar lanes en Angular; descartada — 50k commits bloquea main thread; Go lo hace <50ms.
+**Alternative considered:** deriving lanes in Angular; discarded — 50k commits blocks the main thread; Go does it in <50ms.
 
 ### 1.4 CacheService
 
@@ -70,9 +70,9 @@ func (c *CacheService) SetCommits(repoID, offset, commits)
 func (c *CacheService) Invalidate(repoID) // on fs:changed / HEAD move
 ```
 
-- LRU window: cache solo ventana visible `200 + 100 prefetch` (ver §3).
-- `commit_cache` index `(repo_id, committed_at DESC)` para `ORDER BY committed_at DESC LIMIT ? OFFSET ?`.
-- Invalida en `WatcherService` event o `Commit`/`Checkout`/`Fetch` success.
+- LRU window: cache only the visible window `200 + 100 prefetch` (see §3).
+- `commit_cache` index `(repo_id, committed_at DESC)` for `ORDER BY committed_at DESC LIMIT ? OFFSET ?`.
+- Invalidates on `WatcherService` event or `Commit`/`Checkout`/`Fetch` success.
 
 ### 1.5 WatcherService
 
@@ -92,14 +92,14 @@ func (s *WatcherService) Watch(repoID) (<-chan FsChangedEvent, error) {
 }
 ```
 
-- `adapter/watcher/watcher.go` usa `fsnotify` (o `notify` cross-platform), debounce 150-300ms, coalescing burst, filtro `index.lock`.
-- Evento wire: `FsChangedEvent{repo_id, paths}` vía `Watch` streaming gRPC → Electron `fs:changed` → Angular `onFsChanged`.
+- `adapter/watcher/watcher.go` uses `fsnotify` (or `notify` cross-platform), debounce 150-300ms, burst coalescing, `index.lock` filter.
+- Wire event: `FsChangedEvent{repo_id, paths}` via `Watch` gRPC streaming → Electron `fs:changed` → Angular `onFsChanged`.
 
 ## 2. Angular — Signals stores (`apps/angular/src/app`)
 
 ### 2.1 IpcBridge (core)
 
-`core/services/ipc-bridge.service.ts` — wrapper tipado sobre `window.gitClientApi` (ver `ipc-strategy.md §1.2`). Generado `gen/ts` reemplazará `unknown`.
+`core/services/ipc-bridge.service.ts` — typed wrapper over `window.gitClientApi` (see `ipc-strategy.md §1.2`). Generated `gen/ts` will replace `unknown`.
 
 ```ts
 @Injectable({providedIn:'root'})
@@ -114,9 +114,9 @@ export class IpcBridge {
 
 ### 2.2 Stores (Signals)
 
-Cada feature tiene un store standalone con `signal`, `computed`, `effect`.
+Each feature has a standalone store with `signal`, `computed`, `effect`.
 
-**GraphStore** (`features/repo/graph/graph.store.ts` previsto):
+**GraphStore** (`features/repo/graph/graph.store.ts` planned):
 ```ts
 export const GraphStore = signalStore(
   withState({ commits:[] as Commit[], lanes:[] as Lane[], total:0, offset:0, loading:false, error:null as AppError|null }),
@@ -129,7 +129,7 @@ export const GraphStore = signalStore(
       store.loading.set(true);
       try{
         const {commits,total}= await ipc.invoke('getCommits',{repo_id:repoId, offset, limit});
-        const lanes = computeLanes(commits); // o viene de Go
+        const lanes = computeLanes(commits); // or comes from Go
         patchState(store,{commits: [...store.commits(), ...commits], lanes, total});
       }catch(e){ store.error.set(e as AppError); } finally{ store.loading.set(false); }
     },
@@ -138,8 +138,8 @@ export const GraphStore = signalStore(
 );
 ```
 
-- **Windowed pagination:** ventana inicial `200`, prefetch `100` al scrollear, infinite scroll con `IntersectionObserver` + CDK `ScrollingModule` o `cdk-virtual-scroll-viewport` (o canvas para 50k).
-- **Virtualization:** `@angular/cdk/scrolling` `*cdkVirtualFor` row height fixed (28px) → DOM solo ~30 filas visibles; lanes dibujadas con SVG/canvas por `libs/ui-kit/graph-row`.
+- **Windowed pagination:** initial window `200`, prefetch `100` on scroll, infinite scroll with `IntersectionObserver` + CDK `ScrollingModule` or `cdk-virtual-scroll-viewport` (or canvas for 50k).
+- **Virtualization:** `@angular/cdk/scrolling` `*cdkVirtualFor` fixed row height (28px) → DOM only ~30 visible rows; lanes drawn with SVG/canvas by `libs/ui-kit/graph-row`.
 
 **StatusStore:**
 ```ts
@@ -154,7 +154,7 @@ withMethods((store,ipc)=>({
 **DiffStore:**
 ```ts
 withState({ diff:null as Diff|null, loading:false, mode:'side-by-side' as 'side-by-side'|'unified' })
-// Monaco diff viewer: large file guard → chunking/worker si >1MB o >5000 líneas
+// Monaco diff viewer: large file guard → chunking/worker if >1MB or >5000 lines
 ```
 
 **RepoStore (global):**
@@ -162,14 +162,14 @@ withState({ diff:null as Diff|null, loading:false, mode:'side-by-side' as 'side-
 withState({ repos:[] as Repository[], currentId:null as string|null })
 ```
 
-**Branch/Tag/Stash stores** similares.
+**Branch/Tag/Stash stores** similar.
 
-### 2.3 Cache en frontend
+### 2.3 Frontend cache
 
-- Angular no cachea commits más allá de `GraphStore` memory (LRU 300). Source of truth cache es Go+SQLite; renderer invalida en `onFsChanged`/`onRepoChanged`.
-- Opcional `localStorage` para UI-state (panel sizes, theme) — no Git data.
+- Angular does not cache commits beyond `GraphStore` memory (LRU 300). The source-of-truth cache is Go+SQLite; the renderer invalidates on `onFsChanged`/`onRepoChanged`.
+- Optional `localStorage` for UI-state (panel sizes, theme) — not Git data.
 
-## 3. Estrategia de paginación y cache
+## 3. Pagination and cache strategy
 
 ```
 User scroll ──▶ GraphStore.loadWindow(offset, limit=200)
@@ -180,34 +180,34 @@ User scroll ──▶ GraphStore.loadWindow(offset, limit=200)
                                             ▼ miss
                                           GitPort.List (git log offset/limit)
                                             → CachePort.SetCommits → response
-            ──▶ lanes computed (Go o TS) ──▶ virtual scroll render
+            ──▶ lanes computed (Go or TS) ──▶ virtual scroll render
             ──▶ prefetch 100 on near-bottom
 Watcher FsChangedEvent ──▶ Cache.invalidate(repoId) ──▶ GraphStore reload window 0..200
 ```
 
-- `StreamCommits` para stream continuo alternativo (gRPC server streaming) si cliente quiere push.
-- `total` se usa para scrollbar virtual height (`total * rowHeight`).
+- `StreamCommits` for an alternative continuous stream (gRPC server streaming) if the client wants push.
+- `total` is used for virtual scrollbar height (`total * rowHeight`).
 
 ## 4. Watchers — coalescing
 
 ```
 fsnotify .git/HEAD, refs/*, index, .git/logs/HEAD
   ──200ms debounce──▶ coalesce burst ──▶ FsChangedEvent{paths}
-                     (si solo index.lock → ignore)
+                     (if only index.lock → ignore)
                                   ──▶ Go Cache.invalidate → gRPC Watch push → Electron → Angular → StatusStore.refresh + GraphStore.reload
 ```
 
-Ventana 150-300ms tunable en `watcher/config.go`.
+Window 150-300ms tunable in `watcher/config.go`.
 
-## 5. Manejo de errores y progreso
+## 5. Error handling and progress
 
-- Cada store expone `error: AppError | null` → toast.
-- `Fetch/Push/Pull` progress: Angular suscribe `onProgress` → progress bar + log streaming; Go envía `Progress{percent,message}` cada chunk.
-- `QUEUE_FULL`/`GO_CORE_UNAVAILABLE` → retry con backoff + banner.
+- Each store exposes `error: AppError | null` → toast.
+- `Fetch/Push/Pull` progress: Angular subscribes `onProgress` → progress bar + log streaming; Go sends `Progress{percent,message}` per chunk.
+- `QUEUE_FULL`/`GO_CORE_UNAVAILABLE` → retry with backoff + banner.
 
-## 6. Testing ganchos (ver testing-strategy.md)
+## 6. Testing hooks (see testing-strategy.md)
 
-- Stores testeables sin Electron: mock `window.gitClientApi` global.
-- Services Go testeables con `MockGitPort`, `MockCachePort`.
-- `GraphService.Lanes` unit tests con fixtures DAG pequeños.
+- Stores testable without Electron: mock global `window.gitClientApi`.
+- Go services testable with `MockGitPort`, `MockCachePort`.
+- `GraphService.Lanes` unit tests with small DAG fixtures.
 ```

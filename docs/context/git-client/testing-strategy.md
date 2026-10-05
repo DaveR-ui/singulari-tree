@@ -1,6 +1,6 @@
-# Estrategia de Testing
+# Testing Strategy
 
-## 1. Pirámide
+## 1. Pyramid
 
 ```
 e2e (playwright)  5%
@@ -10,10 +10,10 @@ unit (vitest / go test) 80%
 
 ## 2. Angular (vitest)
 
-- **Runner:** `vitest` (Vite) — `apps/angular` con `environment: 'jsdom'`.
+- **Runner:** `vitest` (Vite) — `apps/angular` with `environment: 'jsdom'`.
 - **Matchers:** `@testing-library/angular` + `expect`.
-- **Mocks:** `window.gitClientApi` mockeado globalmente; `IpcBridge` spy.
-- **Stores:** test sin DOM:
+- **Mocks:** `window.gitClientApi` globally mocked; `IpcBridge` spy.
+- **Stores:** test without DOM:
   ```ts
   beforeEach(()=> (globalThis as any).window = {gitClientApi: mockApi});
   it('GraphStore loads window', async()=>{
@@ -22,21 +22,21 @@ unit (vitest / go test) 80%
     expect(store.commits().length).toBe(200);
   });
   ```
-- **Components:** `render(RepoPage)` con `graph-row` stub, `cdkVirtualScroll` mock, Monaco mock (`monaco-editor` es pesado: `vi.mock('monaco-editor')`).
+- **Components:** `render(RepoPage)` with `graph-row` stub, `cdkVirtualScroll` mock, Monaco mock (`monaco-editor` is heavy: `vi.mock('monaco-editor')`).
 - **Coverage:** `vitest --coverage` (v8), threshold 80% statements.
 
 Config `apps/angular/vite.config.ts` + `setupFiles: ['src/test-setup.ts']`.
 
 ## 3. Go core (go test + testify)
 
-- **Runner:** `go test ./...` con `testify/assert` + `require`.
-- **Domain:** puros, sin IO:
+- **Runner:** `go test ./...` with `testify/assert` + `require`.
+- **Domain:** pure, no IO:
   ```go
   func TestNewOid(t *testing.T){
     _, err := domain.NewOid("abc"); assert.ErrorIs(t, err, domain.ErrInvalidOid)
   }
   ```
-- **Services:** ports mockeados (interfaces `GitPort`, `CachePort`):
+- **Services:** mocked ports (interfaces `GitPort`, `CachePort`):
   ```go
   type MockGitPort struct{ commits []domain.Commit }
   func (m *MockGitPort) List(ctx, repoID, off, lim) ... { return m.commits[off:lim], len(m.commits), nil }
@@ -46,24 +46,24 @@ Config `apps/angular/vite.config.ts` + `setupFiles: ['src/test-setup.ts']`.
     assert.Len(t, lanes, len(commits))
   }
   ```
-- **Adapters:** `adapter/git` tests con repo temporal real (`t.TempDir()` + `git init` + commits fixture) — no mock.
-- **SQLite:** `repository` tests con `modernc.org/sqlite` in-memory (`:memory:`) + migrations aplicadas; testcontainers opcional para ephemerality.
-- **gRPC:** `buf` stubs + `grpc/test` (`google.golang.org/grpc/test/bufconn`) — test `GitCore` server sin TCP.
+- **Adapters:** `adapter/git` tests with a real temporary repo (`t.TempDir()` + `git init` + fixture commits) — no mock.
+- **SQLite:** `repository` tests with `modernc.org/sqlite` in-memory (`:memory:`) + migrations applied; testcontainers optional for ephemerality.
+- **gRPC:** `buf` stubs + `grpc/test` (`google.golang.org/grpc/test/bufconn`) — test `GitCore` server without TCP.
 
-Comando canónico (desde `apps/go-core`):
+Canonical command (from `apps/go-core`):
 ```bash
 go test ./... -race -count=1
 go vet ./...
 ```
 
-## 4. Integración (testcontainers / repos reales)
+## 4. Integration (testcontainers / real repos)
 
-- **testcontainers-go** para SQLite no necesario (file); para Git usa repo fixture:
+- **testcontainers-go** for SQLite not needed (file); for Git use a fixture repo:
   ```bash
   mkdir -p /tmp/test-repo && cd /tmp/test-repo && git init && git config user.email test@example.com
   ```
-- **Grafo grande:** script `tools/scripts/gen-large-repo.sh` (genera repo 50k commits sintéticos) para perf test `Lanes` <100ms.
-- **Watcher:** `fsnotify` test con `os.WriteFile` + eventual assertion `FsChangedEvent` emitido (flaky → retry).
+- **Large graph:** script `tools/scripts/gen-large-repo.sh` (generates a synthetic 50k-commit repo) for perf test `Lanes` <100ms.
+- **Watcher:** `fsnotify` test with `os.WriteFile` + eventual assertion `FsChangedEvent` emitted (flaky → retry).
 
 ## 5. E2E (Playwright)
 
@@ -76,12 +76,12 @@ go vet ./...
   await page.getByTestId('repo-list').click();
   await expect(page.getByTestId('graph-row')).toHaveCount(20);
   ```
-- **Casos:** open repo, graph scroll+prefetch, stage/commit, diff Monaco, branch checkout, fetch progress bar.
-- **CI:** `playwright test` en `ubuntu` + `windows` + `macos` matrix; artifact `trace.zip`.
+- **Cases:** open repo, graph scroll+prefetch, stage/commit, diff Monaco, branch checkout, fetch progress bar.
+- **CI:** `playwright test` on `ubuntu` + `windows` + `macos` matrix; artifact `trace.zip`.
 
-**Estado (Fase 0):** el tramo E2E renderer↔ipcMain (criterio 6) queda **diferido** al smoke Playwright Electron de la Semana 7 (ADR-011). Cobertura actual: round-trip real **Electron-main → gRPC → Go → `exec git` → repo** (no skipped), más typecheck en compilación y tests unitarios de mapping.
+**Status (Phase 0):** the E2E renderer↔ipcMain segment (criterion 6) is **deferred** to the Week 7 Playwright Electron smoke (ADR-011). Current coverage: real round-trip **Electron-main → gRPC → Go → `exec git` → repo** (not skipped), plus compile-time typecheck and unit mapping tests.
 
-## 6. Contratos
+## 6. Contracts
 
 - **buf lint/breaking:** `tools/ci/verify-contracts.sh`:
   ```bash
@@ -89,14 +89,14 @@ go vet ./...
   buf breaking --against '.git#branch=main'
   buf generate --dry-run
   ```
-- **Gen drift check:** CI falla si `gen/go` o `gen/ts` desactualizados.
+- **Gen drift check:** CI fails if `gen/go` or `gen/ts` are outdated.
 
 ## 7. Performance / Large repo
 
-- Benchmark `go test -bench=BenchmarkLanes` para 50k commits.
+- Benchmark `go test -bench=BenchmarkLanes` for 50k commits.
 - Angular perf: `vitest` bench virtual scroll 1000 rows (row render <2ms).
 
-## 8. CI (previsto)
+## 8. CI (planned)
 
 ```yaml
 - run: buf lint && buf breaking
@@ -106,9 +106,9 @@ go vet ./...
 - run: npx playwright test
 ```
 
-## 9. Matriz mínima MVP
+## 9. Minimum MVP matrix
 
-| Área | Unit | Integration | E2E |
+| Area | Unit | Integration | E2E |
 |------|------|-------------|-----|
 | Domain Oid/Repo | ✓ |  |  |
 | Graph Lanes | ✓ (fixture DAG) | ✓ (large repo 50k) |  |
@@ -119,7 +119,7 @@ go vet ./...
 | Diff Monaco | ✓ (mock) |  | ✓ (render) |
 | Supervisor restart |  | ✓ (kill Go, queue) |  |
 
-## 10. Qué no testear en MVP
+## 10. What not to test in MVP
 
-- Remotos reales push/fetch contra GitHub (mock `GitPort`); e2e contra fixture local.
+- Real remotes push/fetch against GitHub (mock `GitPort`); e2e against a local fixture.
 - SSH auth (V1).

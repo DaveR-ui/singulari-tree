@@ -3,8 +3,8 @@ id: adr-index
 category: adrs
 tags: [adr, hub, index]
 aliases: [ADR Index, ADR List]
-related: [adr-0014-docs-corpus-layout, adr-0015-docs-validator-generated-index, adr-0016-lane-state-and-graph-dod, adr-0017-docs-language-en, adr-0018-renderer-i18n-locale-switch]
-version: 1.2.1
+related: [adr-0014-docs-corpus-layout, adr-0015-docs-validator-generated-index, adr-0016-lane-state-and-graph-dod, adr-0017-docs-language-en, adr-0018-renderer-i18n-locale-switch, adr-0019-adr-translation-authorization]
+version: 1.2.2
 status: active
 ---
 
@@ -21,6 +21,7 @@ status: active
 - [[adr-0016-lane-state-and-graph-dod]] — per-repo lane state in `GraphService` + graph DoD scoped to vertical columns (edge parity deferred).
 - [[adr-0017-docs-language-en]] — adopt English as the documentation corpus language (supersedes ADR-0014 item 7).
 - [[adr-0018-renderer-i18n-locale-switch]] — renderer i18n with an EN/ES locale switch via runtime `$localize` (English default).
+- [[adr-0019-adr-translation-authorization]] — authorize a translation-only transform of historical ADR bodies (sole exception to append-only; no version bump).
 
 ## Elsewhere
 

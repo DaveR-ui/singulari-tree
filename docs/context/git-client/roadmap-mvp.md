@@ -1,120 +1,120 @@
 ---
-last_updated: 2026-10-04
+last_updated: 2026-10-05
 status: active
-description: Roadmap MVP de SingulariTree — objetivo de 8-10 semanas, entregables y DoD por semana; Semana 1-2 acotada a lane columns verticales (paridad de aristas diferida).
+description: SingulariTree MVP roadmap — 8-10 week goal, deliverables and DoD per week; Weeks 1-2 scoped to vertical lane columns (edge parity deferred).
 tags:
 - roadmap
 - mvp
 - git-client
 - legacy
-version: 1.2
+version: 1.2.1
 related:
 - accepted-debt
 ---
 
-# Roadmap MVP — 8-10 semanas
+# MVP Roadmap — 8-10 weeks
 
-> Objetivo MVP: abrir repo local existente, ver grafo/history paginado, status/stage/commit, diff Monaco, branches/tags/stashes básicos, fetch/pull/push, watcher realtime, tests automatizados. Multi-repo management parcial. Sin SSH complejo ni conflictos rebase avanzados.
+> MVP goal: open an existing local repo, view paginated graph/history, status/stage/commit, Monaco diff, basic branches/tags/stashes, fetch/pull/push, realtime watcher, automated tests. Partial multi-repo management. No complex SSH or advanced rebase conflicts.
 
-## Semana 0 — Fundaciones (sem 1) — ✅ COMPLETADA
+## Week 0 — Foundations (wk 1) — ✅ COMPLETE
 
-**Entregables (verificados):**
-- [x] `buf generate` funcional — contratos generados y commiteados (`gen/go` + `gen/ts` reales).
-- [x] gRPC server real con `RegisterGitCoreServer` + interceptor de token (incluye `OpenRepository` aditivo).
-- [x] SQLite WAL + migraciones aplicadas al arranque vía `embed`.
-- [x] `GitPort` read path real vía `exec git`.
-- [x] `GetCommits` end-to-end real (Go ↔ gRPC ↔ Electron).
-- [x] `supervisor.ts` cliente gRPC real + heartbeat `Ping` (stub `forwardToGo` reemplazado).
-- [x] `apps/angular` bridge tipado (`@contracts` → `libs/contracts/gen/ts`).
+**Deliverables (verified):**
+- [x] Working `buf generate` — contracts generated and committed (real `gen/go` + `gen/ts`).
+- [x] Real gRPC server with `RegisterGitCoreServer` + token interceptor (includes additive `OpenRepository`).
+- [x] SQLite WAL + migrations applied at startup via `embed`.
+- [x] Real `GitPort` read path via `exec git`.
+- [x] Real end-to-end `GetCommits` (Go ↔ gRPC ↔ Electron).
+- [x] Real gRPC client in `supervisor.ts` + `Ping` heartbeat (stub `forwardToGo` replaced).
+- [x] `apps/angular` typed bridge (`@contracts` → `libs/contracts/gen/ts`).
 
-**DoD:** ✅ `go run --headless` + `supervisor.start()` + `buf generate` en CI verde.
+**DoD:** ✅ `go run --headless` + `supervisor.start()` + `buf generate` green in CI.
 
-**Desviaciones deliberadas (respecto al plan original):**
-- **Sin Viper:** configuración con flags explícitos + `config.Load()`.
-- **Migraciones embebidas** vía un generator guardado por `tools/ci/verify-migrations.sh`; la **SSOT sigue en `data/sqlite/migrations/`**.
-- **ts-proto types-only** (sin runtime de servicio generado en TS).
+**Deliberate deviations (from the original plan):**
+- **No Viper:** configuration with explicit flags + `config.Load()`.
+- **Embedded migrations** via a generator guarded by `tools/ci/verify-migrations.sh`; the **SSOT remains in `data/sqlite/migrations/`**.
+- **ts-proto types-only** (no generated service runtime in TS).
 
-## Semana 1-2 — Repo + Graph
+## Week 1-2 — Repo + Graph
 
 **Go:**
-- `RepoService.Open/List/Remove` real (validación `git rev-parse --git-common-dir`, SQLite `repos`).
-- `GitPort` impl `adapter/git` usando `exec git log --pretty=format:... --topo-order --skip/--max-count` o `go-git` para `List`.
-- `GraphService.Lanes` impl lane algorithm (ver `service-design.md §1.3`), benchmark <100ms/50k.
+- Real `RepoService.Open/List/Remove` (`git rev-parse --git-common-dir` validation, SQLite `repos`).
+- `GitPort` impl `adapter/git` using `exec git log --pretty=format:... --topo-order --skip/--max-count` or `go-git` for `List`.
+- `GraphService.Lanes` impl lane algorithm (see `service-design.md §1.3`), benchmark <100ms/50k.
 - `CacheService` SQLite `commit_cache` windowed.
 
 **Angular:**
-- `RepoStore` + `GraphStore` con `loadWindow(200)+prefetch(100)`.
+- `RepoStore` + `GraphStore` with `loadWindow(200)+prefetch(100)`.
 - `libs/ui-kit/graph-row` (SVG lanes + commit row).
 - Virtual scroll (CDK `ScrollingModule`) + infinite scroll.
-- Página `features/repo/graph`.
+- `features/repo/graph` page.
 
-**DoD:** abrir repo 5k commits, scroll fluido, y **columnas de lane verticales correctas** (continuidad entre ventanas garantizada por el estado per-repo en Go). La paridad visual de diagonales/cruces vs `git log --graph` queda **diferida como deuda aceptada** (ver accepted-debt) y el contrato `Lane` no cambia.
+**DoD:** open a 5k-commit repo, smooth scroll, and **correct vertical lane columns** (continuity between windows guaranteed by per-repo state in Go). Visual parity of diagonals/crossings vs `git log --graph` is **deferred as accepted debt** (see accepted-debt) and the `Lane` contract does not change.
 
-## Semana 3 — Status / Stage / Commit
+## Week 3 — Status / Stage / Commit
 
-**Go:** `GetStatus` (porcelain v2), `Stage/Unstage`, `Commit` (con `Signature`), `GetDiff` básico.
+**Go:** `GetStatus` (porcelain v2), `Stage/Unstage`, `Commit` (with `Signature`), basic `GetDiff`.
 
-**Angular:** `StatusStore`, file list con staged/unstaged/conflicted, stage/unstage checkboxes, commit box, diff side-by-side básico (Monaco `diffEditor`).
+**Angular:** `StatusStore`, file list with staged/unstaged/conflicted, stage/unstage checkboxes, commit box, basic side-by-side diff (Monaco `diffEditor`).
 
-**DoD:** flujo completo stage → commit → grafo se actualiza via watcher o manual refresh.
+**DoD:** full flow stage → commit → graph updates via watcher or manual refresh.
 
-## Semana 4 — Diff Monaco + Large files
+## Week 4 — Monaco Diff + Large files
 
-**Go:** `Diff` hunks completas, `is_binary`, `has_conflict_markers`.
+**Go:** `Diff` full hunks, `is_binary`, `has_conflict_markers`.
 
-**Angular:** `libs/ui-kit/diff-viewer` Monaco wrapper (`monaco-editor` + workers), toggle unified/side-by-side, handler >1MB (plain text fallback + warning), syntax highlighting por extensión.
+**Angular:** `libs/ui-kit/diff-viewer` Monaco wrapper (`monaco-editor` + workers), unified/side-by-side toggle, >1MB handler (plain text fallback + warning), syntax highlighting by extension.
 
-**DoD:** diffs grandes no congelan UI; binarios muestran placeholder.
+**DoD:** large diffs do not freeze the UI; binaries show a placeholder.
 
-## Semana 5 — Branches / Tags / Stashes + Watchers
+## Week 5 — Branches / Tags / Stashes + Watchers
 
-**Go:** `GetBranches`, `GetTags`, `GetStashes`, `GetWorktrees`, `Checkout`, watcher `fsnotify` coalescing 200ms + `index.lock` guard.
+**Go:** `GetBranches`, `GetTags`, `GetStashes`, `GetWorktrees`, `Checkout`, `fsnotify` watcher coalescing 200ms + `index.lock` guard.
 
-**Angular:** `BranchStore` (local/remota, current, upstream), checkout flow, tags list, stashes list, `onFsChanged` → `StatusStore.refresh` + `GraphStore.reload`.
+**Angular:** `BranchStore` (local/remote, current, upstream), checkout flow, tags list, stashes list, `onFsChanged` → `StatusStore.refresh` + `GraphStore.reload`.
 
-**DoD:** checkout cambia HEAD, watcher refleja cambios externos (`echo > file` dispara refresh).
+**DoD:** checkout changes HEAD, watcher reflects external changes (`echo > file` triggers refresh).
 
-## Semana 6 — Remotos (Fetch/Pull/Push streaming)
+## Week 6 — Remotes (Fetch/Pull/Push streaming)
 
-**Go:** `Fetch/Push/Pull` con `stream Progress` (exec `git fetch --progress` parseado o `go-git` progress writer).
+**Go:** `Fetch/Push/Pull` with `stream Progress` (`exec git fetch --progress` parsed or `go-git` progress writer).
 
 **Angular:** toolbar remote actions + progress bar `onProgress`, error handling (`FETCH_FAILED`/`PUSH_FAILED`).
 
-**DoD:** fetch contra remote fixture local funciona, progress visible, error toast.
+**DoD:** fetch against a local fixture remote works, progress visible, error toast.
 
-## Semana 7 — Multi-repo + SQLite prefs + Polish
+## Week 7 — Multi-repo + SQLite prefs + Polish
 
-**Go:** `ListRepositories` persistido, `recent` ordering por `last_opened_at`, validación múltiples repos.
+**Go:** persisted `ListRepositories`, `recent` ordering by `last_opened_at`, multiple repos validation.
 
-**Angular:** repo list page, open/add/remove repo, persistence UI-state (panel sizes), tema, atajos teclado (graph nav flechas, space para diff).
+**Angular:** repo list page, open/add/remove repo, UI-state persistence (panel sizes), theme, keyboard shortcuts (graph nav arrows, space for diff).
 
-**Tests:** vitest coverage 80% + go `go test -race` + buf lint en CI; playwright e2e smoke (open repo → graph → stage → commit → diff).
+**Tests:** vitest coverage 80% + go `go test -race` + buf lint in CI; playwright e2e smoke (open repo → graph → stage → commit → diff).
 
-**DoD:** multi-repo usable, preferencias persisten entre reinicios.
+**DoD:** usable multi-repo, preferences persist across restarts.
 
-## Semana 8 — Stabilization / Release MVP
+## Week 8 — Stabilization / Release MVP
 
-- Bug bash repos grandes (10k+ commits, binarios, submodules): `tools/scripts/gen-large-repo.sh` (fast-import, determinista; `--commits/--out/--interval/--with-submodule/--force`) + `tools/scripts/bench-lanes.sh`.
-- Perf: LRU tune (constante nombrada `DefaultLRUCapacity`), watcher debounce real (coalescing 150 ms en `WatcherService`, tests deterministas) y `trackBy` estable en el virtual scroll del grafo.
-- Packaging `electron-builder` Linux/Win/macOS (sin sign aún): `apps/electron/electron-builder.yml`; renderer servido por protocolo `app://` (sin workaround `ELECTRON_START_URL`); go-core `.exe` en Windows.
-- Docs: `README.md` quick start actualizado + sección Screenshots (placeholder honesto, sin capturas fabricadas).
+- Bug bash on large repos (10k+ commits, binaries, submodules): `tools/scripts/gen-large-repo.sh` (fast-import, deterministic; `--commits/--out/--interval/--with-submodule/--force`) + `tools/scripts/bench-lanes.sh`.
+- Perf: LRU tune (named constant `DefaultLRUCapacity`), real watcher debounce (150 ms coalescing in `WatcherService`, deterministic tests) and stable `trackBy` in the graph virtual scroll.
+- Packaging `electron-builder` Linux/Win/macOS (no signing yet): `apps/electron/electron-builder.yml`; renderer served via `app://` protocol (no `ELECTRON_START_URL` workaround); go-core `.exe` on Windows.
+- Docs: updated `README.md` quick start + Screenshots section (honest placeholder, no fabricated screenshots).
 
-**Exit criteria MVP:**
-- [x] ≥1 repo abierto, grafo virtualizado, status/stage/commit, branches/tags/stashes, remotos fetch/pull/push, watcher, SQLite WAL, headless proof, `buf generate` verde. **Nota:** `diff Monaco` y `status/stage/commit` UI **no existen aún** (Semana 3-4) — verificado y registrado en `accepted-debt.md`; el e2e `stage → commit → diff` sigue como `test.skip` documentado.
-- [x] Coverage unit ≥80% (Angular statements **90.42%**; Electron 43 tests; Go `-race` verde); e2e smoke configurado para 2 OS vía CI (`ubuntu-latest` + `windows-latest`, `.github/workflows/ci.yml`), con guard `E2E_REQUIRE_PREREQS` que falla en vez de omitir. **La corrida Windows es razonada, no ejecutada localmente** — ver `accepted-debt.md`.
-- [~] Manual QA large repo (git.git 60k commits) scroll <16ms frame: el **bench de lanes Go** pasa (`Lanes(50000)` ≈ 8.7ms ≪ 100ms) y el harness de repos grandes existe; la **medición de frame del renderer (<16ms)** queda **pendiente** (requiere estación GUI con display y un repo de 60k) — registrado como deuda.
+**MVP exit criteria:**
+- [x] ≥1 repo open, virtualized graph, status/stage/commit, branches/tags/stashes, remotes fetch/pull/push, watcher, SQLite WAL, headless proof, green `buf generate`. **Note:** `diff Monaco` and the `status/stage/commit` UI **do not exist yet** (Week 3-4) — verified and recorded in `accepted-debt.md`; the `stage → commit → diff` e2e remains a documented `test.skip`.
+- [x] Unit coverage ≥80% (Angular statements **90.42%**; Electron 43 tests; Go `-race` green); e2e smoke configured for 2 OSes via CI (`ubuntu-latest` + `windows-latest`, `.github/workflows/ci.yml`), with an `E2E_REQUIRE_PREREQS` guard that fails instead of omitting. **The Windows run is reasoned, not executed locally** — see `accepted-debt.md`.
+- [~] Manual QA large repo (git.git 60k commits) scroll <16ms frame: the **Go lanes bench** passes (`Lanes(50000)` ≈ 8.7ms ≪ 100ms) and the large-repo harness exists; the **renderer frame measurement (<16ms)** remains **pending** (requires a GUI station with a display and a 60k repo) — recorded as debt.
 
-## Épicas y estimación (T-shirt)
+## Epics and estimation (T-shirt)
 
-| Épica | Sem | Talla |
+| Epic | Wk | Size |
 |-------|-----|-------|
-| Fundaciones buf + headless real | 0 | M |
+| Foundations buf + real headless | 0 | M |
 | Graph + Lanes + virtualization | 1-2 | L |
 | Status/Stage/Commit | 3 | M |
 | Diff Monaco large files | 4 | M |
 | Branches/tags/stashes + watcher | 5 | M |
-| Remotos streaming | 6 | M |
+| Remotes streaming | 6 | M |
 | Multi-repo + polish | 7 | S |
 | Stabilization | 8 | S |
 
-Total MVP: **~8 semanas** 1 dev full-time; 6 semanas con 2 devs (Go + Angular en paralelo).
+Total MVP: **~8 weeks** 1 dev full-time; 6 weeks with 2 devs (Go + Angular in parallel).

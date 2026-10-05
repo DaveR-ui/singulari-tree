@@ -8,50 +8,50 @@ version: 1.0
 status: active
 ---
 
-# ADR-0014: Adoptar el corpus de documentación documentation-onrails
+# ADR-0014: Adopt the documentation-onrails documentation corpus
 
 ## Problem
 
-SingulariTree hereda documentación legacy (`docs/context/git-client/**`) escrita con formato heterogéneo: índices a mano, links relativos sin validar y un `README.md` raíz que actúa como índice de facto. No hay un layout declarado, no hay entry point agent-facing único y no hay convención de idioma. Sin una decisión estructural, cada nuevo doc inventa su propia forma y los agentes no tienen una ruta de lectura estable.
+SingulariTree inherits legacy documentation (`docs/context/git-client/**`) written in a heterogeneous format: hand-written indexes, unvalidated relative links and a root `README.md` that acts as a de facto index. There is no declared layout, no single agent-facing entry point and no language convention. Without a structural decision, every new doc invents its own shape and agents have no stable reading path.
 
 ## Solution
 
-Adoptar el corpus **documentation-onrails** (contrato v1.4) como layout canónico. Decisión, itemizada:
+Adopt the **documentation-onrails** corpus (contract v1.4) as the canonical layout. Decision, itemized:
 
-1. **Raíz del corpus** = `docs/`. Todo lo canónico vive bajo `docs/`; fuera queda solo el README humano.
-2. **Entry point agent-facing** = `docs/project.md`, con las **9 secciones fijas** y `doc_language: es` declarado **una sola vez**.
-3. **Ubicación de ADRs** = `docs/adrs/`. La numeración continúa desde el ADR-013 legacy: el primer ADR nuevo es **ADR-014**.
-4. **Índices generados** = `docs/index.md` y `docs/tag-index.md`, marcados como generados y regenerables.
-5. **`README.md` raíz** queda como README **humano**, fuera del corpus, y solo apunta a `docs/project.md`.
-6. **Ratchet de brownfield:** el contrato aplica a archivos nuevos o tocados; el legacy `docs/context/git-client/**` **no se reescribe** — es deuda aceptada explícita en `accepted-debt.md`.
-7. **Idioma:** español, con términos técnicos en inglés.
+1. **Corpus root** = `docs/`. Everything canonical lives under `docs/`; outside it only the human README remains.
+2. **Agent-facing entry point** = `docs/project.md`, with the **9 fixed sections** and `doc_language: es` declared **once only**.
+3. **ADR location** = `docs/adrs/`. Numbering continues from legacy ADR-013: the first new ADR is **ADR-014**.
+4. **Generated indexes** = `docs/index.md` and `docs/tag-index.md`, marked as generated and regenerable.
+5. **Root `README.md`** remains a **human** README, outside the corpus, and only points to `docs/project.md`.
+6. **Brownfield ratchet:** the contract applies to new or touched files; the legacy `docs/context/git-client/**` is **not rewritten** — it is explicit accepted debt in `accepted-debt.md`.
+7. **Language:** Spanish, with technical terms in English.
 
 ## When to use
 
-- Al decidir dónde vive un documento nuevo o cómo se enruta una slice.
-- Al evaluar si una carpeta documental debe entrar al corpus (o quedarse como legacy).
+- When deciding where a new document lives or how a slice is routed.
+- When evaluating whether a documentation folder should enter the corpus (or remain legacy).
 
 ## When not to use
 
-- No editar este ADR para cambiar la decisión: un ADR aceptado es append-only; se escribe un sucesor con `supersedes`.
-- No interpretarlo como mandato de migrar el legacy: el ratchet lo excluye a propósito.
+- Do not edit this ADR to change the decision: an accepted ADR is append-only; a successor is written with `supersedes`.
+- Do not read it as a mandate to migrate the legacy tree: the ratchet excludes it on purpose.
 
 ## Examples
 
-Ruta de lectura agent-facing:
+Agent-facing reading path:
 
 ```text
-README.md (humano) -> docs/project.md (entry point) -> hubs -> docs/tag-index.md
+README.md (human) -> docs/project.md (entry point) -> hubs -> docs/tag-index.md
 ```
 
-Carpetas del corpus adoptadas: `context/`, `protocols/`, `adrs/`, `slices/`.
+Corpus folders adopted: `context/`, `protocols/`, `adrs/`, `slices/`.
 
 ## Common mistakes
 
-- **Big-bang retro-fit** del legacy: reescribir `docs/context/git-client/**` de una sola vez rompe links y ahoga el PR real.
-- **Dos entry points** (`README.md` + `docs/project.md`) compitiendo: el agente no sabe cuál leer primero.
-- Continuar la numeración de ADRs en un archivo legacy en lugar de `docs/adrs/`.
-- Declarar `doc_language` en varios archivos.
+- **Big-bang retro-fit** of the legacy tree: rewriting `docs/context/git-client/**` all at once breaks links and drowns the real PR.
+- **Two entry points** (`README.md` + `docs/project.md`) competing: the agent does not know which to read first.
+- Continuing ADR numbering in a legacy file instead of `docs/adrs/`.
+- Declaring `doc_language` in several files.
 
 ## References
 

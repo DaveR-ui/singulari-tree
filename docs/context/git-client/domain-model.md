@@ -1,29 +1,29 @@
-# Modelo de dominio — Entidades, VOs, Agregados, SQLite, Errores
+# Domain model — Entities, VOs, Aggregates, SQLite, Errors
 
-> Fuente de verdad código: `apps/go-core/internal/domain/*.go` + `libs/contracts/proto/domain.proto` + `data/sqlite/migrations/001_initial.sql`.
+> Code source of truth: `apps/go-core/internal/domain/*.go` + `libs/contracts/proto/domain.proto` + `data/sqlite/migrations/001_initial.sql`.
 
-## 1. Agregados y raíces
+## 1. Aggregates and roots
 
 ### 1.1 Repository (Aggregate Root)
 
-**Entidad:** `Repository` — `apps/go-core/internal/domain/repository.go`
+**Entity:** `Repository` — `apps/go-core/internal/domain/repository.go`
 
 ```go
-type RepositoryId string // UUID v4 local, no es Git OID
+type RepositoryId string // local UUID v4, not a Git OID
 type Repository struct {
   ID           RepositoryId
   FsPath       string    // absolute, normalized (filepath.Abs)
   CommonDir    string    // .git/commonDir (worktree-aware)
-  Name         string    // basename(FsPath) por defecto
+  Name         string    // basename(FsPath) by default
   CreatedAt    time.Time
   LastOpenedAt time.Time
 }
 ```
 
-**Invariantes:**
-- `FsPath` requerido y normalizado; `CommonDir` default `FsPath/.git`.
-- `ID` UUID v4 local (no derivado de Git).
-- Un `Repository` agrupa branches, commits (vía cache), status, worktrees, stashes (proyecciones desde Git).
+**Invariants:**
+- `FsPath` required and normalized; `CommonDir` defaults to `FsPath/.git`.
+- `ID` local UUID v4 (not derived from Git).
+- A `Repository` groups branches, commits (via cache), status, worktrees, stashes (projections from Git).
 
 **Ports:**
 ```go
@@ -54,7 +54,7 @@ type Commit struct {
 type Lane struct { Index, Color int; Continues bool } // lane assignment output
 ```
 
-**Invariantes:** Oid validado `NewOid(hex)`, parents inmutable, message puede contener conflict markers (expuestos en Diff).
+**Invariants:** Oid validated by `NewOid(hex)`, immutable parents, message may contain conflict markers (exposed in Diff).
 
 Ports:
 ```go
@@ -65,13 +65,13 @@ type CommitPort interface {
 type CachePort interface { GetCommits / SetCommits / Invalidate }
 ```
 
-### 1.3 Otras entidades (proyecciones Git)
+### 1.3 Other entities (Git projections)
 
-| Entidad | Archivo | Proto | Campos clave | Notas |
+| Entity | File | Proto | Key fields | Notes |
 |---------|---------|-------|--------------|-------|
-| `Branch` | `branch.go` | `Branch` | `name, ref_name, tip:Oid, upstream, is_current, is_remote` | Local vs remota (`refs/heads` vs `refs/remotes`) |
+| `Branch` | `branch.go` | `Branch` | `name, ref_name, tip:Oid, upstream, is_current, is_remote` | Local vs remote (`refs/heads` vs `refs/remotes`) |
 | `Remote` | `remote.go` | `Remote` | `name, urls[], fetch_specs[]` | `git remote -v` |
-| `Tag` | `tag.go` | `Tag` | `name, ref_name, target:Oid, tagger?, message?, annotated` | Ligera vs anotada |
+| `Tag` | `tag.go` | `Tag` | `name, ref_name, target:Oid, tagger?, message?, annotated` | Lightweight vs annotated |
 | `Stash` | `stash.go` | `Stash` | `index, oid, message, branch_name?` | `refs/stash` reflog |
 | `Worktree` | `worktree.go` | `Worktree` | `fs_path, branch?, head:Oid, is_main` | `git worktree list` |
 | `Diff/Hunk/DiffLine` | `diff.go` | `Diff, Hunk, DiffLine` | `from,to Oid, hunks[], additions, deletions, is_binary, has_conflict_markers` | Monaco render |
@@ -79,7 +79,7 @@ type CachePort interface { GetCommits / SetCommits / Invalidate }
 
 Value Objects: `Oid`, `Signature`, `RefName{raw}`, `DiffLine{kind,text,no_newline}`, `Hunk`, `FileStatus`.
 
-## 2. Diagrama ER (conceptual)
+## 2. ER diagram (conceptual)
 
 ```mermaid
 erDiagram
@@ -112,14 +112,14 @@ erDiagram
   }
 ```
 
-Git objects (branches, tags, stashes, worktrees, diffs) **no** se persisten como tablas propias — se leen live desde `.git`; cache opcional en `commit_cache`/`stash_cache` para ventana visible.
+Git objects (branches, tags, stashes, worktrees, diffs) are **not** persisted as their own tables — they are read live from `.git`; optional cache in `commit_cache`/`stash_cache` for the visible window.
 
-## 3. Schema SQLite (`data/sqlite/migrations/001_initial.sql`)
+## 3. SQLite schema (`data/sqlite/migrations/001_initial.sql`)
 
-**Principios:** solo metadata cache/UI-state/config — nunca Git data. WAL + `synchronous=NORMAL` + `foreign_keys=ON`. DB per-user: `~/.local/share/singularitree/cache.db` (Linux), `~/Library/Application Support/...` (macOS), `%APPDATA%` (Windows). Migrations idempotentes (`IF NOT EXISTS`).
+**Principles:** only metadata cache/UI-state/config — never Git data. WAL + `synchronous=NORMAL` + `foreign_keys=ON`. Per-user DB: `~/.local/share/singularitree/cache.db` (Linux), `~/Library/Application Support/...` (macOS), `%APPDATA%` (Windows). Idempotent migrations (`IF NOT EXISTS`).
 
 ```sql
--- PRAGMAs al abrir: journal_mode=WAL; synchronous=NORMAL; foreign_keys=ON;
+-- PRAGMAs on open: journal_mode=WAL; synchronous=NORMAL; foreign_keys=ON;
 
 CREATE TABLE IF NOT EXISTS repos (
   id              TEXT PRIMARY KEY,
@@ -170,45 +170,45 @@ CREATE INDEX IF NOT EXISTS idx_commit_cache_when ON commit_cache(repo_id, commit
 CREATE INDEX IF NOT EXISTS idx_file_status_repo ON file_status(repo_id);
 ```
 
-**Worktrees/branches/tags** no tienen tabla — se enumeran vía `GitPort`; si se necesita cache de recents/favorites/prefs/UI-state, añadir en migración `002`:
+**Worktrees/branches/tags** have no table — they are enumerated via `GitPort`; if a cache of recents/favorites/prefs/UI-state is needed, add it in migration `002`:
 
 ```sql
--- previsto 002_prefs.sql
+-- planned 002_prefs.sql
 CREATE TABLE preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE recent_repos (repo_id TEXT PRIMARY KEY REFERENCES repos(id), opened_at TEXT);
 CREATE TABLE favorites (repo_id TEXT PRIMARY KEY REFERENCES repos(id));
 ```
 
-Operaciones repository: `repo_store.go` usa `database/sql` con `modernc.org/sqlite` (pure Go, sin CGO) o `mattn/go-sqlite3`.
+Repository operations: `repo_store.go` uses `database/sql` with `modernc.org/sqlite` (pure Go, no CGO) or `mattn/go-sqlite3`.
 
-## 4. Contratos proto ↔ dominio
+## 4. proto ↔ domain contracts
 
-| Dominio Go | Proto | Conversión |
+| Go domain | Proto | Conversion |
 |------------|-------|------------|
-| `Oid{Hex,Kind}` | `Oid{hex,kind}` | `NewOid` valida regex |
+| `Oid{Hex,Kind}` | `Oid{hex,kind}` | `NewOid` validates regex |
 | `Signature{Name,Email,When time.Time}` | `Signature{name,email,when RFC3339}` | `time.RFC3339` |
-| `Commit{...}` | `Commit{oid, parents[], author, committer, message, tree_oid, committed_at}` | directo |
+| `Commit{...}` | `Commit{oid, parents[], author, committer, message, tree_oid, committed_at}` | direct |
 | `Branch` | `Branch{name, ref_name, tip, upstream, is_current, is_remote}` | `ref_name = RefName.raw` |
-| `Diff` | `Diff{from,to,hunks,additions,deletions,is_binary,has_conflict_markers}` | hunks agregados |
+| `Diff` | `Diff{from,to,hunks,additions,deletions,is_binary,has_conflict_markers}` | aggregated hunks |
 
-Generación: `buf generate --template buf.gen.yaml` → `libs/contracts/gen/go/singularitree/v1` + `gen/ts`.
+Generation: `buf generate --template buf.gen.yaml` → `libs/contracts/gen/go/singularitree/v1` + `gen/ts`.
 
-## 5. Errores (errors.go + errors.proto)
+## 5. Errors (errors.go + errors.proto)
 
-`AppError{Code, Message, Details map[string]string}` — envelope uniforme.
+`AppError{Code, Message, Details map[string]string}` — uniform envelope.
 
-**Códigos canónicos (`errors.proto: ErrorCode` + `domain/errors.go`):**
+**Canonical codes (`errors.proto: ErrorCode` + `domain/errors.go`):**
 
-| Code string | Enum | Cuándo | HTTP map (fallback) |
+| Code string | Enum | When | HTTP map (fallback) |
 |-------------|------|--------|---------------------|
-| `REPO_NOT_FOUND` | 1 | repo id no existe | 404 |
-| `NOT_A_GIT_REPO` | 2 | `Open` path sin `.git` | 400 |
-| `COMMIT_NOT_FOUND` | 3 | oid no existe en DAG | 404 |
-| `INVALID_OID` | 4 | hex no match regex | 400 |
+| `REPO_NOT_FOUND` | 1 | repo id does not exist | 404 |
+| `NOT_A_GIT_REPO` | 2 | `Open` path without `.git` | 400 |
+| `COMMIT_NOT_FOUND` | 3 | oid does not exist in DAG | 404 |
+| `INVALID_OID` | 4 | hex does not match regex | 400 |
 | `BRANCH_NOT_FOUND` | 5 | checkout/merge branch miss | 404 |
 | `BRANCH_EXISTS` | 6 | create collision | 409 |
 | `DETACHED_HEAD` | 7 | HEAD detached | 409 |
-| `IPC_UNAVAILABLE` | 8 | Electron no disponible | 503 |
+| `IPC_UNAVAILABLE` | 8 | Electron unavailable | 503 |
 | `GO_CORE_UNAVAILABLE` | 9 | gRPC down | 503 |
 | `QUEUE_FULL` | 10 | supervisor queue 100 | 429 |
 | `STAGE_FAILED` | 11 | `git add` fail | 422 |
@@ -220,21 +220,21 @@ Generación: `buf generate --template buf.gen.yaml` → `libs/contracts/gen/go/s
 | `WATCH_FAILED` | 17 | fsnotify error | 500 |
 | `UNAUTHENTICATED` | 18 | token mismatch | 401 |
 
-Wire: `AppError` message en gRPC `Status.details` o `application/grpc+proto` trailer; HTTP JSON `{code, message, details}`.
+Wire: `AppError` message in gRPC `Status.details` or `application/grpc+proto` trailer; HTTP JSON `{code, message, details}`.
 
-Ejemplo Go:
+Go example:
 ```go
 return AppError{Code: ErrCodeInvalidOid, Message: "invalid oid"}.WithDetail("oid", hex)
 ```
 
-Ejemplo TS:
+TS example:
 ```ts
 try { await ipcBridge.invoke('getCommits', req) } catch(e: AppError) { if(e.code==='QUEUE_FULL') retry() }
 ```
 
-## 6. Invariantes de negocio
+## 6. Business invariants
 
-- Nunca persistir blobs/trees/commits completos en SQLite; solo ventana cacheada (200+100) y metadatos.
-- `commit_cache` invalidado en `FsChangedEvent` o `HEAD` move; `file_status` refrescado con debounce.
-- `refs/stash` puede no existir — `ListStashes` devuelve vacío, no error.
-- Large repo: `GetCommits` offset/limit obligatorio; streaming `StreamCommits` para prefetch.
+- Never persist full blobs/trees/commits in SQLite; only the cached window (200+100) and metadata.
+- `commit_cache` invalidated on `FsChangedEvent` or `HEAD` move; `file_status` refreshed with debounce.
+- `refs/stash` may not exist — `ListStashes` returns empty, not an error.
+- Large repo: `GetCommits` offset/limit mandatory; `StreamCommits` streaming for prefetch.

@@ -1,7 +1,7 @@
 # SingulariTree — README (topic folder)
 
-Este archivo es alias de [INDEX.md](./INDEX.md). El índice canónico es `INDEX.md`.
+This file is an alias of [INDEX.md](./INDEX.md). The canonical index is `INDEX.md`.
 
-Ver [INDEX.md](./INDEX.md) para mapa completo de entregables, principios y verificación.
+See [INDEX.md](./INDEX.md) for the complete deliverables map, principles, and verification.
 
-> Carpeta física `SingulariTree/` = alias lógico `git-client` (ver `folder-structure.md §1`).
+> Physical folder `SingulariTree/` = logical alias `git-client` (see `folder-structure.md §1`).

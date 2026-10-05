@@ -8,7 +8,7 @@ aliases:
 - Renderer slice
 related:
 - slices-index
-version: 1.0.1
+version: 1.0.2
 status: active
 ---
 
@@ -16,7 +16,7 @@ status: active
 
 ## What this slice is
 
-Angular 21 SPA (zoneless, standalone, signals) with vertical features and stores, plus the shared UI kit. It is the visible face of SingulariTree.
+Angular 22 SPA (zoneless, standalone, signals) with vertical features and stores, plus the shared UI kit. It is the visible face of SingulariTree.
 
 ## Boundaries
 
