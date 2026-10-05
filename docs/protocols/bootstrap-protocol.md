@@ -2,90 +2,90 @@
 id: bootstrap-protocol
 category: protocols
 tags: [protocol, bootstrap]
-aliases: [Bootstrap Protocol, Protocolo de bootstrap]
+aliases: [Bootstrap Protocol]
 related: [new-note-protocol]
-version: 1.0
+version: 1.1.1
 status: active
 ---
 
-# Protocolo de bootstrap del corpus de documentación
+# Documentation corpus bootstrap protocol
 
 ## Problem
 
-Un repo brownfield arranca sin corpus onrails: no hay entry point agent-facing, no hay índices generados y no hay disciplina de revisión. El resultado es documentación huérfana, links muertos, tags duplicados y agentes que leen fuentes distintas en cada sesión. Falta un checklist mínimo, repetible, para bootstrapear el corpus o auditar uno existente y dejarlo agent-ready.
+A brownfield repo starts without an onrails corpus: no agent-facing entry point, no generated indexes, and no review discipline. The result is orphaned documentation, dead links, duplicate tags, and agents reading different sources in each session. A minimal, repeatable checklist is missing to bootstrap the corpus or audit an existing one and leave it agent-ready.
 
 ## Solution
 
-Checklist ejecutable. Copiar tal cual en el PR de bootstrap o de auditoría y marcar cada ítem. Un ítem sin marcar es trabajo pendiente, no una nota al pie.
+Executable checklist. Copy it as-is into the bootstrap or audit PR and tick each item. An unticked item is pending work, not a footnote.
 
-### Esqueleto
+### Skeleton
 
-- [ ] Entry point `docs/project.md` creado: metadata, stack, comandos, entidades y **Slices table**.
-- [ ] `doc_language: es` declarado **una sola vez**, en `docs/project.md`.
-- [ ] Crear 2–4 folders bajo `docs/` — y solo cuando la **primera nota real** los necesite. Nada de carpetas vacías especulativas.
-- [ ] Cada folder tiene su hub `<folder>-index.md` (body corto: propósito + contents + elsewhere; no las 7 secciones de nota).
+- [ ] Entry point `docs/project.md` created: metadata, stack, commands, entities, and the **Slices table**.
+- [ ] `doc_language: en` declared **once**, in `docs/project.md`.
+- [ ] Create 2–4 folders under `docs/` — and only when the **first real note** needs them. No speculative empty folders.
+- [ ] Each folder has its `<folder>-index.md` hub (short body: purpose + contents + elsewhere; not the 7 note sections).
 
 ### Runbook
 
-- [ ] Seguir las guidelines 00–09 de onrails para proyectos brownfield: **slices primero**, después el contrato de nota.
-- [ ] Priorizar por slice: cada cambio enruta a un doc primario vía la Slices table.
-- [ ] No reescribir contenido legacy para "cumplir" el contrato; el ratchet aplica a archivos nuevos o tocados.
+- [ ] Follow onrails guidelines 00–09 for brownfield projects: **slices first**, then the note contract.
+- [ ] Prioritize by slice: each change routes to a primary doc via the Slices table.
+- [ ] Do not rewrite legacy content to "comply" with the contract; the ratchet applies to new or touched files.
 
-### Garantías del store
+### Store guarantees
 
-- [ ] `docs/index.md` y `docs/tag-index.md` creados con sus markers (`index`, `tags`).
-- [ ] Regenerados con `node tools/docs/validate.js --write` (write-if-diff).
-- [ ] Los artefactos generados se marcan como generados y **nunca** se parchean a mano.
-- [ ] Cada región generada lleva su línea de snapshot (fecha).
+- [ ] `docs/index.md` and `docs/tag-index.md` created with their markers (`index`, `tags`).
+- [ ] Regenerated with `node tools/docs/validate.js --write` (write-if-diff).
+- [ ] Generated artifacts are marked as generated and are **never** patched by hand.
+- [ ] Each generated region carries its snapshot line (date).
 
-### Disciplina de revisión desde el día 1
+### Review discipline from day 1
 
-- [ ] Adoptar el catálogo de `docs-review-protocol.md` como disciplina de merge.
-- [ ] Calibrar contra la deuda aceptada explícita — ver `accepted-debt.md`; el legacy excluido no bloquea el merge.
-- [ ] `node tools/docs/validate.js` sale con código `1` si hay errores → el hook de CI bloquea el merge.
+- [ ] Adopt the catalog in `docs-review-protocol.md` as the merge discipline.
+- [ ] Calibrate against explicitly accepted debt — see `accepted-debt.md`; excluded legacy does not block the merge.
+- [ ] `node tools/docs/validate.js` exits with code `1` on errors → the CI hook blocks the merge.
 
 ### Agent-readiness
 
-- [ ] Query path read-only: el agente lee entry point → hubs → tag index, sin escribir.
-- [ ] Staleness visible: cada región generada expone la fecha de snapshot.
+- [ ] Read-only query path: the agent reads entry point → hubs → tag index, without writing.
+- [ ] Visible staleness: each generated region exposes the snapshot date.
 
 ## When to use
 
-- Al iniciar un proyecto brownfield o greenfield y definir el corpus desde cero.
-- Al auditar un corpus existente antes de una migración o de promocionar un topic folder a slice.
+- When starting a brownfield or greenfield project and defining the corpus from scratch.
+- When auditing an existing corpus before a migration or before promoting a topic folder to a slice.
 
 ## When not to use
 
-- No para dar de alta una nota individual: usar `new-note-protocol.md`.
-- No para re-bootstrapear un corpus ya verde: el checklist devolvería falsos pendientes.
+- Not for onboarding a single note: use `new-note-protocol.md`.
+- Not for re-bootstrapping an already-green corpus: the checklist would report false pending items.
 
 ## Examples
 
-Bootstrap mínimo de 4 folders (agregar cada uno al crear su primera nota):
+Minimal bootstrap of 4 folders (add each one when creating its first note):
 
 ```text
 docs/
-├── project.md              # entry point (doc_language: es)
-├── index.md                # generado (marker: index)
-├── tag-index.md            # generado (marker: tags)
+├── project.md              # entry point (doc_language: en)
+├── index.md                # generated (marker: index)
+├── tag-index.md            # generated (marker: tags)
 ├── context/<folder>-index.md
 ├── protocols/<folder>-index.md
 ├── adrs/<folder>-index.md
 └── slices/<folder>-index.md
 ```
 
-Auditoría en un comando (read-only):
+Audit in one command (read-only):
 
 ```bash
-node tools/docs/validate.js        # exit 1 si hay errores
+node tools/docs/validate.js        # exit 1 on errors
 ```
 
 ## Common mistakes
 
-- Crear folders vacíos "por si acaso": rompen el principio de que cada folder nace con su primera nota.
-- Declarar `doc_language` en varios archivos: la declaración única evita idiomas divergentes.
-- Parchear a mano `docs/index.md` o `docs/tag-index.md`: el siguiente `--write` revierte el parche.
-- Arrancar la disciplina de revisión "más adelante": la deuda de links se acumula más rápido de lo que se paga.
+- Creating empty folders "just in case": they break the principle that each folder is born with its first note.
+- Declaring `doc_language` in several files: the single declaration avoids diverging languages.
+- Patching `docs/index.md` or `docs/tag-index.md` by hand: the next `--write` reverts the patch.
+- Starting the review discipline "later": link debt accumulates faster than it is paid off.
 
 ## References
 

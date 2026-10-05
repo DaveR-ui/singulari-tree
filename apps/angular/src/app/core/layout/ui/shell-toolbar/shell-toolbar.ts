@@ -15,7 +15,7 @@ import { BadgeComponent } from '@singularitree/ui-kit';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="st-toolbar">
-      <button class="st-tool" type="button"><i>⬆</i><span>Commit</span></button>
+      <button class="st-tool" type="button"><i>⬆</i><span i18n>Commit</span></button>
       <div class="st-toolbar__sep"></div>
       <button
         class="st-tool"
@@ -24,7 +24,7 @@ import { BadgeComponent } from '@singularitree/ui-kit';
         [disabled]="!hasActiveRepo()"
         (click)="pullRequested.emit()"
       >
-        <i>⭳</i><span>Pull</span>
+        <i>⭳</i><span i18n>Pull</span>
         @if (pullPending() > 0) {
           <st-badge variant="warning" data-testid="toolbar-pull-badge">{{ pullPending() }}</st-badge>
         }
@@ -36,7 +36,7 @@ import { BadgeComponent } from '@singularitree/ui-kit';
         [disabled]="!hasActiveRepo()"
         (click)="pushRequested.emit()"
       >
-        <i>⭱</i><span>Push</span>
+        <i>⭱</i><span i18n>Push</span>
       </button>
       <button
         class="st-tool"
@@ -45,27 +45,38 @@ import { BadgeComponent } from '@singularitree/ui-kit';
         [disabled]="!hasActiveRepo()"
         (click)="fetchRequested.emit()"
       >
-        <i>⟳</i><span>Fetch</span>
+        <i>⟳</i><span i18n>Fetch</span>
       </button>
       <div class="st-toolbar__sep"></div>
-      <button class="st-tool" type="button"><i>⑂</i><span>Branch</span></button>
-      <button class="st-tool" type="button"><i>⑃</i><span>Merge</span></button>
-      <button class="st-tool" type="button"><i>⎘</i><span>Stash</span></button>
-      <button class="st-tool" type="button"><i>✕</i><span>Discard</span></button>
-      <button class="st-tool" type="button"><i>🏷</i><span>Tag</span></button>
+      <button class="st-tool" type="button"><i>⑂</i><span i18n>Branch</span></button>
+      <button class="st-tool" type="button"><i>⑃</i><span i18n>Merge</span></button>
+      <button class="st-tool" type="button"><i>⎘</i><span i18n>Stash</span></button>
+      <button class="st-tool" type="button"><i>✕</i><span i18n>Discard</span></button>
+      <button class="st-tool" type="button"><i>🏷</i><span i18n>Tag</span></button>
       <span class="st-toolbar__spacer"></span>
-      <button class="st-tool" routerLink="/repo" title="Repository" aria-label="Repository">
-        <i>⌂</i><span>Repo</span>
+      <button
+        class="st-tool"
+        routerLink="/repo"
+        title="Repository"
+        aria-label="Repository"
+        i18n-title
+        i18n-aria-label
+      >
+        <i>⌂</i><span i18n>Repo</span>
       </button>
       <button
         class="st-tool"
         routerLink="/github-account"
         title="GitHub account"
         aria-label="GitHub account"
+        i18n-title
+        i18n-aria-label
       >
-        <i>🐙</i><span>GitHub</span>
+        <i>🐙</i><span i18n>GitHub</span>
       </button>
-      <button class="st-tool st-tool--icon" type="button" aria-label="Settings">⚙</button>
+      <button class="st-tool st-tool--icon" type="button" aria-label="Settings" i18n-aria-label>
+        ⚙
+      </button>
     </div>
   `,
   styles: `

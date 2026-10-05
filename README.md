@@ -5,7 +5,7 @@
 > Physical folder on disk is `SingulariTree/` (alias `git-client` per `docs/context/git-client/folder-structure.md §1`).
 > Module alias: **Singularitree** (Go module `github.com/SingulariTree/go-core`, proto package `singularitree.v1` aka `gitclient.v1` for compatibility).
 
-> **Documentación agent-facing:** punto de entrada [`docs/project.md`](docs/project.md) · índice generado [`docs/index.md`](docs/index.md) · contrato en [`docs/context/documentation-system.md`](docs/context/documentation-system.md).
+> **Agent-facing documentation:** entry point [`docs/project.md`](docs/project.md) · generated index [`docs/index.md`](docs/index.md) · contract in [`docs/context/documentation-system.md`](docs/context/documentation-system.md).
 
 Necomat `frontend/` (Angular 21 SPA `spa-necomat`) and `backend/` (Go 1.24 API `github.com/DavidRomaniuk/golang-api`) are **untouched** by this scaffold. SingulariTree is additive — see `docs/context/git-client/INDEX.md`.
 

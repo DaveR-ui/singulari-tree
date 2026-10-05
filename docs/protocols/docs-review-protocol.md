@@ -2,93 +2,93 @@
 id: docs-review-protocol
 category: protocols
 tags: [protocol, review, validation]
-aliases: [Docs Review Protocol, Protocolo de revisión de docs]
+aliases: [Docs Review Protocol]
 related: [new-note-protocol, bootstrap-protocol]
-version: 1.0
+version: 1.0.2
 status: active
 ---
 
-# Protocolo de revisión de docs
+# Docs review protocol
 
 ## Problem
 
-Sin una disciplina de merge explícita, el corpus se degrada silenciosamente: aparecen `id`s duplicados, links muertos, notas huérfanas e índices que ya no reflejan el contenido. Cada revisor aplica criterios distintos y la deuda se descubre tarde, cuando ya nadie sabe qué versión es la correcta. Hace falta un catálogo cerrado de reglas y un pase automático que lo haga cumplir.
+Without an explicit merge discipline, the corpus degrades silently: duplicate `id`s, dead links, orphaned notes, and indexes that no longer reflect the content appear. Each reviewer applies different criteria and the debt is discovered late, when nobody knows which version is correct anymore. A closed catalog of rules and an automatic pass that enforces it are needed.
 
 ## Solution
 
-El catálogo de revisión es una **disciplina de merge**: se corre antes de cada merge que toque `docs/`. Tiene 9 errores (bloquean) y 3 warnings (revisión humana).
+The review catalog is a **merge discipline**: it runs before every merge that touches `docs/`. It has 9 errors (blocking) and 3 warnings (human review).
 
-### Errores (bloquean el merge)
+### Errors (block the merge)
 
-| # | Error | Qué detecta |
-|---|-------|-------------|
-| 1 | `metadata-outside-contract` | keys faltantes o extra en el frontmatter |
-| 2 | `non-kebab-case-name` | filename fuera de lowercase-kebab-case |
-| 3 | `duplicate-ids` | dos notas con el mismo `id` |
-| 4 | `dangling-related-target` | `related` que apunta a un `id` inexistente |
-| 5 | `dangling-link` | link markdown relativo a un target inexistente |
-| 6 | `orphan-note` | nota sin ninguna arista resuelta |
-| 7 | `missing-from-hub` | nota ausente del hub de su carpeta |
-| 8 | `stale-generated-index` | región generada desactualizada respecto al store |
-| 9 | `secret-in-prose` | secreto o credencial en el cuerpo |
+| # | Error | What it detects |
+|---|-------|-----------------|
+| 1 | `metadata-outside-contract` | missing or extra keys in the frontmatter |
+| 2 | `non-kebab-case-name` | filename outside lowercase-kebab-case |
+| 3 | `duplicate-ids` | two notes with the same `id` |
+| 4 | `dangling-related-target` | `related` pointing to a nonexistent `id` |
+| 5 | `dangling-link` | relative markdown link to a nonexistent target |
+| 6 | `orphan-note` | note without any resolved edge |
+| 7 | `missing-from-hub` | note absent from its folder's hub |
+| 8 | `stale-generated-index` | generated region out of date with respect to the store |
+| 9 | `secret-in-prose` | secret or credential in the body |
 
-### Warnings (revisión humana)
+### Warnings (human review)
 
-| # | Warning | Qué detecta |
-|---|---------|-------------|
-| 1 | `no-h1` | nota sin H1 |
-| 2 | `category-mismatch-folder` | `category` no coincide con la carpeta |
-| 3 | `near-duplicate-body` | cuerpo casi idéntico a otra nota |
+| # | Warning | What it detects |
+|---|---------|-----------------|
+| 1 | `no-h1` | note without an H1 |
+| 2 | `category-mismatch-folder` | `category` does not match the folder |
+| 3 | `near-duplicate-body` | body nearly identical to another note |
 
 ### Machine walk
 
 ```bash
-node tools/docs/validate.js          # read-only; exit 1 si hay errores
-node tools/docs/validate.js --write  # regenera las regiones marker
+node tools/docs/validate.js          # read-only; exit 1 on errors
+node tools/docs/validate.js --write  # regenerates the marker regions
 ```
 
-`validate.js` no escribe salvo con `--write`, y `--write` solo regenera las regiones marcadas (`index`, `tags`), write-if-diff.
+`validate.js` does not write unless with `--write`, and `--write` only regenerates the marked regions (`index`, `tags`), write-if-diff.
 
-### Calibración brownfield
+### Brownfield calibration
 
-- Los errores bloquean **solo el subconjunto migrado** del corpus.
-- La deuda legacy (`docs/context/git-client/**`) queda **explícitamente excluida** del validador — ver [[bootstrap-protocol]] y `accepted-debt.md`.
-- El bucle gap-close: **buscar** → si falta, **escribir según contrato** → **registrar en el hub Y en el tag index en el mismo commit**.
+- Errors block **only the migrated subset** of the corpus.
+- Legacy debt (`docs/context/git-client/**`) is **explicitly excluded** from the validator — see [[bootstrap-protocol]] and `accepted-debt.md`.
+- The gap-close loop: **search** → if missing, **write per contract** → **register in the hub AND in the tag index in the same commit**.
 
 ## When to use
 
-- Antes de cada merge que toque `docs/`.
-- Al cerrar un gap encontrado por el validador (bucle gap-close).
+- Before every merge that touches `docs/`.
+- When closing a gap found by the validator (gap-close loop).
 
 ## When not to use
 
-- No sustituye la revisión humana de contenido: el validador comprueba forma y grafo, no exactitud técnica ni prosa.
-- No se aplica al legacy excluido: forzarlo genera falsos positivos.
+- It does not replace human content review: the validator checks form and graph, not technical accuracy or prose.
+- It does not apply to excluded legacy: forcing it produces false positives.
 
 ## Examples
 
-Fallar y luego arreglar un `dangling-related-target`:
+Fail and then fix a `dangling-related-target`:
 
 ```yaml
-# antes
+# before
 related: [nota-inexistente]
-# después — el id resuelve
+# after — the id resolves
 related: [new-note-protocol]
 ```
 
-Merge limpio:
+Clean merge:
 
 ```bash
-node tools/docs/validate.js --write   # regenera regiones
+node tools/docs/validate.js --write   # regenerates regions
 node tools/docs/validate.js           # exit 0
 ```
 
 ## Common mistakes
 
-- Correr solo `--write` y nunca la verificación read-only: el `--write` no falla aunque queden errores.
-- Editar a mano un índice generado en vez de regenerar la región.
-- Desbloquear el merge desactivando una regla en lugar de arreglar la nota culpable.
-- Registrar la nota en el hub pero olvidar el tag index en el mismo commit (o al revés).
+- Running only `--write` and never the read-only verification: `--write` does not fail even if errors remain.
+- Editing a generated index by hand instead of regenerating the region.
+- Unblocking the merge by disabling a rule instead of fixing the offending note.
+- Registering the note in the hub but forgetting the tag index in the same commit (or the reverse).
 
 ## References
 

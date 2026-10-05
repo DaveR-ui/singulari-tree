@@ -1,142 +1,142 @@
 ---
-last_updated: 2026-09-28
+last_updated: 2026-10-05
 status: active
-description: Punto de entrada agent-facing de SingulariTree — monorepo Angular + Electron + Go core; stack, slices, comandos y navegación del corpus.
+description: Agent-facing entry point of SingulariTree — Angular + Electron + Go core monorepo; stack, slices, commands and corpus navigation.
 tags:
 - project
 - entry-point
 - singularitree
-version: 1.0
-doc_language: es
+version: 1.1
+doc_language: en
 ---
 
-# SingulariTree — Punto de entrada del proyecto
+# SingulariTree — Project Entry Point
 
 ## Overview
 
-SingulariTree es un **monorepo** de un cliente Git de escritorio multiplataforma. Forma del sistema:
+SingulariTree is a **monorepo** for a cross-platform desktop Git client. System shape:
 
-> **el grafo/files son la verdad; SQLite solo guarda caché de metadata, NUNCA objetos Git.**
+> **the graph/files are the truth; SQLite only stores a metadata cache, NEVER Git objects.**
 
-- **Core Go headless** (`apps/go-core`): se puede ejecutar sin Electron ni Angular (`--headless`, emite `GO_CORE_READY`).
-- **Arquitectura hexagonal** (ports & adapters): el contacto con Git existe **solo** dentro del core Go.
-- El renderer nunca habla con Git; todo cruza IPC → shell → core.
+- **Headless Go core** (`apps/go-core`): can run without Electron or Angular (`--headless`, emits `GO_CORE_READY`).
+- **Hexagonal architecture** (ports & adapters): contact with Git exists **only** inside the Go core.
+- The renderer never talks to Git; everything crosses IPC → shell → core.
 
-**Anti-goals** (no negociables):
+**Anti-goals** (non-negotiable):
 
-- El renderer **nunca** habla con Git directamente.
-- **No** se guardan objetos Git en SQLite — solo metadata cache, config y UI-state.
-- **No** se modifican `frontend/` ni `backend/` de Necomat.
+- The renderer **never** talks to Git directly.
+- **No** Git objects are stored in SQLite — only metadata cache, config and UI-state.
+- Necomat `frontend/` and `backend/` are **not** modified.
 
 ## Technology Stack
 
-| Área | Tecnología |
+| Area | Technology |
 |---|---|
-| Runtime JS | Node >=20 (npm workspaces) |
+| JS runtime | Node >=20 (npm workspaces) |
 | Renderer | Angular 21 (zoneless, standalone, signals) + TypeScript ~5.9 |
-| Shell | Electron ^32 con TypeScript |
-| Core | Go 1.25 (module `github.com/SingulariTree/go-core`) en workspace Go 1.26 (`go.work`) |
-| Transporte | gRPC (`google.golang.org/grpc` 1.84) con fallback HTTP |
-| Persistencia | SQLite `modernc.org/sqlite` (WAL, `foreign_keys=ON`, DB por usuario fuera del repo) |
-| Contratos | proto con `buf` (paquete `singularitree.v1`, alias `gitclient.v1`) |
-| Tests | vitest (Angular y Electron), `go test` (core) |
-| Patrón | Hexagonal + contrato-primero |
+| Shell | Electron ^32 with TypeScript |
+| Core | Go 1.25 (module `github.com/SingulariTree/go-core`) in a Go 1.26 workspace (`go.work`) |
+| Transport | gRPC (`google.golang.org/grpc` 1.84) with HTTP fallback |
+| Persistence | SQLite `modernc.org/sqlite` (WAL, `foreign_keys=ON`, per-user DB outside the repo) |
+| Contracts | proto with `buf` (package `singularitree.v1`, alias `gitclient.v1`) |
+| Tests | vitest (Angular and Electron), `go test` (core) |
+| Pattern | Hexagonal + contract-first |
 
 ## Slices
 
 | Slice | Description | Keywords | Entry points | Primary agents |
 |---|---|---|---|---|
-| contracts | Fuente única de contratos proto (buf) y stubs generados Go/TS; frontera de compatibilidad entre core, shell y renderer. | proto, buf, singularitree.v1, gitclient.v1, grpc, generated, gen/go, gen/ts, breaking | `libs/contracts/`, `libs/contracts/proto/`, `libs/contracts/gen/` | coder, tester, reviewer |
-| core | Core Go headless: dominio, servicios, repositorio SQLite y adaptadores git/grpc/http/watcher. | go, domain, service, repository, sqlite, wal, adapter, git, watcher, grpc, http, headless, hexagonal | `apps/go-core/`, `apps/go-core/internal/`, `data/sqlite/` | coder, tester, reviewer |
-| desktop-shell | Shell Electron: ciclo de vida de ventana, preload/IPC, supervisor del core Go, menú y CSP. | electron, preload, ipc, supervisor, window, menu, csp, main, GO_CORE_READY | `apps/electron/`, `apps/electron/src/main/`, `apps/electron/src/ipc/` | coder, tester |
-| renderer | SPA Angular 21 (zoneless, signals, standalone), features y stores; UI kit compartido. | angular, signals, zoneless, standalone, component, route, store, vitest, ui-kit | `apps/angular/`, `libs/ui-kit/` | coder, tester |
-| tooling | Scripts de build/generación, CI y validaciones (contratos, migraciones, docs). | ci, script, build, verify, workspace, go.work, npm, buf, validate | `tools/`, `tools/ci/`, `tools/scripts/` | coder, reviewer |
-| docs | Corpus de documentación, slices, ADRs, protocolos e índices generados. | docs, frontmatter, hub, index, adr, tag, protocol, slice, onrails | `docs/`, `docs/context/`, `docs/protocols/`, `docs/adrs/` | documenter, explorer |
+| contracts | Single source of proto contracts (buf) and generated Go/TS stubs; compatibility boundary between core, shell and renderer. | proto, buf, singularitree.v1, gitclient.v1, grpc, generated, gen/go, gen/ts, breaking | `libs/contracts/`, `libs/contracts/proto/`, `libs/contracts/gen/` | coder, tester, reviewer |
+| core | Headless Go core: domain, services, SQLite repository and git/grpc/http/watcher adapters. | go, domain, service, repository, sqlite, wal, adapter, git, watcher, grpc, http, headless, hexagonal | `apps/go-core/`, `apps/go-core/internal/`, `data/sqlite/` | coder, tester, reviewer |
+| desktop-shell | Electron shell: window lifecycle, preload/IPC, Go core supervisor, menu and CSP. | electron, preload, ipc, supervisor, window, menu, csp, main, GO_CORE_READY | `apps/electron/`, `apps/electron/src/main/`, `apps/electron/src/ipc/` | coder, tester |
+| renderer | Angular 21 SPA (zoneless, signals, standalone), features and stores; shared UI kit. | angular, signals, zoneless, standalone, component, route, store, vitest, ui-kit | `apps/angular/`, `libs/ui-kit/` | coder, tester |
+| tooling | Build/generation scripts, CI and validations (contracts, migrations, docs). | ci, script, build, verify, workspace, go.work, npm, buf, validate | `tools/`, `tools/ci/`, `tools/scripts/` | coder, reviewer |
+| docs | Documentation corpus, slices, ADRs, protocols and generated indexes. | docs, frontmatter, hub, index, adr, tag, protocol, slice, onrails | `docs/`, `docs/context/`, `docs/protocols/`, `docs/adrs/` | documenter, explorer |
 
 ## Commands
 
 | Command | Purpose |
 |---|---|
-| `npm start` (raíz) | dev completo Angular + Electron |
-| `npm run start:electron-only` | solo shell Electron |
-| `npm run build --workspace=@singularitree/angular` | build renderer |
-| `npm test --workspace=@singularitree/angular` | vitest renderer |
-| `npm test --workspace=@singularitree/electron` | vitest shell |
+| `npm start` (root) | full Angular + Electron dev |
+| `npm run start:electron-only` | Electron shell only |
+| `npm run build --workspace=@singularitree/angular` | renderer build |
+| `npm test --workspace=@singularitree/angular` | renderer vitest |
+| `npm test --workspace=@singularitree/electron` | shell vitest |
 | `npm run typecheck --workspace=@singularitree/electron` | tsc --noEmit |
-| `cd apps/go-core && go vet ./...` | vet core (**NUNCA** desde la raíz) |
-| `cd apps/go-core && go test ./...` | tests core |
-| `go run ./apps/go-core/cmd/go-core --headless --help` | flags headless (vía `go.work`) |
-| `./tools/scripts/gen-contracts.sh` | genera stubs proto (`buf generate`) |
-| `./tools/ci/verify-contracts.sh` | breaking check de contratos |
-| `./tools/ci/verify-migrations.sh` | valida migraciones SQLite |
-| `./tools/scripts/build-go-core.sh` | build binario del core |
-| `node tools/docs/validate.js` | valida el corpus (exit 1 si hay errores) |
-| `node tools/docs/validate.js --write` | regenera `docs/index.md` + `docs/tag-index.md` |
-| `./tools/ci/verify-docs.sh` | hook CI de documentación |
+| `cd apps/go-core && go vet ./...` | core vet (**NEVER** from the root) |
+| `cd apps/go-core && go test ./...` | core tests |
+| `go run ./apps/go-core/cmd/go-core --headless --help` | headless flags (via `go.work`) |
+| `./tools/scripts/gen-contracts.sh` | generates proto stubs (`buf generate`) |
+| `./tools/ci/verify-contracts.sh` | contracts breaking check |
+| `./tools/ci/verify-migrations.sh` | validates SQLite migrations |
+| `./tools/scripts/build-go-core.sh` | builds the core binary |
+| `node tools/docs/validate.js` | validates the corpus (exit 1 on errors) |
+| `node tools/docs/validate.js --write` | regenerates `docs/index.md` + `docs/tag-index.md` |
+| `./tools/ci/verify-docs.sh` | documentation CI hook |
 
 ## Repository Structure
 
 ```
 SingulariTree/
 ├── apps/
-│   ├── angular/        # renderer SPA Angular 21 (zoneless, signals, standalone)
-│   ├── electron/       # shell Electron: main, preload, ipc, supervisor
-│   └── go-core/        # core Go headless (domain, service, repository, adapter)
+│   ├── angular/        # Angular 21 renderer SPA (zoneless, signals, standalone)
+│   ├── electron/       # Electron shell: main, preload, ipc, supervisor
+│   └── go-core/        # headless Go core (domain, service, repository, adapter)
 ├── libs/
-│   ├── contracts/      # fuente única proto (buf) + stubs gen/go y gen/ts
-│   └── ui-kit/         # UI kit Angular compartido (dumb components)
+│   ├── contracts/      # single proto source (buf) + gen/go and gen/ts stubs
+│   └── ui-kit/         # shared Angular UI kit (dumb components)
 ├── data/
-│   └── sqlite/         # migrations; DB runtime por usuario fuera del repo
+│   └── sqlite/         # migrations; per-user runtime DB outside the repo
 ├── tools/
 │   ├── scripts/        # gen-contracts.sh, build-go-core.sh, gen-migrations.sh
 │   └── ci/             # verify-contracts.sh, verify-migrations.sh, verify-docs.sh
 ├── docs/
-│   ├── context/        # docs estratégicos (git-client/ legacy en ratchet)
+│   ├── context/        # strategic docs (git-client/ legacy under ratchet)
 │   ├── slices/         # slices + slices-index.md (hub)
-│   ├── protocols/      # protocolos del corpus
+│   ├── protocols/      # corpus protocols
 │   ├── adrs/           # decision records (append-only)
-│   ├── project.md      # entry point (este archivo)
-│   ├── index.md        # índice generado
-│   └── tag-index.md    # índice de etiquetas generado
-├── go.work             # workspace Go (use ./apps/go-core)
-└── README.md           # README humano (fuera del corpus)
+│   ├── project.md      # entry point (this file)
+│   ├── index.md        # generated index
+│   └── tag-index.md    # generated tag index
+├── go.work             # Go workspace (use ./apps/go-core)
+└── README.md           # human README (outside the corpus)
 ```
 
 ## Key Conventions
 
-- Contratos con fuente única `libs/contracts/proto/*.proto` → `gen/{go,ts}` vía `buf generate`; nunca editar generados a mano.
-- Paquete proto `singularitree.v1` con alias `gitclient.v1` por compatibilidad.
-- `doc_language: es`: español con términos técnicos en inglés; los encabezados del contrato onrails quedan verbatim.
-- Naming `lowercase-kebab-case`; el `id` coincide con el stem del archivo.
-- El frontend nunca habla con Git; el core Go es headless y hexagonal.
-- SQLite por usuario (WAL, `foreign_keys=ON`) y **NUNCA** guarda objetos Git.
-- Necomat `frontend/`/`backend/` permanecen intactos.
-- Tests/builds desde el directorio del paquete (nunca la raíz, salvo Go vía `go.work`).
-- ADRs append-only; la numeración continúa desde ADR-013.
+- Contracts with a single source `libs/contracts/proto/*.proto` → `gen/{go,ts}` via `buf generate`; never edit generated files by hand.
+- Proto package `singularitree.v1` with alias `gitclient.v1` for compatibility.
+- `doc_language: en`: English; onrails contract headings stay verbatim.
+- Naming `lowercase-kebab-case`; the `id` matches the file stem.
+- The frontend never talks to Git; the Go core is headless and hexagonal.
+- SQLite per user (WAL, `foreign_keys=ON`) and **NEVER** stores Git objects.
+- Necomat `frontend/`/`backend/` remain intact.
+- Tests/builds from the package directory (never the root, except Go via `go.work`).
+- ADRs are append-only; numbering continues from ADR-013.
 
 ## Domain Entities
 
-**App:** `Repository` (agregado raíz), `Commit` (DAG inmutable), `Branch`, `Tag`, `Stash`, `Worktree`, `Remote`, `Diff`, `Author`/`Identity`.
+**App:** `Repository` (root aggregate), `Commit` (immutable DAG), `Branch`, `Tag`, `Stash`, `Worktree`, `Remote`, `Diff`, `Author`/`Identity`.
 
 **Corpus:** `Slice`, `Hub`, `Note`, `Context-doc`, `ADR`, `Protocol`, `Generated region`, `Tag index`, `Resolver`, `Accepted debt`.
 
 ## Context Index
 
-- [`docs/context/documentation-system.md`](context/documentation-system.md) — contrato, capas, naming e índices generados del corpus.
-- [`docs/context/accepted-debt.md`](context/accepted-debt.md) — deuda aceptada explícita y criterio del ratchet.
-- [`docs/context/git-client/INDEX.md`](context/git-client/INDEX.md) — corpus de diseño legacy, en ratchet.
-- [`docs/slices/slices-index.md`](slices/slices-index.md) — hub de slices; rutea cada cambio a su slice primario.
-- [`docs/protocols/bootstrap-protocol.md`](protocols/bootstrap-protocol.md) — arranque e inicialización del corpus.
-- [`docs/protocols/new-note-protocol.md`](protocols/new-note-protocol.md) — crear una nota nueva conforme al contrato.
-- [`docs/protocols/docs-review-protocol.md`](protocols/docs-review-protocol.md) — revisión del corpus y errores del validador.
-- [`docs/adrs/adr-index.md`](adrs/adr-index.md) — hub de ADRs (decisiones estructurales, append-only).
+- [`docs/context/documentation-system.md`](context/documentation-system.md) — corpus contract, layers, naming and generated indexes.
+- [`docs/context/accepted-debt.md`](context/accepted-debt.md) — explicit accepted debt and the ratchet criterion.
+- [`docs/context/git-client/INDEX.md`](context/git-client/INDEX.md) — legacy design corpus, under ratchet.
+- [`docs/slices/slices-index.md`](slices/slices-index.md) — slices hub; routes each change to its primary slice.
+- [`docs/protocols/bootstrap-protocol.md`](protocols/bootstrap-protocol.md) — corpus start-up and initialization.
+- [`docs/protocols/new-note-protocol.md`](protocols/new-note-protocol.md) — create a new note per the contract.
+- [`docs/protocols/docs-review-protocol.md`](protocols/docs-review-protocol.md) — corpus review and validator errors.
+- [`docs/adrs/adr-index.md`](adrs/adr-index.md) — ADR hub (structural decisions, append-only).
 
 ## Common Lookups
 
-| Síntoma / pregunta | Dónde mirar |
+| Symptom / question | Where to look |
 |---|---|
-| No sé dónde cae mi tarea | [docs/slices/slices-index.md#contents](slices/slices-index.md#contents) |
-| Voy a crear una nota nueva | [docs/protocols/new-note-protocol.md#solution](protocols/new-note-protocol.md#solution) |
-| El validador de docs falla con `metadata-outside-contract` | [docs/protocols/docs-review-protocol.md#solution](protocols/docs-review-protocol.md#solution) |
-| Quiero regenerar el índice de documentación | [docs/context/documentation-system.md#solution](context/documentation-system.md#solution) |
-| `go-core` no arranca headless (`GO_CORE_READY` ausente) | [docs/context/git-client/architecture.md#5-headless-proof-5-del-readmemd--contrato-ejecutable](context/git-client/architecture.md#5-headless-proof-5-del-readmemd--contrato-ejecutable) |
+| I don't know where my task falls | [docs/slices/slices-index.md#contents](slices/slices-index.md#contents) |
+| I'm about to create a new note | [docs/protocols/new-note-protocol.md#solution](protocols/new-note-protocol.md#solution) |
+| The docs validator fails with `metadata-outside-contract` | [docs/protocols/docs-review-protocol.md#solution](protocols/docs-review-protocol.md#solution) |
+| I want to regenerate the documentation index | [docs/context/documentation-system.md#solution](context/documentation-system.md#solution) |
+| `go-core` does not start headless (missing `GO_CORE_READY`) | [docs/context/git-client/architecture.md#5-headless-proof-5-del-readmemd--contrato-ejecutable](context/git-client/architecture.md#5-headless-proof-5-del-readmemd--contrato-ejecutable) |

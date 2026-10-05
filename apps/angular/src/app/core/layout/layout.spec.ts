@@ -5,6 +5,7 @@ import { provideRouter } from '@angular/router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Repository } from '@contracts/domain';
 import type { AppError } from '@core/services/ipc-bridge.service';
+import { LanguageService } from '@core/services/language.service';
 import { RepoState } from '@core/services/repo-state.service';
 import { RemoteOpsStore } from '@features/remote/remote-ops.store';
 import type {
@@ -159,12 +160,17 @@ async function setup(
 ) {
   const repoState = makeRepoState(repoStateOpts);
   const remoteOps = makeRemoteOps(remoteOpsOpts);
+  const languageService = {
+    language: signal<'en' | 'es'>('en'),
+    setLanguage: vi.fn(),
+  };
   await TestBed.configureTestingModule({
     providers: [
       provideZonelessChangeDetection(),
       provideRouter([{ path: '**', component: StubPageComponent }]),
       { provide: RepoState, useValue: repoState },
       { provide: RemoteOpsStore, useValue: remoteOps },
+      { provide: LanguageService, useValue: languageService },
     ],
   }).compileComponents();
 
@@ -172,7 +178,7 @@ async function setup(
   fixture.detectChanges();
   await fixture.whenStable();
   fixture.detectChanges();
-  return { fixture, repoState, remoteOps };
+  return { fixture, repoState, remoteOps, languageService };
 }
 
 function text(fixture: { nativeElement: unknown }): string {
@@ -520,5 +526,31 @@ describe('LayoutComponent', () => {
       tags: false,
       force: false,
     });
+  });
+
+  it('routes the language switch selection to LanguageService', async () => {
+    const { fixture, languageService } = await setup();
+
+    const es = query<HTMLButtonElement>(fixture, 'language-es');
+    expect(es).not.toBeNull();
+    es!.click();
+    fixture.detectChanges();
+
+    expect(languageService.setLanguage).toHaveBeenCalledTimes(1);
+    expect(languageService.setLanguage).toHaveBeenCalledWith('es');
+  });
+
+  it('reflects the active language in the menubar switch', async () => {
+    const { fixture, languageService } = await setup();
+
+    languageService.language.set('es');
+    fixture.detectChanges();
+
+    expect(query<HTMLButtonElement>(fixture, 'language-es')?.getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    expect(query<HTMLButtonElement>(fixture, 'language-en')?.getAttribute('aria-pressed')).toBe(
+      'false',
+    );
   });
 });

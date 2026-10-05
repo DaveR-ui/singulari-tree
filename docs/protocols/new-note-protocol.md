@@ -2,62 +2,62 @@
 id: new-note-protocol
 category: protocols
 tags: [protocol, contract]
-aliases: [New Note Protocol, Protocolo de nota nueva]
+aliases: [New Note Protocol]
 related: [bootstrap-protocol]
-version: 1.0
+version: 1.0.1
 status: active
 ---
 
-# Protocolo de nota nueva
+# New note protocol
 
 ## Problem
 
-Una nota escrita "a mano alzada" suele entrar sin frontmatter completo, sin las secciones de cuerpo obligatorias o sin aristas al resto del grafo. Eso la vuelve invisible para los índices generados, rompe el validador y deja links que nadie resuelve. Falta un checklist único que se corra **antes** de declarar la nota terminada.
+A note written "freehand" usually enters without complete frontmatter, without the mandatory body sections, or without edges to the rest of the graph. That makes it invisible to the generated indexes, breaks the validator, and leaves links nobody resolves. A single checklist that runs **before** declaring the note finished is missing.
 
 ## Solution
 
-Checklist de cierre. Correr entero antes de declarar la nota `done`; un ítem sin marcar es un bloqueador.
+Closing checklist. Run it in full before declaring the note `done`; an unticked item is a blocker.
 
 ### Metadata
 
-- [ ] Las **7 keys requeridas** están presentes: `id`, `category`, `tags`, `aliases`, `related`, `version`, `status`.
-- [ ] `id` es un slug único, aproximadamente `<stem>` y coherente con `<category>`.
-- [ ] `status` es uno del enum: `draft` | `active` | `superseded` | `expired`.
-- [ ] Keys opcionales: presentes con valor válido o **totalmente ausentes** (nunca vacías ni en `null`).
-- [ ] Sin keys extra fuera del contrato.
+- [ ] The **7 required keys** are present: `id`, `category`, `tags`, `aliases`, `related`, `version`, `status`.
+- [ ] `id` is a unique slug, approximately `<stem>` and consistent with `<category>`.
+- [ ] `status` is one of the enum: `draft` | `active` | `superseded` | `expired`.
+- [ ] Optional keys: present with a valid value or **entirely absent** (never empty or `null`).
+- [ ] No extra keys outside the contract.
 
 ### Body
 
-- [ ] H1 presente y descriptivo.
-- [ ] Las **7 secciones verbatim en orden**: `## Problem`, `## Solution`, `## When to use`, `## When not to use`, `## Examples`, `## Common mistakes`, `## References`.
-- [ ] `## When not to use` y `## Common mistakes` son reales y específicos, no relleno.
+- [ ] H1 present and descriptive.
+- [ ] The **7 sections verbatim in order**: `## Problem`, `## Solution`, `## When to use`, `## When not to use`, `## Examples`, `## Common mistakes`, `## References`.
+- [ ] `## When not to use` and `## Common mistakes` are real and specific, not filler.
 
 ### Graph
 
-- [ ] Todo `related` apunta a un `id` que resuelve a una nota real.
-- [ ] Todo `[[wikilink]]` usa el stem del filename (sin `.md`) y resuelve.
-- [ ] La nota tiene **≥1 arista resuelta** (o `related` o `[[wikilink]]`).
-- [ ] La nota aparece en el hub de su carpeta.
+- [ ] Every `related` points to an `id` that resolves to a real note.
+- [ ] Every `[[wikilink]]` uses the filename stem (without `.md`) and resolves.
+- [ ] The note has **≥1 resolved edge** (either `related` or `[[wikilink]]`).
+- [ ] The note appears in its folder's hub.
 
 ### Hygiene
 
-- [ ] Sin secretos: ni credenciales, ni hashes largos, ni valores de `token` o `password` en el cuerpo.
-- [ ] El índice generado lista la nota (`node tools/docs/validate.js --write` sin diff inesperado).
-- [ ] Todos los links vivos: `node tools/docs/validate.js` exit `0`.
+- [ ] No secrets: no credentials, no long hashes, no `token` or `password` values in the body.
+- [ ] The generated index lists the note (`node tools/docs/validate.js --write` with no unexpected diff).
+- [ ] All links alive: `node tools/docs/validate.js` exit `0`.
 
 ## When to use
 
-- Al crear cualquier nota nueva dentro del corpus (context, protocols, adrs, decisions).
-- Al tocar una nota existente que todavía no había pasado por el contrato.
+- When creating any new note inside the corpus (context, protocols, adrs, decisions).
+- When touching an existing note that had not yet gone through the contract.
 
 ## When not to use
 
-- No para hubs: los `<folder>-index.md` usan body corto, no las 7 secciones.
-- No sustituye la revisión de contenido: el checklist verifica forma, no veracidad.
+- Not for hubs: `<folder>-index.md` files use a short body, not the 7 sections.
+- It does not replace content review: the checklist verifies form, not truthfulness.
 
 ## Examples
 
-Frontmatter mínimo correcto (7 keys, sin extras):
+Correct minimal frontmatter (7 keys, no extras):
 
 ```yaml
 ---
@@ -71,14 +71,14 @@ status: active
 ---
 ```
 
-Arista viva: `related: [new-note-protocol]` resuelve a `new-note-protocol.md`; `[[new-note-protocol]]` resuelve al mismo stem.
+Live edge: `related: [new-note-protocol]` resolves to `new-note-protocol.md`; `[[new-note-protocol]]` resolves to the same stem.
 
 ## Common mistakes
 
-- Dejar keys opcionales en `null` o `[]` en lugar de omitirlas.
-- Escribir el H1 en un idioma y las secciones en otro; el cuerpo va en el idioma configurado.
-- `related` con stems en lugar de `id`s, o `[[wikilink]]` con `.md`.
-- Crear la nota sin registrarla en el hub de su carpeta: queda huérfana.
+- Leaving optional keys as `null` or `[]` instead of omitting them.
+- Writing the H1 in one language and the sections in another; the body goes in the configured language.
+- `related` with stems instead of `id`s, or `[[wikilink]]` with `.md`.
+- Creating the note without registering it in its folder's hub: it stays orphaned.
 
 ## References
 

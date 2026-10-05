@@ -8,7 +8,7 @@ aliases:
 - Renderer slice
 related:
 - slices-index
-version: 1.0
+version: 1.0.1
 status: active
 ---
 
@@ -16,40 +16,40 @@ status: active
 
 ## What this slice is
 
-SPA Angular 21 (zoneless, standalone, signals) con features verticales y stores, más el UI kit compartido. Es la cara visible de SingulariTree.
+Angular 21 SPA (zoneless, standalone, signals) with vertical features and stores, plus the shared UI kit. It is the visible face of SingulariTree.
 
 ## Boundaries
 
 - **IN:** `apps/angular/**`, `libs/ui-kit/**`.
-- **OUT:** Electron, core Go y contratos (solo los consume).
+- **OUT:** Electron, Go core and contracts (it only consumes them).
 
 ## Entry points
 
-- `apps/angular/src/app/app.ts` — componente raíz.
-- `apps/angular/src/app/app.routes.ts` — rutas top-level.
-- `apps/angular/src/app/features/` — features verticales.
+- `apps/angular/src/app/app.ts` — root component.
+- `apps/angular/src/app/app.routes.ts` — top-level routes.
+- `apps/angular/src/app/features/` — vertical features.
 - `apps/angular/src/app/core/services/` — `ipc-bridge.service.ts`, `repo-state.service.ts`.
-- `libs/ui-kit/src/` — componentes compartidos.
+- `libs/ui-kit/src/` — shared components.
 
 ## How it works
 
-- Cada feature es vertical (UI + store + mappers).
-- `IpcBridgeService` habla con el preload expuesto por el shell.
-- `RepoStateService` expone el estado con signals.
-- Los mappers traducen hacia los tipos de `@contracts`.
+- Each feature is vertical (UI + store + mappers).
+- `IpcBridgeService` talks to the preload exposed by the shell.
+- `RepoStateService` exposes state with signals.
+- The mappers translate towards the `@contracts` types.
 
 ## Conventions of this slice
 
 - Standalone + zoneless + signals.
-- Tests con vitest.
-- El UI kit contiene componentes "dumb".
+- Tests with vitest.
+- The UI kit contains "dumb" components.
 
 ## Dependencies
 
-- **Upstream:** preload bridge y contratos.
-- **Downstream:** ninguno.
+- **Upstream:** preload bridge and contracts.
+- **Downstream:** none.
 
 ## Known gaps & accepted debt
 
-- Features mínimas con datos mock.
-- Visor de diff (Monaco) y rendimiento con repos grandes pendientes.
+- Minimal features with mock data.
+- Diff viewer (Monaco) and performance with large repos pending.

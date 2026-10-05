@@ -8,7 +8,7 @@ aliases:
 - Tooling slice
 related:
 - slices-index
-version: 1.0
+version: 1.0.1
 status: active
 ---
 
@@ -16,38 +16,38 @@ status: active
 
 ## What this slice is
 
-Scripts de build y generación, más la automatización de CI. Es el punto de entrada reproducible para compilar y verificar el monorepo.
+Build and generation scripts, plus CI automation. It is the reproducible entry point to compile and verify the monorepo.
 
 ## Boundaries
 
-- **IN:** `tools/**`, `go.work` y las configs de raíz relevantes a build.
-- **OUT:** apps y libs (el tooling las orquesta, no las implementa).
+- **IN:** `tools/**`, `go.work` and the root build-relevant configs.
+- **OUT:** apps and libs (tooling orchestrates them, it does not implement them).
 
 ## Entry points
 
-- `tools/scripts/` — generación de contratos y build.
-- `tools/ci/` — verificaciones de CI.
-- `go.work` — workspace Go.
-- `package.json` — scripts npm de raíz.
+- `tools/scripts/` — contract generation and build.
+- `tools/ci/` — CI checks.
+- `go.work` — Go workspace.
+- `package.json` — root npm scripts.
 
 ## How it works
 
-- Los scripts bash usan `set -euo pipefail` y resuelven `ROOT` con `dirname`.
-- `verify-contracts.sh` corre lint, breaking y drift de protobuf.
-- `verify-migrations.sh` valida las migraciones SQLite.
-- `tools/ci/verify-docs.sh` (nuevo) valida el corpus con `node tools/docs/validate.js`.
+- The bash scripts use `set -euo pipefail` and resolve `ROOT` with `dirname`.
+- `verify-contracts.sh` runs lint, breaking and drift for protobuf.
+- `verify-migrations.sh` validates the SQLite migrations.
+- `tools/ci/verify-docs.sh` (new) validates the corpus with `node tools/docs/validate.js`.
 
 ## Conventions of this slice
 
-- Los comandos se ejecutan desde el directorio del paquete, nunca desde la raíz (salvo Go vía `go.work`).
-- El modo `--headless` debe ser reproducible.
+- Commands are run from the package directory, never from the root (except Go via `go.work`).
+- `--headless` mode must be reproducible.
 
 ## Dependencies
 
-- **Upstream:** toolchains `buf`, `go`, `node`.
-- **Downstream:** todos los slices.
+- **Upstream:** `buf`, `go`, `node` toolchains.
+- **Downstream:** all slices.
 
 ## Known gaps & accepted debt
 
-- No hay pipeline CI remoto.
-- `verify-docs.sh` es nuevo.
+- There is no remote CI pipeline.
+- `verify-docs.sh` is new.

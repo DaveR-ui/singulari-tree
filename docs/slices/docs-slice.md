@@ -8,7 +8,7 @@ aliases:
 - Docs slice
 related:
 - slices-index
-version: 1.0
+version: 1.1
 status: active
 ---
 
@@ -16,43 +16,43 @@ status: active
 
 ## What this slice is
 
-Corpus de documentación del proyecto: entry point, contexto estratégico, slices, protocolos, ADRs e índices generados. Es la fuente canónica que enruta cada cambio a su doc.
+Project documentation corpus: entry point, strategic context, slices, protocols, ADRs and generated indexes. It is the canonical source that routes every change to its doc.
 
 ## Boundaries
 
 - **IN:** `docs/**`.
-- **OUT:** `.opencode/protocols/` (protocolos del agent-system) y el código de la aplicación.
+- **OUT:** `.opencode/protocols/` (agent-system protocols) and the application code.
 
 ## Entry points
 
-- `docs/project.md` — entry point y tabla de Slices.
-- `docs/index.md` — índice raíz.
-- `docs/context/` — contexto estratégico.
-- `docs/slices/` — generalidades por slice.
-- `docs/protocols/` — protocolos del proyecto.
-- `docs/adrs/` — decisiones de arquitectura.
+- `docs/project.md` — entry point and Slices table.
+- `docs/index.md` — root index.
+- `docs/context/` — strategic context.
+- `docs/slices/` — generalities per slice.
+- `docs/protocols/` — project protocols.
+- `docs/adrs/` — architecture decisions.
 
 ## How it works
 
-- Contrato onrails: frontmatter + secciones fijas por tipo de nota.
-- Hubs por carpeta que indexan sus notas.
-- Índices generados con markers regenerables: `node tools/docs/validate.js --write`.
-- Validador del corpus: `tools/docs/validate.js`.
+- Onrails contract: frontmatter + fixed sections per note type.
+- Per-folder hubs that index their notes.
+- Generated indexes with regenerable markers: `node tools/docs/validate.js --write`.
+- Corpus validator: `tools/docs/validate.js`.
 
 ## Conventions of this slice
 
-- `doc_language: es`.
-- Nombres de archivo y carpeta en lowercase-kebab-case.
-- `related` referencia ids; los `[[wikilinks]]` referencian stems de archivo (sin `.md`).
-- Los ADRs son append-only.
-- Ratchet: el contrato aplica solo a archivos nuevos o tocados.
+- `doc_language: en`.
+- File and folder names in lowercase-kebab-case.
+- `related` references ids; `[[wikilinks]]` reference file stems (without `.md`).
+- ADRs are append-only.
+- Ratchet: the contract applies only to new or touched files.
 
 ## Dependencies
 
-- **Upstream:** agentes documenter y orchestrator.
-- **Downstream:** todos los slices (routing).
+- **Upstream:** documenter and orchestrator agents.
+- **Downstream:** all slices (routing).
 
 ## Known gaps & accepted debt
 
-- Legacy `docs/context/git-client/**` sin frontmatter (ver `docs/context/accepted-debt.md`).
-- ADR-001..013 embebidos en el legacy.
+- Legacy `docs/context/git-client/**` without frontmatter (see `docs/context/accepted-debt.md`).
+- ADR-001..013 embedded in the legacy.

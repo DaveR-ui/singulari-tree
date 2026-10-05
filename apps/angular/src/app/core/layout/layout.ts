@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { Router, RouterOutlet } from '@angular/router';
 import type { RepoCardView } from '@singularitree/ui-kit';
+import { LanguageService } from '@core/services/language.service';
 import { RepoState } from '@core/services/repo-state.service';
 import { ThemeService } from '@core/services/theme.service';
 import { RemoteOpsStore } from '@features/remote/remote-ops.store';
@@ -51,6 +52,7 @@ export class LayoutComponent implements OnInit {
   readonly repoState = inject(RepoState);
   readonly remoteOps = inject(RemoteOpsStore);
   readonly themeService = inject(ThemeService);
+  readonly languageService = inject(LanguageService);
   private readonly router = inject(Router);
 
   // -- responsive --

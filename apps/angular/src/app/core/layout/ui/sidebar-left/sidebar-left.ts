@@ -36,7 +36,8 @@ interface RemoteGroup {
           type="button"
           (click)="workspaceExpanded.set(!workspaceExpanded())"
         >
-          <span class="st-left__arrow">{{ workspaceExpanded() ? '▾' : '▸' }}</span> WORKSPACE
+          <span class="st-left__arrow">{{ workspaceExpanded() ? '▾' : '▸' }}</span
+          ><span i18n>WORKSPACE</span>
         </button>
         @if (workspaceExpanded()) {
           <ul class="st-left__list">
@@ -59,17 +60,18 @@ interface RemoteGroup {
           type="button"
           (click)="branchesExpanded.set(!branchesExpanded())"
         >
-          <span class="st-left__arrow">{{ branchesExpanded() ? '▾' : '▸' }}</span> BRANCHES
+          <span class="st-left__arrow">{{ branchesExpanded() ? '▾' : '▸' }}</span
+          ><span i18n>BRANCHES</span>
         </button>
         @if (branchesExpanded()) {
           @if (loading()) {
-            <p class="st-left__empty" data-testid="st-sidebar-refs-loading">Loading…</p>
+            <p class="st-left__empty" data-testid="st-sidebar-refs-loading" i18n>Loading…</p>
           } @else if (offline()) {
-            <p class="st-left__empty" data-testid="st-sidebar-refs-offline">Git core offline</p>
+            <p class="st-left__empty" data-testid="st-sidebar-refs-offline" i18n>Git core offline</p>
           } @else if (error(); as err) {
             <p class="st-left__empty" data-testid="st-sidebar-refs-error">{{ err.message }}</p>
           } @else if (branches().length === 0) {
-            <p class="st-left__empty" data-testid="st-sidebar-branches-empty">No branches</p>
+            <p class="st-left__empty" data-testid="st-sidebar-branches-empty" i18n>No branches</p>
           } @else {
             <ul class="st-left__list" data-testid="st-sidebar-branches">
               @for (branch of branches(); track branch) {
@@ -90,17 +92,18 @@ interface RemoteGroup {
 
       <div class="st-left__section">
         <button class="st-left__head" type="button" (click)="tagsExpanded.set(!tagsExpanded())">
-          <span class="st-left__arrow">{{ tagsExpanded() ? '▾' : '▸' }}</span> TAGS
+          <span class="st-left__arrow">{{ tagsExpanded() ? '▾' : '▸' }}</span
+          ><span i18n>TAGS</span>
         </button>
         @if (tagsExpanded()) {
           @if (loading()) {
-            <p class="st-left__empty" data-testid="st-sidebar-refs-loading">Loading…</p>
+            <p class="st-left__empty" data-testid="st-sidebar-refs-loading" i18n>Loading…</p>
           } @else if (offline()) {
-            <p class="st-left__empty" data-testid="st-sidebar-refs-offline">Git core offline</p>
+            <p class="st-left__empty" data-testid="st-sidebar-refs-offline" i18n>Git core offline</p>
           } @else if (error(); as err) {
             <p class="st-left__empty" data-testid="st-sidebar-refs-error">{{ err.message }}</p>
           } @else if (tags().length === 0) {
-            <p class="st-left__empty" data-testid="st-sidebar-tags-empty">No tags</p>
+            <p class="st-left__empty" data-testid="st-sidebar-tags-empty" i18n>No tags</p>
           } @else {
             <ul class="st-left__list" data-testid="st-sidebar-tags">
               @for (tag of tags(); track tag) {
@@ -117,17 +120,18 @@ interface RemoteGroup {
           type="button"
           (click)="remotesExpanded.set(!remotesExpanded())"
         >
-          <span class="st-left__arrow">{{ remotesExpanded() ? '▾' : '▸' }}</span> REMOTES
+          <span class="st-left__arrow">{{ remotesExpanded() ? '▾' : '▸' }}</span
+          ><span i18n>REMOTES</span>
         </button>
         @if (remotesExpanded()) {
           @if (loading()) {
-            <p class="st-left__empty" data-testid="st-sidebar-refs-loading">Loading…</p>
+            <p class="st-left__empty" data-testid="st-sidebar-refs-loading" i18n>Loading…</p>
           } @else if (offline()) {
-            <p class="st-left__empty" data-testid="st-sidebar-refs-offline">Git core offline</p>
+            <p class="st-left__empty" data-testid="st-sidebar-refs-offline" i18n>Git core offline</p>
           } @else if (error(); as err) {
             <p class="st-left__empty" data-testid="st-sidebar-refs-error">{{ err.message }}</p>
           } @else if (remoteGroups().length === 0) {
-            <p class="st-left__empty" data-testid="st-sidebar-remotes-empty">No remotes</p>
+            <p class="st-left__empty" data-testid="st-sidebar-remotes-empty" i18n>No remotes</p>
           } @else {
             <div data-testid="st-sidebar-remotes">
               @for (group of remoteGroups(); track group.remote) {
@@ -154,6 +158,7 @@ interface RemoteGroup {
           type="button"
           (click)="collapseToggle.emit()"
           title="Collapse"
+          i18n-title
         >
           «
         </button>
@@ -164,6 +169,7 @@ interface RemoteGroup {
         type="button"
         (click)="collapseToggle.emit()"
         title="Expand"
+        i18n-title
       >
         »
       </button>
@@ -360,9 +366,9 @@ export class SidebarLeft {
   });
 
   readonly WORKSPACE: readonly WorkspaceItem[] = [
-    { kind: 'status', label: 'File status', icon: '▦' },
-    { kind: 'history', label: 'History', icon: '≡' },
-    { kind: 'search', label: 'Search', icon: '⌕' },
+    { kind: 'status', label: $localize`File status`, icon: '▦' },
+    { kind: 'history', label: $localize`History`, icon: '≡' },
+    { kind: 'search', label: $localize`Search`, icon: '⌕' },
   ];
 
   readonly workspaceExpanded = signal(true);

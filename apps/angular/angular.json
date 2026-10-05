@@ -14,6 +14,9 @@
       "root": "",
       "sourceRoot": "src",
       "prefix": "st",
+      "i18n": {
+        "sourceLocale": "en-US"
+      },
       "architect": {
         "build": {
           "builder": "@angular/build:application",
@@ -23,7 +26,16 @@
             "browser": "src/main.ts",
             "tsConfig": "tsconfig.json",
             "inlineStyleLanguage": "scss",
-            "assets": [],
+            "polyfills": [
+              "@angular/localize/init"
+            ],
+            "assets": [
+              {
+                "glob": "*.json",
+                "input": "src/locale",
+                "output": "locale"
+              }
+            ],
             "styles": [
               "src/styles.scss"
             ]
@@ -51,6 +63,14 @@
             }
           },
           "defaultConfiguration": "production"
+        },
+        "extract-i18n": {
+          "builder": "@angular/build:extract-i18n",
+          "options": {
+            "format": "json",
+            "outputPath": "src/locale",
+            "outFile": "messages.json"
+          }
         },
         "serve": {
           "builder": "@angular/build:dev-server",

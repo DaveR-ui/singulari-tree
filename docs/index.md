@@ -1,16 +1,16 @@
-> Documento generado — no editar a mano. El texto fuera de los marcadores es de edición humana; la región entre ellos la reconstruye `node tools/docs/validate.js --write` (write-if-diff).
-> Regenerar el índice: `node tools/docs/validate.js --write`.
+> Generated document — do not edit by hand. The text outside the markers is human-editable; the region between them is rebuilt by `node tools/docs/validate.js --write` (write-if-diff).
+> Regenerate the index: `node tools/docs/validate.js --write`.
 
-# SingulariTree — Índice de documentación
+# SingulariTree — Documentation index
 
 <!-- BEGIN GENERATED: index -->
-<!-- snapshot: 2026-09-29 -->
+<!-- snapshot: 2026-10-05 -->
 ## Generated index
 
 ### Overview
 
-- Markdown files: 19
-- Context docs: 3 | Notes: 6 | Hubs: 2 | adrs: 3 | templates: 0 | protocols: 3
+- Markdown files: 21
+- Context docs: 3 | Notes: 6 | Hubs: 2 | adrs: 5 | templates: 0 | protocols: 3
 
 ### Tree
 
@@ -20,6 +20,8 @@
   - adr-0014-docs-corpus-layout.md — adr, id: `adr-0014-docs-corpus-layout`
   - adr-0015-docs-validator-generated-index.md — adr, id: `adr-0015-docs-validator-generated-index`
   - adr-0016-lane-state-and-graph-dod.md — adr, id: `adr-0016-lane-state-and-graph-dod`
+  - adr-0017-docs-language-en.md — adr, id: `adr-0017-docs-language-en`
+  - adr-0018-renderer-i18n-locale-switch.md — adr, id: `adr-0018-renderer-i18n-locale-switch`
   - adr-index.md — hub, id: `adr-index`
 - context/
   - accepted-debt.md — context-doc

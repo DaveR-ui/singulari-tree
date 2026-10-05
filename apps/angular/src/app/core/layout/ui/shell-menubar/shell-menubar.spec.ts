@@ -1,17 +1,22 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { Language } from '@core/i18n/language';
 import { ShellMenubar } from './shell-menubar';
 
 type Theme = 'dark' | 'light';
 
-async function setup(theme: Theme = 'dark'): Promise<ComponentFixture<ShellMenubar>> {
+async function setup(
+  theme: Theme = 'dark',
+  language: Language = 'en',
+): Promise<ComponentFixture<ShellMenubar>> {
   await TestBed.configureTestingModule({
     providers: [provideZonelessChangeDetection()],
   }).compileComponents();
 
   const fixture = TestBed.createComponent(ShellMenubar);
   fixture.componentRef.setInput('theme', theme);
+  fixture.componentRef.setInput('language', language);
   fixture.detectChanges();
   return fixture;
 }
@@ -68,5 +73,27 @@ describe('ShellMenubar', () => {
     buttons.find((b) => b.textContent?.includes('◧'))!.click();
 
     expect(emitted).toEqual(['left', 'right']);
+  });
+
+  it('hosts the language switch and reflects the active language', async () => {
+    const fixture = await setup('dark', 'es');
+    const es = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+      '[data-testid="language-es"]',
+    );
+
+    expect(es).not.toBeNull();
+    expect(es!.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('forwards languageChange from the language switch', async () => {
+    const fixture = await setup('dark', 'en');
+    const emitted: Language[] = [];
+    fixture.componentInstance.languageChange.subscribe((language) => emitted.push(language));
+
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('[data-testid="language-es"]')!
+      .click();
+
+    expect(emitted).toEqual(['es']);
   });
 });

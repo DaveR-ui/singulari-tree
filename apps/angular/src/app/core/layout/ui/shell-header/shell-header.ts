@@ -17,7 +17,7 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
         @for (tab of tabs(); track tab) {
           <span class="st-tab" [class.st-tab--active]="tab === activeTab()">{{ tab }}</span>
         }
-        <button class="st-tab__add" type="button" aria-label="Add tab">+</button>
+        <button class="st-tab__add" type="button" aria-label="Add tab" i18n-aria-label>+</button>
       </div>
       <div class="st-header__actions">
         <span class="st-header__win" aria-hidden="true">─ □ ×</span>

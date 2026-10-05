@@ -8,7 +8,7 @@ aliases:
 - Core slice
 related:
 - slices-index
-version: 1.0
+version: 1.0.1
 status: active
 ---
 
@@ -16,41 +16,41 @@ status: active
 
 ## What this slice is
 
-Core Go headless que concentra el dominio, los servicios, el repositorio y los adaptadores. No depende de Electron ni de Angular: se puede compilar y ejecutar por sí solo.
+Headless Go core that concentrates the domain, the services, the repository and the adapters. It does not depend on Electron or Angular: it can be compiled and run on its own.
 
 ## Boundaries
 
 - **IN:** `apps/go-core/**`, `data/sqlite/**`.
-- **OUT:** contratos, shell Electron y renderer Angular.
+- **OUT:** contracts, Electron shell and Angular renderer.
 
 ## Entry points
 
-- `apps/go-core/cmd/go-core/main.go` — arranque y wiring (Viper + DI).
-- `apps/go-core/internal/domain/` — entidades y puertos.
-- `apps/go-core/internal/service/` — casos de uso.
-- `apps/go-core/internal/repository/` — persistencia SQLite.
-- `apps/go-core/internal/adapter/` — adaptadores (git, grpc, http, watcher).
+- `apps/go-core/cmd/go-core/main.go` — startup and wiring (Viper + DI).
+- `apps/go-core/internal/domain/` — entities and ports.
+- `apps/go-core/internal/service/` — use cases.
+- `apps/go-core/internal/repository/` — SQLite persistence.
+- `apps/go-core/internal/adapter/` — adapters (git, grpc, http, watcher).
 
 ## How it works
 
-- Arquitectura hexagonal *ports & adapters*.
-- Arranca con `--headless` e imprime la línea `GO_CORE_READY` con los campos `addr`, `http` y el `token` de sesión rotado.
-- gRPC es el transporte primario (unix socket en Linux/macOS, named pipe en Windows); HTTP actúa como fallback.
-- SQLite en modo WAL es caché de metadata; **nunca** guarda objetos Git.
-- Watcher coalescido sobre el filesystem.
+- Hexagonal *ports & adapters* architecture.
+- Starts with `--headless` and prints the `GO_CORE_READY` line with the fields `addr`, `http` and the rotated session `token`.
+- gRPC is the primary transport (unix socket on Linux/macOS, named pipe on Windows); HTTP acts as fallback.
+- SQLite in WAL mode is a metadata cache; it **never** stores Git objects.
+- Coalesced watcher over the filesystem.
 
 ## Conventions of this slice
 
-- El dominio no depende de infraestructura.
-- Un servicio por caso de uso.
-- `go vet` y `go test` se ejecutan desde `apps/go-core`.
+- The domain does not depend on infrastructure.
+- One service per use case.
+- `go vet` and `go test` run from `apps/go-core`.
 
 ## Dependencies
 
-- **Upstream:** contratos, binario `git`, SQLite.
-- **Downstream:** desktop-shell (gRPC); renderer (a través del shell).
+- **Upstream:** contracts, `git` binary, SQLite.
+- **Downstream:** desktop-shell (gRPC); renderer (through the shell).
 
 ## Known gaps & accepted debt
 
-- El adaptador `git` es un stub.
-- La superficie MCP es ADR-013 **Proposed** y no está implementada.
+- The `git` adapter is a stub.
+- The MCP surface is ADR-013 **Proposed** and is not implemented.

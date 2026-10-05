@@ -5,9 +5,11 @@
     [leftCollapsed]="leftCollapsed()"
     [rightCollapsed]="rightCollapsed()"
     [theme]="themeService.theme()"
+    [language]="languageService.language()"
     (toggleLeft)="toggleLeft()"
     (toggleRight)="toggleRight()"
     (themeToggle)="themeService.toggle()"
+    (languageChange)="languageService.setLanguage($event)"
   />
 
   <st-shell-toolbar
@@ -70,7 +72,7 @@
 
   <!-- collapsed right peek button (desktop) -->
   @if (!isOverlay() && rightCollapsed()) {
-    <button class="st-right-peek" type="button" (click)="toggleRight()" title="Show repositories">
+    <button class="st-right-peek" type="button" (click)="toggleRight()" title="Show repositories" i18n-title>
       ›
     </button>
   }

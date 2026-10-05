@@ -26,16 +26,22 @@ import type { AppError } from '@core/services/ipc-bridge.service';
   },
   template: `
     @if (!collapsed() || overlay()) {
-      <div class="st-right__resize" (mousedown)="resizeStart.emit($event)" title="Drag to resize"></div>
+      <div
+        class="st-right__resize"
+        (mousedown)="resizeStart.emit($event)"
+        title="Drag to resize"
+        i18n-title
+      ></div>
     }
     <div class="st-right__head">
-      <span class="st-right__title">Local repositories</span>
+      <span class="st-right__title" i18n>Local repositories</span>
       <span class="st-right__spacer"></span>
       <button
         class="st-icon-btn st-icon-btn--sm"
         type="button"
         (click)="toggleRight.emit()"
         title="Close"
+        i18n-title
       >
         ✕
       </button>
@@ -46,13 +52,14 @@ import type { AppError } from '@core/services/ipc-bridge.service';
         type="search"
         data-testid="repo-drawer-search"
         placeholder="Search repositories…"
+        i18n-placeholder
         [value]="search()"
         (input)="onSearch($event)"
       />
     </div>
     <div class="st-right__list">
       @if (loading() && repos().length === 0) {
-        <st-empty-state title="Loading repositories…" data-testid="repo-drawer-loading" />
+        <st-empty-state [title]="messages.loadingRepos" data-testid="repo-drawer-loading" />
       } @else if (error(); as err) {
         <st-empty-state
           tone="error"
@@ -62,20 +69,20 @@ import type { AppError } from '@core/services/ipc-bridge.service';
       } @else if (offline()) {
         <st-empty-state
           icon="🔌"
-          title="Desktop app required"
-          message="Git core offline — run inside the desktop app."
+          [title]="messages.desktopRequired"
+          [message]="messages.offlineMessage"
           data-testid="repo-drawer-offline"
         />
       } @else if (filteredRepos().length === 0) {
         @if (search().trim() === '') {
           <st-empty-state
             icon="📭"
-            title="No repositories"
-            message="No local repositories yet. Add one to get started."
+            [title]="messages.noRepos"
+            [message]="messages.noReposMessage"
             data-testid="repo-drawer-no-repos"
           />
         } @else {
-          <st-empty-state title="No matches" data-testid="repo-drawer-no-matches" />
+          <st-empty-state [title]="messages.noMatches" data-testid="repo-drawer-no-matches" />
         }
       } @else {
         <div data-testid="repo-drawer-list">
@@ -91,7 +98,8 @@ import type { AppError } from '@core/services/ipc-bridge.service';
                 type="button"
                 data-testid="repo-drawer-remove"
                 title="Remove repository"
-                [attr.aria-label]="'Remove ' + repo.name"
+                i18n-title
+                [attr.aria-label]="removeAriaLabel(repo)"
                 [disabled]="removingId() === repo.id"
                 (click)="onRemove($event, repo.id)"
               >
@@ -101,7 +109,7 @@ import type { AppError } from '@core/services/ipc-bridge.service';
           }
         </div>
       }
-      <button class="st-right__add" type="button" (click)="addRequested.emit()">
+      <button class="st-right__add" type="button" (click)="addRequested.emit()" i18n>
         + Add repository
       </button>
     </div>
@@ -294,6 +302,16 @@ export class RepoDrawer {
 
   readonly search = signal('');
 
+  /** Localizable strings bound to `<st-empty-state>` inputs. */
+  readonly messages = {
+    loadingRepos: $localize`Loading repositories…`,
+    desktopRequired: $localize`Desktop app required`,
+    offlineMessage: $localize`Git core offline — run inside the desktop app.`,
+    noRepos: $localize`No repositories`,
+    noReposMessage: $localize`No local repositories yet. Add one to get started.`,
+    noMatches: $localize`No matches`,
+  };
+
   readonly filteredRepos = computed<readonly RepoCardView[]>(() => {
     const term = this.search().trim().toLowerCase();
     if (!term) return this.repos();
@@ -310,6 +328,11 @@ export class RepoDrawer {
 
   select(id: string): void {
     this.repoSelected.emit(id);
+  }
+
+  /** Translated `aria-label` for a repository's remove control. */
+  removeAriaLabel(repo: RepoCardView): string {
+    return $localize`Remove ${repo.name}:name:`;
   }
 
   /**

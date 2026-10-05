@@ -8,7 +8,7 @@ aliases:
 - Desktop Shell slice
 related:
 - slices-index
-version: 1.0
+version: 1.0.1
 status: active
 ---
 
@@ -16,40 +16,40 @@ status: active
 
 ## What this slice is
 
-Shell Electron que hospeda la aplicación de escritorio: proceso main, preload, IPC tipado, supervisor del core Go, ventana, menú y política CSP.
+Electron shell that hosts the desktop application: main process, preload, typed IPC, Go core supervisor, window, menu and CSP policy.
 
 ## Boundaries
 
 - **IN:** `apps/electron/**`.
-- **OUT:** core Go, renderer Angular y contratos.
+- **OUT:** Go core, Angular renderer and contracts.
 
 ## Entry points
 
-- `apps/electron/src/main/main.ts` — arranque del proceso main.
-- `apps/electron/src/main/supervisor.ts` — gestión del ciclo de vida del core Go.
-- `apps/electron/src/main/go-core-client.ts` — cliente gRPC.
-- `apps/electron/src/preload/preload.ts` — preload único.
-- `apps/electron/src/ipc/` — canales, handlers y eventos.
+- `apps/electron/src/main/main.ts` — main process startup.
+- `apps/electron/src/main/supervisor.ts` — Go core lifecycle management.
+- `apps/electron/src/main/go-core-client.ts` — gRPC client.
+- `apps/electron/src/preload/preload.ts` — single preload.
+- `apps/electron/src/ipc/` — channels, handlers and events.
 
 ## How it works
 
-- El supervisor lanza y vigila el core Go: espera `GO_CORE_READY`, hace `Ping` cada 5s y rota el token de sesión.
-- El cliente gRPC habla con el core por el socket/named pipe.
-- Un único preload con `contextIsolation`.
-- CSP definida en `apps/electron/src/window/csp.ts`.
+- The supervisor starts and watches the Go core: it waits for `GO_CORE_READY`, `Ping`s every 5s and rotates the session token.
+- The gRPC client talks to the core over the socket/named pipe.
+- A single preload with `contextIsolation`.
+- CSP defined in `apps/electron/src/window/csp.ts`.
 
 ## Conventions of this slice
 
-- El IPC usa canales tipados definidos en `apps/electron/src/ipc/channels.ts`.
-- Un solo preload.
-- `MOCK_GO_CORE=1` habilita el desarrollo sin core real.
+- IPC uses typed channels defined in `apps/electron/src/ipc/channels.ts`.
+- A single preload.
+- `MOCK_GO_CORE=1` enables development without a real core.
 
 ## Dependencies
 
-- **Upstream:** core Go (gRPC) y contratos.
-- **Downstream:** renderer Angular.
+- **Upstream:** Go core (gRPC) and contracts.
+- **Downstream:** Angular renderer.
 
 ## Known gaps & accepted debt
 
-- e2e apoyado en mocks.
-- Packaging (`electron-builder`) aún sin configurar.
+- e2e backed by mocks.
+- Packaging (`electron-builder`) not yet configured.
