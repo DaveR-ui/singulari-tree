@@ -12,6 +12,7 @@
 
   <st-shell-toolbar
     [hasActiveRepo]="repoState.activeId() !== null"
+    [pullPending]="repoState.currentBranchBehind()"
     (pullRequested)="remoteOps.openDialog('pull')"
     (pushRequested)="remoteOps.openDialog('push')"
     (fetchRequested)="remoteOps.openDialog('fetch')"
@@ -23,6 +24,8 @@
       [collapsed]="leftCollapsed()"
       [activeWorkspace]="activeWorkspace()"
       [branches]="repoState.branches()"
+      [currentBranch]="repoState.currentBranch()"
+      [currentBranchBehind]="repoState.currentBranchBehind()"
       [remoteBranches]="repoState.remoteBranches()"
       [tags]="repoState.tags()"
       [remotes]="repoState.remotes()"

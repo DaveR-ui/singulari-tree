@@ -43,6 +43,21 @@ import type {
   UnstageResponse,
 } from '@contracts/gitcore';
 
+/**
+ * Locally-defined request/response for the native folder picker. This is NOT a
+ * proto type: the folder dialog is an Electron-shell concern, so it lives on the
+ * preload bridge only (channel `dialog:chooseDirectory`).
+ */
+export interface ChooseDirectoryRequest {
+  // No parameters: the dialog always picks a directory.
+}
+
+/** Result of the native folder picker; `path` is `''` when the user cancels. */
+export interface ChooseDirectoryResponse {
+  canceled: boolean;
+  path: string;
+}
+
 // Typed mirror of the preload bridge (`window.gitClientApi`, ipc-strategy.md §1.2).
 // Channel -> proto request/response pulled from the generated contracts. `fetch`,
 // `pull` and `push` are server-streaming in proto; progress arrives via `onProgress`
@@ -72,6 +87,8 @@ export interface GitClientApi {
   onRepoChanged: (cb: (payload: Repository) => void) => () => void;
   onFsChanged: (cb: (payload: FsChangedEvent) => void) => () => void;
   onProgress: (cb: (payload: Progress) => void) => () => void;
+  /** Native folder picker exposed by the Electron shell (channel `dialog:chooseDirectory`). */
+  chooseDirectory: (req: ChooseDirectoryRequest) => Promise<ChooseDirectoryResponse>;
 }
 
 export interface AppError {

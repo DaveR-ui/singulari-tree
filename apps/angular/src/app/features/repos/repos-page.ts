@@ -45,6 +45,15 @@ import { RepoState } from '@core/services/repo-state.service';
         <button
           type="button"
           class="st-repos-page__button"
+          data-testid="repos-browse"
+          [disabled]="browsing()"
+          (click)="browse()"
+        >
+          Browse…
+        </button>
+        <button
+          type="button"
+          class="st-repos-page__button"
           data-testid="repos-add"
           [disabled]="!path().trim() || adding()"
           (click)="add()"
@@ -235,13 +244,19 @@ export class ReposPage implements OnInit {
   readonly path = signal('');
   /** True while an `openRepository` add is in flight. */
   readonly adding = signal(false);
+  /** True while the native folder dialog is open. */
+  readonly browsing = signal(false);
   /** Last add failure (non-offline). */
   readonly addError = signal<AppError | null>(null);
   /** True when add failed because the Electron bridge is absent. */
   readonly addOffline = signal(false);
+  /** Last Browse failure (non-IPC). */
+  readonly browseError = signal<AppError | null>(null);
 
-  /** A local add error takes precedence over the list-load error. */
-  readonly error = computed<AppError | null>(() => this.addError() ?? this.repoState.reposError());
+  /** A local add/browse error takes precedence over the list-load error. */
+  readonly error = computed<AppError | null>(
+    () => this.addError() ?? this.browseError() ?? this.repoState.reposError(),
+  );
   /** The page is offline when either the list or the last add could not reach the core. */
   readonly offline = computed(() => this.repoState.reposOffline() || this.addOffline());
 
@@ -252,6 +267,31 @@ export class ReposPage implements OnInit {
 
   onInput(event: Event): void {
     this.path.set((event.target as HTMLInputElement).value);
+  }
+
+  /**
+   * Open the native folder picker and adopt the chosen path (enables Add).
+   *
+   * Degrades gracefully when the bridge is absent or the dialog fails: the
+   * typed state is left untouched. `IPC_UNAVAILABLE` is silent (matching the
+   * toolbar's offline behavior); any other failure is surfaced as a
+   * non-fatal error while keeping the typed state unchanged.
+   */
+  async browse(): Promise<void> {
+    if (this.browsing()) return;
+    this.browsing.set(true);
+    this.browseError.set(null);
+    try {
+      const res = await this.bridge.invoke('chooseDirectory', {});
+      if (!res.canceled && res.path) this.path.set(res.path);
+    } catch (err) {
+      const appError = toAppError(err);
+      if (appError.code !== 'IPC_UNAVAILABLE') {
+        this.browseError.set(appError);
+      }
+    } finally {
+      this.browsing.set(false);
+    }
   }
 
   /** True while `id` is being removed (drives the per-row disabled state). */

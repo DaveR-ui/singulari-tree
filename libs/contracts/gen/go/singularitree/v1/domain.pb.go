@@ -404,6 +404,7 @@ type Branch struct {
 	Upstream      string                 `protobuf:"bytes,4,opt,name=upstream,proto3" json:"upstream,omitempty"` // optional RefName.raw, empty if none
 	IsCurrent     bool                   `protobuf:"varint,5,opt,name=is_current,json=isCurrent,proto3" json:"is_current,omitempty"`
 	IsRemote      bool                   `protobuf:"varint,6,opt,name=is_remote,json=isRemote,proto3" json:"is_remote,omitempty"`
+	Behind        int32                  `protobuf:"varint,7,opt,name=behind,proto3" json:"behind,omitempty"` // commits on the upstream branch not present locally (pull-pending)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -478,6 +479,13 @@ func (x *Branch) GetIsRemote() bool {
 		return x.IsRemote
 	}
 	return false
+}
+
+func (x *Branch) GetBehind() int32 {
+	if x != nil {
+		return x.Behind
+	}
+	return 0
 }
 
 // Entity: remote
@@ -1184,7 +1192,7 @@ const file_domain_proto_rawDesc = "" +
 	"\x04Lane\x12\x14\n" +
 	"\x05index\x18\x01 \x01(\x05R\x05index\x12\x14\n" +
 	"\x05color\x18\x02 \x01(\x05R\x05color\x12\x1c\n" +
-	"\tcontinues\x18\x03 \x01(\bR\tcontinues\"\xb8\x01\n" +
+	"\tcontinues\x18\x03 \x01(\bR\tcontinues\"\xd0\x01\n" +
 	"\x06Branch\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x19\n" +
 	"\bref_name\x18\x02 \x01(\tR\arefName\x12'\n" +
@@ -1192,7 +1200,8 @@ const file_domain_proto_rawDesc = "" +
 	"\bupstream\x18\x04 \x01(\tR\bupstream\x12\x1d\n" +
 	"\n" +
 	"is_current\x18\x05 \x01(\bR\tisCurrent\x12\x1b\n" +
-	"\tis_remote\x18\x06 \x01(\bR\bisRemote\"Q\n" +
+	"\tis_remote\x18\x06 \x01(\bR\bisRemote\x12\x16\n" +
+	"\x06behind\x18\a \x01(\x05R\x06behind\"Q\n" +
 	"\x06Remote\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04urls\x18\x02 \x03(\tR\x04urls\x12\x1f\n" +

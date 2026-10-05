@@ -62,6 +62,7 @@ func TestBranchToProto(t *testing.T) {
 		Tip:       domain.Oid{Hex: strings.Repeat("a", 40), Kind: "SHA1"},
 		Upstream:  &up,
 		IsCurrent: true,
+		Behind:    4,
 	})
 	if got.GetName() != "main" || got.GetRefName() != "refs/heads/main" {
 		t.Errorf("branch = %+v, want main/refs/heads/main", got)
@@ -75,6 +76,9 @@ func TestBranchToProto(t *testing.T) {
 	if got.GetUpstream() != "refs/remotes/origin/main" {
 		t.Errorf("upstream = %q", got.GetUpstream())
 	}
+	if got.GetBehind() != 4 {
+		t.Errorf("behind = %d, want 4", got.GetBehind())
+	}
 }
 
 func TestBranchToProtoNoOptional(t *testing.T) {
@@ -84,6 +88,9 @@ func TestBranchToProtoNoOptional(t *testing.T) {
 	}
 	if got.GetUpstream() != "" {
 		t.Errorf("upstream = %q, want empty", got.GetUpstream())
+	}
+	if got.GetBehind() != 0 {
+		t.Errorf("behind = %d, want 0", got.GetBehind())
 	}
 }
 

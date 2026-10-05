@@ -52,6 +52,8 @@ export interface Branch {
   upstream: string;
   isCurrent: boolean;
   isRemote: boolean;
+  /** Commits behind upstream (proto field #7). */
+  behind: number;
 }
 
 export interface Remote {
@@ -417,6 +419,17 @@ export interface LogoutResponse {
   // empty
 }
 
+// --- Native dialog wire types (local, non-gRPC — mirror src/ipc/dialog-handlers) ---
+
+export interface ChooseDirectoryRequest {
+  // empty
+}
+
+export interface ChooseDirectoryResponse {
+  canceled: boolean;
+  path: string;
+}
+
 // --- Bridge surface --------------------------------------------------------
 
 export interface GitClientApi {
@@ -447,6 +460,8 @@ export interface GitClientApi {
   ) => Promise<ConnectGitHubFromCLIResponse>;
   listGitHubRepos: (req: ListGitHubReposRequest) => Promise<ListGitHubReposResponse>;
   logout: (req: LogoutRequest) => Promise<LogoutResponse>;
+  /** Local (non-gRPC) native folder picker handled in Electron main. */
+  chooseDirectory: (req: ChooseDirectoryRequest) => Promise<ChooseDirectoryResponse>;
   onRepoChanged: (cb: (payload: RepoChangedPayload) => void) => () => void;
   onFsChanged: (cb: (payload: FsChangedPayload) => void) => () => void;
   onProgress: (cb: (payload: ProgressPayload) => void) => () => void;
@@ -474,6 +489,7 @@ const api: GitClientApi = {
   connectGitHubFromCLI: (req) => ipcRenderer.invoke('auth:connectGitHubFromCLI', req),
   listGitHubRepos: (req) => ipcRenderer.invoke('auth:listGitHubRepos', req),
   logout: (req) => ipcRenderer.invoke('auth:logout', req),
+  chooseDirectory: (req) => ipcRenderer.invoke('dialog:chooseDirectory', req),
   // Each subscription returns an unsubscribe that removes ONLY its own handler
   // (`removeAllListeners` would detach every other subscriber on the channel).
   onRepoChanged: (cb) => {

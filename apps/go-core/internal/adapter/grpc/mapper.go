@@ -79,6 +79,7 @@ func branchToProto(b domain.Branch) *singularitreev1.Branch {
 		RefName:   b.RefName.Raw,
 		IsCurrent: b.IsCurrent,
 		IsRemote:  b.IsRemote,
+		Behind:    b.Behind,
 	}
 	if b.Tip.Hex != "" {
 		out.Tip = oidToProto(b.Tip)

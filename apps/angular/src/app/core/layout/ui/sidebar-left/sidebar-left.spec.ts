@@ -6,6 +6,8 @@ import { SidebarLeft } from './sidebar-left';
 
 interface SetupOptions {
   branches?: string[];
+  currentBranch?: string;
+  currentBranchBehind?: number;
   remoteBranches?: string[];
   tags?: string[];
   remotes?: string[];
@@ -22,6 +24,8 @@ async function setup(opts: SetupOptions = {}): Promise<ComponentFixture<SidebarL
   const fixture = TestBed.createComponent(SidebarLeft);
   const ref = fixture.componentRef;
   ref.setInput('branches', opts.branches ?? []);
+  ref.setInput('currentBranch', opts.currentBranch ?? '');
+  ref.setInput('currentBranchBehind', opts.currentBranchBehind ?? 0);
   ref.setInput('remoteBranches', opts.remoteBranches ?? []);
   ref.setInput('tags', opts.tags ?? []);
   ref.setInput('remotes', opts.remotes ?? []);
@@ -96,6 +100,48 @@ describe('SidebarLeft', () => {
       el.querySelectorAll('[data-testid="st-sidebar-remote-branches"]'),
     ).map((li) => li.textContent?.trim());
     expect(items).toEqual(['feature']);
+  });
+
+  it('badges the current branch row with the pull-pending count when behind', async () => {
+    const fixture = await setup({
+      branches: ['main', 'feature/x'],
+      currentBranch: 'main',
+      currentBranchBehind: 3,
+    });
+    const el = fixture.nativeElement as HTMLElement;
+
+    const badges = el.querySelectorAll('[data-testid="st-sidebar-branch-badge"]');
+    expect(badges).toHaveLength(1);
+    expect(badges[0].textContent?.trim()).toBe('3');
+
+    const rows = Array.from(el.querySelectorAll('[data-testid="st-sidebar-branches"] li'));
+    expect(rows[0].textContent).toContain('main');
+    expect(rows[0].querySelector('[data-testid="st-sidebar-branch-badge"]')).not.toBeNull();
+    expect(rows[1].querySelector('[data-testid="st-sidebar-branch-badge"]')).toBeNull();
+  });
+
+  it('renders no badge when the current branch is not behind', async () => {
+    const fixture = await setup({
+      branches: ['main', 'feature/x'],
+      currentBranch: 'main',
+      currentBranchBehind: 0,
+    });
+    const el = fixture.nativeElement as HTMLElement;
+
+    expect(el.querySelectorAll('[data-testid="st-sidebar-branch-badge"]')).toHaveLength(0);
+  });
+
+  it('renders no badge for non-current branches even when behind', async () => {
+    const fixture = await setup({
+      branches: ['main', 'feature/x'],
+      currentBranch: 'main',
+      currentBranchBehind: 2,
+    });
+    const el = fixture.nativeElement as HTMLElement;
+
+    const rows = Array.from(el.querySelectorAll('[data-testid="st-sidebar-branches"] li'));
+    // Only the current branch row (`main`) can carry the badge.
+    expect(rows[1].querySelector('[data-testid="st-sidebar-branch-badge"]')).toBeNull();
   });
 
   it('renders the empty state when there are no refs', async () => {

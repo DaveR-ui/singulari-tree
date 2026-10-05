@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -43,11 +44,14 @@ const (
 	// branchPrettyFormat mirrors the field order parsed by parseBranches:
 	// refname, objectname (tip), upstream:short, upstream (full refname),
 	// symref (target refname for a symbolic ref such as refs/remotes/origin/HEAD,
-	// empty for ordinary refs). Symrefs are skipped: only real branches are
+	// empty for ordinary refs), and upstream:track (git's ahead/behind/gone
+	// summary, e.g. "[behind 2]", "[ahead 1, behind 2]", "[gone]" or empty for
+	// refs without an upstream). Symrefs are skipped: only real branches are
 	// listed. Ref names cannot contain control characters, so unitSep/recordSep
 	// are unambiguous field/record separators.
 	branchPrettyFormat = "%(refname)" + unitSep + "%(objectname)" + unitSep +
-		"%(upstream:short)" + unitSep + "%(upstream)" + unitSep + "%(symref)" + recordSep
+		"%(upstream:short)" + unitSep + "%(upstream)" + unitSep + "%(symref)" +
+		unitSep + "%(upstream:track)" + recordSep
 
 	// tagPrettyFormat mirrors the field order parsed by parseTags: refname,
 	// objectname, objecttype, dereferenced objectname (*objectname, empty for
@@ -63,6 +67,11 @@ const (
 	// limit (the read path must always be paginated).
 	defaultListLimit = 200
 )
+
+// behindTrackRe extracts N from git's `%(upstream:track)` summary (e.g.
+// "[behind 2]" or "[ahead 1, behind 2]"). "gone" and empty track produce no
+// match, leaving Behind at 0.
+var behindTrackRe = regexp.MustCompile(`behind (\d+)`)
 
 // Adapter implements domain.GitPort over the system git executable.
 type Adapter struct {
@@ -444,6 +453,10 @@ func currentBranch(ctx context.Context, fsPath string) string {
 // The skip applies to any symbolic ref (non-empty symref), including both the
 // symbolic refs/remotes/origin/HEAD and a local refs/heads symbolic ref; they
 // are not real branches and are excluded. Ordinary refs have an empty symref.
+// The optional track field (index 5) yields Behind: the pull-pending count is
+// decimal-extracted from git's "[behind N]"/"[ahead M, behind N]" summary, and
+// only set for local branches with a configured upstream. Legacy 5-field
+// records (and "[gone]"/empty track) parse with Behind == 0.
 func parseBranches(out, current string) []domain.Branch {
 	records := strings.Split(out, recordSep)
 	branches := make([]domain.Branch, 0, len(records))
@@ -463,6 +476,10 @@ func parseBranches(out, current string) []domain.Branch {
 		symref := ""
 		if len(fields) >= 5 {
 			symref = strings.TrimSpace(fields[4])
+		}
+		track := ""
+		if len(fields) >= 6 {
+			track = strings.TrimSpace(fields[5])
 		}
 		if symref != "" {
 			// Symbolic ref (e.g. refs/remotes/origin/HEAD): not a branch.
@@ -491,6 +508,14 @@ func parseBranches(out, current string) []domain.Branch {
 			if upstreamRaw != "" {
 				up := domain.RefName{Raw: upstreamRaw}
 				b.Upstream = &up
+				// Behind is only meaningful with a configured upstream; git
+				// emits the count in the track field natively (no extra calls).
+				// Absent/malformed track (5-field records) leaves Behind at 0.
+				if m := behindTrackRe.FindStringSubmatch(track); m != nil {
+					if n, perr := strconv.Atoi(m[1]); perr == nil && n > 0 {
+						b.Behind = int32(n)
+					}
+				}
 			}
 		}
 		branches = append(branches, b)

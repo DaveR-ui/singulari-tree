@@ -29,6 +29,21 @@ export const CHANNELS = {
 export type ChannelName = (typeof CHANNELS)[keyof typeof CHANNELS];
 
 /**
+ * Local (non-gRPC) channels handled entirely in Electron main.
+ *
+ * These MUST NOT be added to `CHANNELS`/`CHANNEL_TO_RPC`: those maps are the
+ * strict Go RPC surface (`satisfies Record<ChannelName, string>`) and every
+ * entry is forwarded to the Go core via `Supervisor.forwardToGo`. Dialog
+ * channels are native Electron work (e.g. `dialog.showOpenDialog`) and never
+ * cross the gRPC boundary.
+ */
+export const DIALOG_CHANNELS = {
+  chooseDirectory: 'dialog:chooseDirectory',
+} as const;
+
+export type DialogChannelName = (typeof DIALOG_CHANNELS)[keyof typeof DIALOG_CHANNELS];
+
+/**
  * IPC channel → owning service RPC method (`git:*` → `singularitree.v1.GitCore`,
  * `auth:*` → `singularitree.v1.Auth`; see `AUTH_CHANNELS`).
  *

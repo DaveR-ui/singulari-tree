@@ -32,6 +32,11 @@ type Branch struct {
 	Upstream  *RefName
 	IsCurrent bool
 	IsRemote  bool
+	// Behind is the pull-pending count: the number of commits on the branch's
+	// configured upstream that are not present in this branch (git's
+	// `%(upstream:track)` "behind N"). It is > 0 only for local branches with a
+	// configured upstream; remote-tracking refs and detached/unborn HEAD are 0.
+	Behind int32
 }
 
 // BranchPort is the Git port for branches.

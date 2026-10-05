@@ -28,6 +28,7 @@ function branch(name: string): Branch {
     upstream: '',
     isCurrent: false,
     isRemote: false,
+    behind: 0,
   };
 }
 
@@ -39,6 +40,7 @@ function remoteBranch(name: string): Branch {
     upstream: '',
     isCurrent: false,
     isRemote: true,
+    behind: 0,
   };
 }
 

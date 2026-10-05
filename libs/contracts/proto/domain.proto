@@ -58,6 +58,7 @@ message Branch {
   string upstream = 4; // optional RefName.raw, empty if none
   bool is_current = 5;
   bool is_remote = 6;
+  int32 behind = 7; // commits on the upstream branch not present locally (pull-pending)
 }
 
 // Entity: remote

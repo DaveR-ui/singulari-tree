@@ -109,6 +109,8 @@ export interface Branch {
   upstream: string;
   isCurrent: boolean;
   isRemote: boolean;
+  /** Commits behind upstream (proto field #7). */
+  behind: number;
 }
 
 export interface Remote {

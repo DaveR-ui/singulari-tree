@@ -4,6 +4,7 @@ import * as http from 'node:http';
 import * as https from 'node:https';
 import { createMainWindow } from '../window/window';
 import { registerIpcHandlers } from '../ipc/handlers';
+import { registerDialogHandlers, unregisterDialogHandlers } from '../ipc/dialog-handlers';
 import { sendProgress } from '../ipc/events';
 import { Supervisor } from './supervisor';
 import { buildAppMenu } from './app-menu';
@@ -125,6 +126,9 @@ async function bootstrap(): Promise<void> {
     return supervisor.forwardToGo(channel, payload);
   });
 
+  // Local (non-gRPC) channels — native Electron dialogs, never forwarded to Go.
+  registerDialogHandlers();
+
   // Load renderer — dev branch exercised via loadURL
   if (devUrl) {
     // did-fail-load retry for race where ng serve restarts
@@ -157,6 +161,7 @@ async function bootstrap(): Promise<void> {
   });
 
   app.on('before-quit', () => {
+    unregisterDialogHandlers();
     supervisor?.stop();
   });
 }

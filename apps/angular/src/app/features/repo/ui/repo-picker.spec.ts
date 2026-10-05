@@ -58,7 +58,7 @@ function makeBridge(opts: { recent?: Repository[]; offline?: boolean } = {}): Ip
       case 'listRepositories':
         return { repositories: opts.recent ?? [] };
       case 'getBranches':
-        return { branches: [{ name: 'main', refName: 'refs/heads/main', tip: undefined, upstream: '', isCurrent: true, isRemote: false }] };
+        return { branches: [{ name: 'main', refName: 'refs/heads/main', tip: undefined, upstream: '', isCurrent: true, isRemote: false, behind: 0 }] };
       case 'getRemotes':
         return { remotes: [{ name: 'origin', urls: [], fetchSpecs: [] }] };
       case 'getTags':

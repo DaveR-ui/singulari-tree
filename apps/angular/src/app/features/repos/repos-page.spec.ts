@@ -222,6 +222,49 @@ describe('ReposPage', () => {
     expect(query(fixture, 'repos-offline')).not.toBeNull();
   });
 
+  it('browses for a directory, populates the path and enables Add', async () => {
+    const { fixture, bridge } = await setup({ repos: [] });
+    bridge.invoke.mockResolvedValue({ canceled: false, path: '/tmp/picked' });
+
+    const addBefore = query<HTMLButtonElement>(fixture, 'repos-add')!;
+    expect(addBefore.disabled).toBe(true);
+
+    query<HTMLButtonElement>(fixture, 'repos-browse')!.click();
+
+    await vi.waitFor(() =>
+      expect(bridge.invoke).toHaveBeenCalledWith('chooseDirectory', {}),
+    );
+    await vi.waitFor(() => expect(query<HTMLInputElement>(fixture, 'repos-add-input')!.value).toBe('/tmp/picked'));
+    fixture.detectChanges();
+
+    expect(query<HTMLButtonElement>(fixture, 'repos-add')!.disabled).toBe(false);
+  });
+
+  it('leaves the path unchanged when Browse is canceled', async () => {
+    const { fixture, bridge } = await setup({ repos: [] });
+    bridge.invoke.mockResolvedValue({ canceled: true, path: '' });
+
+    query<HTMLButtonElement>(fixture, 'repos-browse')!.click();
+    await vi.waitFor(() => expect(bridge.invoke).toHaveBeenCalledWith('chooseDirectory', {}));
+    fixture.detectChanges();
+
+    expect(query<HTMLInputElement>(fixture, 'repos-add-input')!.value).toBe('');
+    expect(query<HTMLButtonElement>(fixture, 'repos-add')!.disabled).toBe(true);
+  });
+
+  it('degrades gracefully when Browse hits IPC_UNAVAILABLE', async () => {
+    const { fixture, bridge } = await setup({ repos: [] });
+    bridge.invoke.mockRejectedValue({ code: 'IPC_UNAVAILABLE', message: 'no bridge' });
+
+    const browse = query<HTMLButtonElement>(fixture, 'repos-browse')!;
+    browse.click();
+    await vi.waitFor(() => expect(bridge.invoke).toHaveBeenCalledWith('chooseDirectory', {}));
+    fixture.detectChanges();
+
+    expect(query<HTMLInputElement>(fixture, 'repos-add-input')!.value).toBe('');
+    expect(browse.disabled).toBe(false);
+  });
+
   it('removes a repository through RepoState and stays on the page', async () => {
     const { fixture, repoState, router } = await setup({ repos: [REPO_A, REPO_B] });
 

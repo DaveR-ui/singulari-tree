@@ -140,7 +140,6 @@ SingulariTree/                         <- monorepo root (carpeta física Singula
 │       └── verify-contracts.sh        <- buf lint + buf breaking + buf generate --dry-run
 ├── go.work                            <- Go workspace (use ./apps/go-core)
 ├── package.json                       <- root workspaces (angular, electron, contracts, ui-kit)
-├── opencode.json
 └── README.md                          <- traceability + headless proof + quick start
 ```
 

@@ -52,6 +52,16 @@ export class RepoState {
   readonly remoteBranches = signal<string[]>([]);
   readonly tags = signal<string[]>([]);
   readonly remotes = signal<string[]>([]);
+  /**
+   * Name of the current local branch (`isCurrent && !isRemote`), or `''` when
+   * there is no active repo / detached HEAD.
+   */
+  readonly currentBranch = signal('');
+  /**
+   * Pull-pending count of the current local branch vs. its upstream; `0` when
+   * the branch has no upstream, is not current, or there is no active repo.
+   */
+  readonly currentBranchBehind = signal(0);
   readonly refsLoading = signal(false);
   readonly refsError = signal<AppError | null>(null);
   /** True when the renderer runs without the Electron preload bridge. */
@@ -166,6 +176,11 @@ export class RepoState {
       this.refsOffline.set(false);
       const refs = branches.branches ?? [];
       this.branches.set(refs.filter((b) => !b.isRemote).map((b) => b.name));
+      // The current branch drives the toolbar/sidebar pull-pending badge; only
+      // the current local branch is badged, and only when it is behind.
+      const current = refs.find((b) => b.isCurrent && !b.isRemote);
+      this.currentBranch.set(current?.name ?? '');
+      this.currentBranchBehind.set(current?.behind ?? 0);
       // Defensive: never surface the symbolic `origin/HEAD` remote ref
       // (matched on the raw ref so it holds regardless of short-name form).
       this.remoteBranches.set(
@@ -195,5 +210,7 @@ export class RepoState {
     this.remoteBranches.set([]);
     this.tags.set([]);
     this.remotes.set([]);
+    this.currentBranch.set('');
+    this.currentBranchBehind.set(0);
   }
 }

@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { BadgeComponent } from '@singularitree/ui-kit';
 
 /**
  * Git action toolbar. Pull/Push/Fetch emit request events (the shell opens the
@@ -10,7 +11,7 @@ import { RouterLink } from '@angular/router';
 @Component({
   selector: 'st-shell-toolbar',
   standalone: true,
-  imports: [RouterLink],
+  imports: [RouterLink, BadgeComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="st-toolbar">
@@ -24,6 +25,9 @@ import { RouterLink } from '@angular/router';
         (click)="pullRequested.emit()"
       >
         <i>⭳</i><span>Pull</span>
+        @if (pullPending() > 0) {
+          <st-badge variant="warning" data-testid="toolbar-pull-badge">{{ pullPending() }}</st-badge>
+        }
       </button>
       <button
         class="st-tool"
@@ -144,6 +148,8 @@ import { RouterLink } from '@angular/router';
 export class ShellToolbar {
   /** Whether a repository is active; Pull/Push/Fetch are disabled otherwise. */
   readonly hasActiveRepo = input(true);
+  /** Pull-pending commit count of the current branch; badges Pull when > 0. */
+  readonly pullPending = input(0);
 
   readonly pullRequested = output<void>();
   readonly pushRequested = output<void>();

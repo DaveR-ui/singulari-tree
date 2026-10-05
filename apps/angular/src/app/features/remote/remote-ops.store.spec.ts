@@ -20,6 +20,7 @@ function branch(overrides: Partial<Branch> & { name: string }): Branch {
     upstream: overrides.upstream ?? '',
     isCurrent: overrides.isCurrent ?? false,
     isRemote,
+    behind: overrides.behind ?? 0,
   };
 }
 
@@ -72,7 +73,7 @@ function makeBridge(overrides: Partial<Record<string, Handler>> = {}) {
 }
 
 function makeRepoState(id: string | null = 'repo-1'): RepoState {
-  return { activeId: signal<string | null>(id) } as unknown as RepoState;
+  return { activeId: signal<string | null>(id), loadRefs: vi.fn() } as unknown as RepoState;
 }
 
 function makeDestroyRef(): DestroyRef {
@@ -380,6 +381,59 @@ describe('RemoteOpsStore', () => {
     expect(callsTo(invoke, 'fetch')).toEqual([
       ['fetch', { repoId: 'repo-1', remote: 'origin', prune: false, tags: false, force: false }],
     ]);
+  });
+
+  it('runFetch refreshes RepoState refs and closes the dialog on success', async () => {
+    const { bridge } = makeBridge();
+    const repoState = makeRepoState();
+    const store = makeStore(bridge, repoState);
+    store.openDialog('fetch');
+
+    await store.runFetch({ allRemotes: false, remote: 'origin', prune: false, tags: false, force: false });
+
+    expect(repoState.loadRefs).toHaveBeenCalledTimes(1);
+    expect(store.activeDialog()).toBeNull();
+    expect(store.opError()).toBeNull();
+  });
+
+  it('runFetch keeps the dialog open, shows opError and does not refresh on failure', async () => {
+    const { bridge } = makeBridge({
+      fetch: () => Promise.reject({ code: 'FETCH_FAILED', message: 'network down' }),
+    });
+    const repoState = makeRepoState();
+    const store = makeStore(bridge, repoState);
+    store.openDialog('fetch');
+
+    await store.runFetch({ allRemotes: false, remote: 'origin', prune: false, tags: false, force: false });
+
+    expect(store.activeDialog()).toBe('fetch');
+    expect(store.opError()?.code).toBe('FETCH_FAILED');
+    expect(repoState.loadRefs).not.toHaveBeenCalled();
+  });
+
+  it('runFetch allRemotes keeps the dialog open and skips refresh when a later remote fails', async () => {
+    const { bridge, invoke } = makeBridge({
+      fetch: (req) => {
+        const remoteName = (req as { remote: string }).remote;
+        if (remoteName === 'upstream') {
+          return Promise.reject({ code: 'FETCH_FAILED', message: 'network down' });
+        }
+        return Promise.resolve();
+      },
+    });
+    const repoState = makeRepoState();
+    const store = makeStore(bridge, repoState);
+    store.remotes.set([remote('origin'), remote('upstream')]);
+    store.openDialog('fetch');
+
+    await store.runFetch({ allRemotes: true, remote: '', prune: true, tags: true, force: true });
+
+    expect(callsTo(invoke, 'fetch')).toHaveLength(2);
+    expect(repoState.loadRefs).not.toHaveBeenCalled();
+    expect(store.opError()?.code).toBe('FETCH_FAILED');
+    expect(store.opError()?.message).toBe('network down');
+    expect(store.activeDialog()).toBe('fetch');
+    expect(store.running()).toBe(false);
   });
 
   it('runPull invokes the pull RPC with every option', async () => {

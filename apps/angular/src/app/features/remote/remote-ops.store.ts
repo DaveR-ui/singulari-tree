@@ -247,6 +247,10 @@ export class RemoteOpsStore {
         } satisfies FetchRequest);
       }
       await this.loadRefs();
+      // Refresh the sidebar's ref lists (and the current-branch behind count)
+      // and close the modal only after the whole run finished successfully.
+      await this.repoState.loadRefs();
+      this.closeDialog();
     } catch (err) {
       this.handleRunError(err);
     } finally {
@@ -275,6 +279,9 @@ export class RemoteOpsStore {
         rebase: intent.rebase,
       } satisfies PullRequest);
       await this.loadRefs();
+      // Refresh the sidebar's ref lists (and the current-branch behind count)
+      // so the pull-pending badge clears after a successful pull.
+      await this.repoState.loadRefs();
     } catch (err) {
       this.handleRunError(err);
     } finally {

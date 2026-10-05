@@ -75,6 +75,8 @@ export interface Branch {
   upstream: string;
   isCurrent: boolean;
   isRemote: boolean;
+  /** commits on the upstream branch not present locally (pull-pending) */
+  behind: number;
 }
 
 /** Entity: remote */

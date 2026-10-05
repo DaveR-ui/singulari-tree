@@ -670,3 +670,120 @@ func TestParseBranchesRemote(t *testing.T) {
 		t.Errorf("remote.Tip = %s, want %s", remote.Tip.Hex, remoteOid)
 	}
 }
+
+// TestParseBranchesBehind is a pure-helper test for the optional 6th track
+// field: "[behind N]" and "[ahead M, behind N]" set Behind, while "[]", empty
+// and "[gone]" leave it at 0. It also proves legacy 5-field records still parse
+// with Behind == 0 and that a remote ref with a track value never sets Behind.
+func TestParseBranchesBehind(t *testing.T) {
+	oid := strings.Repeat("a", 40)
+	rec := func(name, upstreamShort, upstreamFull, track string) string {
+		return "refs/heads/" + name + unitSep + oid + unitSep + upstreamShort +
+			unitSep + upstreamFull + unitSep + "" + unitSep + track + recordSep
+	}
+	out := strings.Join([]string{
+		rec("behind2", "origin/behind2", "refs/remotes/origin/behind2", "[behind 2]"),
+		rec("aheadbehind", "origin/aheadbehind", "refs/remotes/origin/aheadbehind", "[ahead 1, behind 7]"),
+		rec("uptodate", "origin/uptodate", "refs/remotes/origin/uptodate", ""),
+		rec("gone", "origin/gone", "refs/remotes/origin/gone", "[gone]"),
+		// Legacy 5-field record: no track field at all.
+		"refs/heads/legacy" + unitSep + oid + unitSep + "origin/legacy" + unitSep +
+			"refs/remotes/origin/legacy" + unitSep + "" + recordSep,
+		// Remote ref carrying a track value must not set Behind.
+		"refs/remotes/origin/main" + unitSep + oid + unitSep + "" + unitSep + "" +
+			unitSep + "" + unitSep + "[behind 3]" + recordSep,
+	}, "")
+
+	branches := parseBranches(out, "behind2")
+	byName := map[string]domain.Branch{}
+	for _, b := range branches {
+		byName[b.Name] = b
+	}
+
+	cases := []struct {
+		name string
+		want int32
+	}{
+		{"behind2", 2},
+		{"aheadbehind", 7},
+		{"uptodate", 0},
+		{"gone", 0},
+		{"legacy", 0},
+		{"origin/main", 0},
+	}
+	for _, tc := range cases {
+		b, ok := byName[tc.name]
+		if !ok {
+			t.Fatalf("missing branch %q in %+v", tc.name, byName)
+		}
+		if b.Behind != tc.want {
+			t.Errorf("%s.Behind = %d, want %d", tc.name, b.Behind, tc.want)
+		}
+	}
+}
+
+// TestBranchListBehind is an integration-style test (no network): it creates a
+// remote-tracking ref ahead of the local branch and configures the local
+// branch's upstream with `git branch --set-upstream-to`, then asserts
+// BranchList reports the expected pull-pending count. The local branch also
+// carries its own extra commit so git reports "ahead 1, behind 2".
+func TestBranchListBehind(t *testing.T) {
+	dir := initRepo(t)
+	gitRun(t, dir, "branch", "-M", "main")
+	local := gitRun(t, dir, "rev-parse", "HEAD")
+
+	// Declare a remote so git treats refs/remotes/origin/* as remote-tracking
+	// branches (required by --set-upstream-to). No network is ever touched.
+	gitRun(t, dir, "remote", "add", "origin", "https://example.com/repo.git")
+
+	// Build a remote-tracking tip that is two commits ahead of the local branch
+	// without any network: create the commits then move the ref via update-ref.
+	gitRun(t, dir, "checkout", "-q", "-b", "tmp")
+	writeFile(t, filepath.Join(dir, "c.txt"), "three\n")
+	gitRun(t, dir, "add", "c.txt")
+	gitRun(t, dir, "commit", "-q", "-m", "third")
+	writeFile(t, filepath.Join(dir, "d.txt"), "four\n")
+	gitRun(t, dir, "add", "d.txt")
+	gitRun(t, dir, "commit", "-q", "-m", "fourth")
+	remoteTip := gitRun(t, dir, "rev-parse", "HEAD")
+	gitRun(t, dir, "update-ref", "refs/remotes/origin/main", remoteTip)
+	gitRun(t, dir, "checkout", "-q", "main")
+	gitRun(t, dir, "branch", "-D", "tmp")
+
+	// Give the local branch one commit the upstream lacks (ahead 1).
+	writeFile(t, filepath.Join(dir, "e.txt"), "five\n")
+	gitRun(t, dir, "add", "e.txt")
+	gitRun(t, dir, "commit", "-q", "-m", "fifth")
+	if now := gitRun(t, dir, "rev-parse", "HEAD"); now == local {
+		t.Fatal("local branch did not advance")
+	}
+	gitRun(t, dir, "branch", "--set-upstream-to=origin/main", "main")
+
+	repoID := domain.RepositoryId("repo-1")
+	a := NewAdapter(&fakeRepoPort{fsPath: dir})
+
+	branches, err := a.BranchList(context.Background(), repoID)
+	if err != nil {
+		t.Fatalf("BranchList: %v", err)
+	}
+	byName := map[string]domain.Branch{}
+	for _, b := range branches {
+		byName[b.Name] = b
+	}
+	main, ok := byName["main"]
+	if !ok {
+		t.Fatalf("missing main in %+v", branches)
+	}
+	if main.Upstream == nil || main.Upstream.Raw != "refs/remotes/origin/main" {
+		t.Fatalf("main.Upstream = %+v, want refs/remotes/origin/main", main.Upstream)
+	}
+	if main.Behind != 2 {
+		t.Errorf("main.Behind = %d, want 2", main.Behind)
+	}
+	// Remote-tracking ref has no configured upstream, so Behind stays 0.
+	if remote, ok := byName["origin/main"]; !ok {
+		t.Errorf("missing origin/main in %+v", branches)
+	} else if remote.Behind != 0 {
+		t.Errorf("origin/main.Behind = %d, want 0", remote.Behind)
+	}
+}

@@ -73,6 +73,8 @@ interface StubRepoStateOptions {
   repos?: Repository[];
   activeId?: string | null;
   branches?: string[];
+  currentBranch?: string;
+  currentBranchBehind?: number;
   remoteBranches?: string[];
   tags?: string[];
   remotes?: string[];
@@ -100,6 +102,8 @@ function makeRepoState(opts: StubRepoStateOptions = {}) {
     reposOffline: signal(opts.reposOffline ?? false),
     removingId: signal<string | null>(opts.removingId ?? null),
     branches: signal<string[]>(opts.branches ?? []),
+    currentBranch: signal(opts.currentBranch ?? ''),
+    currentBranchBehind: signal(opts.currentBranchBehind ?? 0),
     remoteBranches: signal<string[]>(opts.remoteBranches ?? []),
     tags: signal<string[]>(opts.tags ?? []),
     remotes: signal<string[]>(opts.remotes ?? []),
@@ -313,6 +317,22 @@ describe('LayoutComponent', () => {
     expect(branches?.textContent).toContain('feature/x');
     expect(el.querySelector('[data-testid="st-sidebar-remotes"]')?.textContent).toContain('origin');
     expect(el.querySelector('[data-testid="st-sidebar-branches-empty"]')).toBeNull();
+  });
+
+  it('flows RepoState current branch/behind into the toolbar and sidebar badges', async () => {
+    const { fixture } = await setup({
+      branches: ['main', 'feature/x'],
+      currentBranch: 'main',
+      currentBranchBehind: 5,
+    });
+    const el = fixture.nativeElement as HTMLElement;
+
+    const toolbarBadge = el.querySelector('[data-testid="toolbar-pull-badge"]');
+    expect(toolbarBadge?.textContent?.trim()).toBe('5');
+
+    const sidebarBadges = el.querySelectorAll('[data-testid="st-sidebar-branch-badge"]');
+    expect(sidebarBadges).toHaveLength(1);
+    expect(sidebarBadges[0].textContent?.trim()).toBe('5');
   });
 
   it('passes real remote branches into the sidebar REMOTES section', async () => {

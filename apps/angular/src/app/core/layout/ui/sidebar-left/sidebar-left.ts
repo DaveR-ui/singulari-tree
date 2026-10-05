@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
+import { BadgeComponent } from '@singularitree/ui-kit';
 import type { AppError } from '@core/services/ipc-bridge.service';
 
 interface WorkspaceItem {
@@ -22,6 +23,7 @@ interface RemoteGroup {
 @Component({
   selector: 'st-sidebar-left',
   standalone: true,
+  imports: [BadgeComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[class.st-left--collapsed]': 'collapsed()',
@@ -71,7 +73,15 @@ interface RemoteGroup {
           } @else {
             <ul class="st-left__list" data-testid="st-sidebar-branches">
               @for (branch of branches(); track branch) {
-                <li class="st-left__item st-left__sub">{{ branch }}</li>
+                <li class="st-left__item st-left__sub">
+                  {{ branch }}
+                  @if (branch === currentBranch() && currentBranchBehind() > 0) {
+                    <st-badge
+                      variant="warning"
+                      data-testid="st-sidebar-branch-badge"
+                    >{{ currentBranchBehind() }}</st-badge>
+                  }
+                </li>
               }
             </ul>
           }
@@ -298,6 +308,10 @@ export class SidebarLeft {
   readonly collapsed = input(false);
   /** Local branch display names. */
   readonly branches = input<readonly string[]>([]);
+  /** Name of the current local branch; only it can carry a pull-pending badge. */
+  readonly currentBranch = input('');
+  /** Pull-pending count of the current branch; badges its row when > 0. */
+  readonly currentBranchBehind = input(0);
   /** Remote-tracking branch names, e.g. `origin/david/topic`. */
   readonly remoteBranches = input<readonly string[]>([]);
   readonly tags = input<readonly string[]>([]);
