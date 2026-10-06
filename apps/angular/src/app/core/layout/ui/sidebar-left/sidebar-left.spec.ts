@@ -191,14 +191,14 @@ describe('SidebarLeft', () => {
     expect(all(fixture, 'st-sidebar-refs-error')).toHaveLength(3);
   });
 
-  it('emits branchSelected when a local branch row is clicked', async () => {
+  it('emits branchSelected when a local branch row is double-clicked', async () => {
     const fixture = await setup({ branches: ['main', 'feature/x'] });
     const emitted: string[] = [];
     fixture.componentInstance.branchSelected.subscribe((name) => emitted.push(name));
 
     const rows = all(fixture, 'st-sidebar-branch') as HTMLElement[];
     expect(rows).toHaveLength(2);
-    rows[1].click();
+    rows[1].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
 
     expect(emitted).toEqual(['feature/x']);
   });
@@ -228,8 +228,8 @@ describe('SidebarLeft', () => {
 
     const rows = all(fixture, 'st-sidebar-remote-branches') as HTMLElement[];
     expect(rows).toHaveLength(3);
-    rows[0].click();
-    rows[2].click();
+    rows[0].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    rows[2].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
 
     expect(emitted).toEqual(['origin/main', 'upstream/develop']);
   });
@@ -244,5 +244,25 @@ describe('SidebarLeft', () => {
     row.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
 
     expect(emitted).toEqual(['origin/feature']);
+  });
+
+  it('emits nothing on a single click for local or remote branch rows', async () => {
+    const fixture = await setup({
+      branches: ['main', 'feature/x'],
+      remotes: ['origin'],
+      remoteBranches: ['origin/feature'],
+    });
+    const localEmitted: string[] = [];
+    const remoteEmitted: string[] = [];
+    fixture.componentInstance.branchSelected.subscribe((name) => localEmitted.push(name));
+    fixture.componentInstance.remoteBranchSelected.subscribe((name) => remoteEmitted.push(name));
+
+    const localRows = all(fixture, 'st-sidebar-branch') as HTMLElement[];
+    const remoteRows = all(fixture, 'st-sidebar-remote-branches') as HTMLElement[];
+    localRows[1].click();
+    remoteRows[0].click();
+
+    expect(localEmitted).toEqual([]);
+    expect(remoteEmitted).toEqual([]);
   });
 });

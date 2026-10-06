@@ -617,14 +617,14 @@ describe('LayoutComponent', () => {
     expect(ipcBridge.unsubscribe).toHaveBeenCalledTimes(1);
   });
 
-  it('opens the switch confirmation before any checkout on a local branch click', async () => {
+  it('opens the switch confirmation before any checkout on a local branch double-click', async () => {
     const { fixture, repoState } = await setup({ branches: ['main', 'feature/x'] });
 
     const row = queryAll<HTMLElement>(fixture, 'st-sidebar-branch').find(
       (el) => el.textContent?.trim() === 'feature/x',
     );
     expect(row).not.toBeNull();
-    row!.click();
+    row!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     fixture.detectChanges();
 
     expect(query(fixture, 'switch-branch-message')?.textContent?.trim()).toBe(
@@ -662,7 +662,7 @@ describe('LayoutComponent', () => {
     expect(repoState.checkoutBranch).toHaveBeenCalledWith('feature/x', false, true, false);
   });
 
-  it('opens the switch confirmation before any checkout on a remote-tracking branch click', async () => {
+  it('opens the switch confirmation before any checkout on a remote-tracking branch double-click', async () => {
     const { fixture, repoState } = await setup({
       remotes: ['origin'],
       remoteBranches: ['origin/david/topic'],
@@ -670,7 +670,7 @@ describe('LayoutComponent', () => {
 
     const row = query<HTMLElement>(fixture, 'st-sidebar-remote-branches');
     expect(row).not.toBeNull();
-    row!.click();
+    row!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     fixture.detectChanges();
 
     expect(query(fixture, 'switch-branch-message')?.textContent?.trim()).toBe(
@@ -766,13 +766,13 @@ describe('LayoutComponent', () => {
 
   // -- attempt-then-prompt branch switch -----------------------------------
 
-  /** Click the sidebar branch row whose visible label matches `name`. */
+  /** Double-click the sidebar branch row whose visible label matches `name`. */
   function clickBranch(fixture: { nativeElement: unknown }, name: string): void {
     const row = queryAll<HTMLElement>(fixture, 'st-sidebar-branch').find(
       (el) => el.textContent?.trim() === name,
     );
     if (!row) throw new Error(`branch row '${name}' not found`);
-    row.click();
+    row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
   }
 
   async function openDirtyPrompt(

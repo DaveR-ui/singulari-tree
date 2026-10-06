@@ -80,7 +80,7 @@ interface RemoteGroup {
                   data-testid="st-sidebar-branch"
                   role="button"
                   tabindex="0"
-                  (click)="selectBranch(branch)"
+                  (dblclick)="selectBranch(branch)"
                   (keydown)="onBranchKeydown($event, branch)"
                 >
                   {{ branch }}
@@ -150,7 +150,7 @@ interface RemoteGroup {
                       data-testid="st-sidebar-remote-branches"
                       role="button"
                       tabindex="0"
-                      (click)="selectRemoteBranch(group.remote, branch)"
+                      (dblclick)="selectRemoteBranch(group.remote, branch)"
                       (keydown)="onRemoteBranchKeydown($event, group.remote, branch)"
                     >
                       {{ branch }}
@@ -281,6 +281,11 @@ interface RemoteGroup {
     }
 
     /* Branch rows are actionable: brighter hover plus a keyboard focus ring. */
+    .st-left__sub--clickable {
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
     .st-left__sub--clickable:hover {
       color: var(--st-color-text, #d6d6de);
       background: rgba(255, 255, 255, 0.08);
