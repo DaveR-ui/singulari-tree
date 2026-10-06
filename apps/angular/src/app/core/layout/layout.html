@@ -9,9 +9,10 @@
     (fetchRequested)="remoteOps.openDialog('fetch')"
   />
 
-  <!-- Prominent, dismissible checkout-failure banner for the active repo. -->
+  <!-- Prominent, dismissible checkout-failure banner for the active repo.
+       Suppressed while the conflict modal owns the error, to avoid duplicates. -->
   <st-checkout-error-banner
-    [error]="repoState.checkoutError()"
+    [error]="checkoutPrompt() ? null : repoState.checkoutError()"
     (dismiss)="repoState.dismissCheckoutError()"
   />
 
@@ -115,5 +116,17 @@
     [offline]="remoteOps.offline()"
     (closed)="remoteOps.closeDialog()"
     (submitted)="remoteOps.runFetch($event)"
+  />
+
+  <!-- Branch switch: pre-checkout confirmation on every click, then the
+       dirty/untracked escalation when a checkout is blocked. -->
+  <st-switch-branch-confirm-dialog
+    [open]="checkoutPrompt() !== null"
+    [branchName]="checkoutPrompt()?.name ?? ''"
+    [mode]="checkoutPrompt()?.mode ?? 'dirty'"
+    (confirmed)="onConfirmed($event)"
+    (forceCheckout)="onForceCheckout()"
+    (saveChanges)="onSaveChanges()"
+    (cancel)="onCancelCheckoutPrompt()"
   />
 </div>

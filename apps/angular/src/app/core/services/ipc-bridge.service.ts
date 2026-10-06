@@ -39,6 +39,8 @@ import type {
   RemoveRepositoryResponse,
   StageRequest,
   StageResponse,
+  StashPushRequest,
+  StashPushResponse,
   UnstageRequest,
   UnstageResponse,
 } from '@contracts/gitcore';
@@ -86,6 +88,7 @@ export interface GitClientApi {
   unstage: (req: UnstageRequest) => Promise<UnstageResponse>;
   commit: (req: CommitRequest) => Promise<Commit>;
   checkout: (req: CheckoutRequest) => Promise<CheckoutResponse>;
+  stashPush: (req: StashPushRequest) => Promise<StashPushResponse>;
   fetch: (req: FetchRequest) => Promise<void>;
   pull: (req: PullRequest) => Promise<void>;
   push: (req: PushRequest) => Promise<void>;

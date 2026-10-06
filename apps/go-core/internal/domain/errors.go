@@ -42,6 +42,7 @@ const (
 	ErrCodeStageFailed       = "STAGE_FAILED"
 	ErrCodeCommitFailed      = "COMMIT_FAILED"
 	ErrCodeCheckoutFailed    = "CHECKOUT_FAILED"
+	ErrCodeStashFailed       = "STASH_FAILED"
 	ErrCodeFetchFailed       = "FETCH_FAILED"
 	ErrCodePushFailed        = "PUSH_FAILED"
 	ErrCodePullFailed        = "PULL_FAILED"

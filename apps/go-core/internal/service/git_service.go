@@ -113,12 +113,13 @@ func (s *GitService) TagList(ctx context.Context, repoID domain.RepositoryId) ([
 	return s.gitPort.TagList(ctx, repoID)
 }
 
-// Checkout checks out a ref.
-func (s *GitService) Checkout(ctx context.Context, repoID domain.RepositoryId, ref domain.RefName) error {
+// Checkout checks out a ref. force discards tracked working-tree modifications;
+// discardUntracked additionally discards untracked files (and implies force).
+func (s *GitService) Checkout(ctx context.Context, repoID domain.RepositoryId, ref domain.RefName, force, discardUntracked bool) error {
 	if s.gitPort == nil {
 		return nil
 	}
-	if err := s.gitPort.Checkout(ctx, repoID, ref); err != nil {
+	if err := s.gitPort.Checkout(ctx, repoID, ref, force, discardUntracked); err != nil {
 		return err
 	}
 	if s.cachePort != nil {
@@ -126,6 +127,22 @@ func (s *GitService) Checkout(ctx context.Context, repoID domain.RepositoryId, r
 	}
 	s.notifyChange(repoID)
 	return nil
+}
+
+// StashPush saves the working-tree changes to a new stash entry.
+func (s *GitService) StashPush(ctx context.Context, repoID domain.RepositoryId, message string) (*domain.Stash, error) {
+	if s.gitPort == nil {
+		return nil, domain.AppError{Code: domain.ErrCodeStashFailed, Message: "git not configured"}
+	}
+	st, err := s.gitPort.StashPush(ctx, repoID, message)
+	if err != nil {
+		return nil, err
+	}
+	if s.cachePort != nil {
+		s.cachePort.Invalidate(repoID)
+	}
+	s.notifyChange(repoID)
+	return st, nil
 }
 
 // Fetch streams progress for a fetch from remote, followed by an optional

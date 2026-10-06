@@ -8,6 +8,7 @@ import {
   effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { Router, RouterOutlet } from '@angular/router';
 import type { RepoCardView } from '@singularitree/ui-kit';
@@ -24,6 +25,15 @@ import { RepoDrawer } from './ui/repo-drawer/repo-drawer';
 import { ShellHeader } from './ui/shell-header/shell-header';
 import { ShellToolbar } from './ui/shell-toolbar/shell-toolbar';
 import { SidebarLeft } from './ui/sidebar-left/sidebar-left';
+import { SwitchBranchConfirmDialog } from './ui/switch-branch-confirm-dialog/switch-branch-confirm-dialog';
+
+/** Branch-switch attempt awaiting confirmation, either pre-checkout or blocked. */
+interface CheckoutPrompt {
+  /** Clicked branch display name, used verbatim in the confirmation copy. */
+  readonly name: string;
+  readonly isRemote: boolean;
+  readonly mode: 'confirm' | 'dirty' | 'untracked';
+}
 
 /**
  * Application shell: header + toolbar chrome, a route-driven center region and
@@ -45,6 +55,7 @@ import { SidebarLeft } from './ui/sidebar-left/sidebar-left';
     PullDialog,
     PushDialog,
     FetchDialog,
+    SwitchBranchConfirmDialog,
   ],
   templateUrl: './layout.html',
   styleUrls: ['./layout.scss'],
@@ -79,6 +90,17 @@ export class LayoutComponent implements OnInit {
   readonly isMobile = computed(() => this.viewportW() < this.MOBILE_BP);
   readonly isOverlay = computed(() => this.isMobile());
 
+  /**
+   * Branch-switch confirmation currently awaiting the user, or null. Opened on
+   * every branch click (mode `confirm`) and, after a blocked checkout, driven by
+   * the store's `checkoutError` (modes `dirty`/`untracked`); non-dirty failures
+   * never open it (they fall back to `st-checkout-error-banner`).
+   */
+  readonly checkoutPrompt = signal<CheckoutPrompt | null>(null);
+
+  /** Last confirmed branch target, remembered so a blocked retry can re-prompt. */
+  private lastAttempt: { name: string; isRemote: boolean } | null = null;
+
   /** Local tracked repos mapped to the drawer's presentational view model. */
   readonly repoCards = computed<RepoCardView[]>(() => this.repoState.repos().map(toLocalRepoCardView));
 
@@ -100,6 +122,44 @@ export class LayoutComponent implements OnInit {
       try {
         localStorage.setItem(this.LS_RIGHT_COL, String(c));
       } catch {}
+    });
+
+    // Take over from the fallback banner whenever a blocked checkout needs a
+    // decision: a dirty tree gets the force/stash choice, and a force that
+    // still fails on untracked files escalates to a distinct deletion warning.
+    // Any other error (or no error) leaves the prompt closed so the banner owns it.
+    effect(() => {
+      const error = this.repoState.checkoutError();
+      const attempt = this.lastAttempt;
+      // A pending pre-checkout confirmation owns the flow until the user acts;
+      // never clobber it with a stale/previous checkout error. Read untracked so
+      // writing `checkoutPrompt` below cannot re-trigger this effect.
+      if (untracked(this.checkoutPrompt)?.mode === 'confirm') return;
+      // An in-flight operation clears `checkoutError` at its start (and again in
+      // `loadRefs`), which would tear the dirty/untracked dialog down mid-call.
+      // Keep it open until the operation settles, then let the effect re-run and
+      // close it on success. These reads are tracked so the settle re-triggers.
+      if (!error && (this.repoState.checkoutRunning() || this.repoState.stashRunning())) return;
+      if (!error || error.code !== 'CHECKOUT_FAILED' || !attempt) {
+        this.checkoutPrompt.set(null);
+        return;
+      }
+      const reason = error.details?.['reason'];
+      if (reason === 'dirty_working_tree') {
+        this.checkoutPrompt.set({
+          name: attempt.name,
+          isRemote: attempt.isRemote,
+          mode: 'dirty',
+        });
+      } else if (reason === 'untracked_working_tree') {
+        this.checkoutPrompt.set({
+          name: attempt.name,
+          isRemote: attempt.isRemote,
+          mode: 'untracked',
+        });
+      } else {
+        this.checkoutPrompt.set(null);
+      }
     });
 
     // Native-menu navigation from the Electron main process; subscribe once and
@@ -137,14 +197,69 @@ export class LayoutComponent implements OnInit {
     void this.router.navigateByUrl(route);
   }
 
-  /** Check out the local branch picked in the left sidebar. */
+  /** Open the pre-checkout confirmation for a local branch click. */
   onBranchSelected(name: string): void {
-    void this.repoState.checkoutBranch(name, false);
+    // Clicking the already-current local branch is a no-op.
+    if (name === this.repoState.currentBranch()) return;
+    this.checkoutPrompt.set({ name, isRemote: false, mode: 'confirm' });
   }
 
-  /** Check out the remote-tracking branch picked in the left sidebar. */
+  /** Open the pre-checkout confirmation for a remote-tracking branch click. */
   onRemoteBranchSelected(name: string): void {
-    void this.repoState.checkoutBranch(name, true);
+    this.checkoutPrompt.set({ name, isRemote: true, mode: 'confirm' });
+  }
+
+  /**
+   * User confirmed the pre-checkout dialog: retry the target with the force flag
+   * they chose. A plain (unforced) checkout that is blocked by a dirty tree falls
+   * through to the existing dirty save/force/cancel dialog via `checkoutError`.
+   */
+  onConfirmed(force: boolean): void {
+    const prompt = this.checkoutPrompt();
+    if (!prompt) return;
+    this.lastAttempt = { name: prompt.name, isRemote: prompt.isRemote };
+    this.checkoutPrompt.set(null);
+    void this.repoState.checkoutBranch(prompt.name, prompt.isRemote, force, false);
+  }
+
+  /**
+   * Force the pending checkout: discard tracked changes, and in untracked mode
+   * also clean untracked files (never silently — the modal gated it).
+   */
+  onForceCheckout(): void {
+    const prompt = this.checkoutPrompt();
+    if (!prompt) return;
+    const discardUntracked = prompt.mode === 'untracked';
+    void this.repoState.checkoutBranch(prompt.name, prompt.isRemote, true, discardUntracked);
+  }
+
+  /** Stash the blocking changes, then retry the checkout without force. */
+  onSaveChanges(): void {
+    const prompt = this.checkoutPrompt();
+    if (!prompt) return;
+    void this.stashAndRetryCheckout(prompt);
+  }
+
+  private async stashAndRetryCheckout(prompt: CheckoutPrompt): Promise<void> {
+    const stashed = await this.repoState.stashPush(
+      `Auto-stash before switching to '${prompt.name}'`,
+    );
+    if (!stashed) return;
+    await this.repoState.checkoutBranch(prompt.name, prompt.isRemote, false, false);
+  }
+
+  /**
+   * Dismiss the prompt without changing any state. Cancelling the pre-checkout
+   * `confirm` dialog aborts before any checkout was attempted, so it must not
+   * dismiss a pre-existing checkout error; only cancelling a dirty/untracked
+   * conflict clears the error that opened it.
+   */
+  onCancelCheckoutPrompt(): void {
+    const prompt = this.checkoutPrompt();
+    this.checkoutPrompt.set(null);
+    if (prompt?.mode === 'dirty' || prompt?.mode === 'untracked') {
+      this.repoState.dismissCheckoutError();
+    }
   }
 
   /** Activate the local repository picked in the drawer. */

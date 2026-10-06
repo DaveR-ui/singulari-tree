@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc/codes"
+
 	"github.com/SingulariTree/go-core/internal/domain"
 )
 
@@ -147,5 +149,40 @@ func TestTagToProtoLightweight(t *testing.T) {
 	}
 	if got.GetTarget() != nil {
 		t.Errorf("target = %+v, want nil for unset oid", got.GetTarget())
+	}
+}
+
+func TestStashToProto(t *testing.T) {
+	branch := "main"
+	got := stashToProto(&domain.Stash{
+		Index:      2,
+		Oid:        domain.Oid{Hex: strings.Repeat("d", 40), Kind: "SHA1"},
+		Message:    "wip",
+		BranchName: &branch,
+	})
+	if got.GetIndex() != 2 || got.GetMessage() != "wip" || got.GetBranchName() != "main" {
+		t.Errorf("stashToProto = %+v, want {index:2 message:wip branch:main}", got)
+	}
+	if got.GetOid().GetHex() != strings.Repeat("d", 40) {
+		t.Errorf("oid = %q, want the mapped stash oid", got.GetOid().GetHex())
+	}
+}
+
+func TestStashToProtoNoOptional(t *testing.T) {
+	got := stashToProto(&domain.Stash{Message: "wip"})
+	if got.GetOid() != nil {
+		t.Errorf("oid = %+v, want nil for unset oid", got.GetOid())
+	}
+	if got.GetBranchName() != "" {
+		t.Errorf("branch = %q, want empty for nil BranchName", got.GetBranchName())
+	}
+	if stashToProto(nil) != nil {
+		t.Error("stashToProto(nil) = non-nil, want nil")
+	}
+}
+
+func TestGRPCCodeForStashFailed(t *testing.T) {
+	if got := grpcCodeFor(domain.ErrCodeStashFailed); got != codes.InvalidArgument {
+		t.Errorf("grpcCodeFor(%s) = %v, want InvalidArgument", domain.ErrCodeStashFailed, got)
 	}
 }

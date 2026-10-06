@@ -216,6 +216,20 @@ export interface CommitRequest {
 export interface CheckoutRequest {
   repoId: string;
   refName: string;
+  /** git checkout -f: discard tracked working-tree modifications. */
+  force: boolean;
+  /** git clean -fd before checkout: discard untracked files too. Implies force. */
+  discardUntracked: boolean;
+}
+
+export interface StashPushRequest {
+  repoId: string;
+  /** optional; empty -> core picks a default */
+  message: string;
+}
+
+export interface StashPushResponse {
+  stash: Stash | undefined;
 }
 
 export interface FetchRequest {
@@ -451,6 +465,7 @@ export interface GitClientApi {
   unstage: (req: UnstageRequest) => Promise<CommandAck>;
   commit: (req: CommitRequest) => Promise<Commit>;
   checkout: (req: CheckoutRequest) => Promise<CommandAck>;
+  stashPush: (req: StashPushRequest) => Promise<StashPushResponse>;
   // fetch/pull/push are server-streaming in proto; progress arrives via
   // `onProgress` and the invoke promise just signals completion. This mirrors
   // Angular's `IpcBridge` (`Promise<void>`), keeping the two separately-declared
@@ -488,6 +503,7 @@ const api: GitClientApi = {
   unstage: (req) => ipcRenderer.invoke('git:unstage', req),
   commit: (req) => ipcRenderer.invoke('git:commit', req),
   checkout: (req) => ipcRenderer.invoke('git:checkout', req),
+  stashPush: (req) => ipcRenderer.invoke('git:stashPush', req),
   fetch: (req) => ipcRenderer.invoke('git:fetch', req),
   pull: (req) => ipcRenderer.invoke('git:pull', req),
   push: (req) => ipcRenderer.invoke('git:push', req),

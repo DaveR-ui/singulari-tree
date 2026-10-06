@@ -61,10 +61,13 @@ type GitPort interface {
 	BranchList(ctx context.Context, repoID RepositoryId) ([]Branch, error)
 	BranchCreate(ctx context.Context, repoID RepositoryId, name string, from Oid) (*Branch, error)
 	BranchDelete(ctx context.Context, repoID RepositoryId, ref RefName) error
-	Checkout(ctx context.Context, repoID RepositoryId, ref RefName) error
+	Checkout(ctx context.Context, repoID RepositoryId, ref RefName, force, discardUntracked bool) error
 	RemoteList(ctx context.Context, repoID RepositoryId) ([]Remote, error)
 	TagList(ctx context.Context, repoID RepositoryId) ([]Tag, error)
 	StashList(ctx context.Context, repoID RepositoryId) ([]Stash, error)
+	// StashPush saves the working-tree changes to a new stash entry and returns
+	// it. It mirrors StashList so GitService can depend on GitPort alone.
+	StashPush(ctx context.Context, repoID RepositoryId, message string) (*Stash, error)
 	WorktreeList(ctx context.Context, repoID RepositoryId) ([]Worktree, error)
 }
 

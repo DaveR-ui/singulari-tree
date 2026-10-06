@@ -151,9 +151,27 @@ export interface CommitRequest {
 export interface CheckoutRequest {
   repoId: string;
   refName: string;
+  /** git checkout -f: discard tracked working-tree modifications. */
+  force: boolean;
+  /** git clean -fd before checkout: discard untracked files too. Implies force. */
+  discardUntracked: boolean;
 }
 
 export interface CheckoutResponse {
+}
+
+/**
+ * StashPush saves the working-tree changes to the stash stack. Used by the
+ * branch-switch confirmation flow to "save the changes" before checking out.
+ */
+export interface StashPushRequest {
+  repoId: string;
+  /** optional; empty -> core picks a default */
+  message: string;
+}
+
+export interface StashPushResponse {
+  stash: Stash | undefined;
 }
 
 /**

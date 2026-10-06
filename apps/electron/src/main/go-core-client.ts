@@ -44,6 +44,7 @@ export const GIT_CORE_RPC_METHODS = [
   'Unstage',
   'Commit',
   'Checkout',
+  'StashPush',
   'Fetch',
   'Push',
   'Pull',
@@ -316,10 +317,24 @@ export interface CommitRequest {
 export interface CheckoutRequest {
   repoId: string;
   refName: string;
+  /** git checkout -f: discard tracked working-tree modifications. */
+  force: boolean;
+  /** git clean -fd before checkout: discard untracked files too. Implies force. */
+  discardUntracked: boolean;
 }
 
 export interface CheckoutResponse {
   // empty
+}
+
+export interface StashPushRequest {
+  repoId: string;
+  /** optional; empty -> core picks a default */
+  message: string;
+}
+
+export interface StashPushResponse {
+  stash: Stash | undefined;
 }
 
 export interface FetchRequest {
@@ -627,6 +642,10 @@ export class GoCoreClient {
 
   checkout(req: CheckoutRequest): Promise<CheckoutResponse> {
     return this.unary<CheckoutResponse>('Checkout', req);
+  }
+
+  stashPush(req: StashPushRequest): Promise<StashPushResponse> {
+    return this.unary<StashPushResponse>('StashPush', req);
   }
 
   /**

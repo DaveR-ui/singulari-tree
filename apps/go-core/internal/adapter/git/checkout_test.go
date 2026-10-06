@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -35,14 +36,14 @@ func TestCheckoutLocalBranchSwitchesHead(t *testing.T) {
 	repoID := domain.RepositoryId("repo-1")
 	ctx := context.Background()
 
-	if err := a.Checkout(ctx, repoID, domain.RefName{Raw: "refs/heads/feature"}); err != nil {
+	if err := a.Checkout(ctx, repoID, domain.RefName{Raw: "refs/heads/feature"}, false, false); err != nil {
 		t.Fatalf("Checkout(refs/heads/feature): %v", err)
 	}
 	if got := gitRun(t, dir, "symbolic-ref", "HEAD"); got != "refs/heads/feature" {
 		t.Fatalf("HEAD = %q, want refs/heads/feature", got)
 	}
 
-	if err := a.Checkout(ctx, repoID, domain.RefName{Raw: "main"}); err != nil {
+	if err := a.Checkout(ctx, repoID, domain.RefName{Raw: "main"}, false, false); err != nil {
 		t.Fatalf("Checkout(main): %v", err)
 	}
 	if got := gitRun(t, dir, "symbolic-ref", "HEAD"); got != "refs/heads/main" {
@@ -66,7 +67,7 @@ func TestCheckoutRemoteTrackingWithLocalCounterpart(t *testing.T) {
 	before := localBranches(t, src)
 
 	a := NewAdapter(&fakeRepoPort{fsPath: src})
-	if err := a.Checkout(context.Background(), domain.RepositoryId("repo-1"), domain.RefName{Raw: "refs/remotes/origin/feature"}); err != nil {
+	if err := a.Checkout(context.Background(), domain.RepositoryId("repo-1"), domain.RefName{Raw: "refs/remotes/origin/feature"}, false, false); err != nil {
 		t.Fatalf("Checkout(refs/remotes/origin/feature): %v", err)
 	}
 	if got := gitRun(t, src, "symbolic-ref", "HEAD"); got != "refs/heads/feature" {
@@ -99,7 +100,7 @@ func TestCheckoutRemoteTrackingCreatesTrackingBranch(t *testing.T) {
 	}
 
 	a := NewAdapter(&fakeRepoPort{fsPath: src})
-	if err := a.Checkout(context.Background(), domain.RepositoryId("repo-1"), domain.RefName{Raw: "origin/david/topic"}); err != nil {
+	if err := a.Checkout(context.Background(), domain.RepositoryId("repo-1"), domain.RefName{Raw: "origin/david/topic"}, false, false); err != nil {
 		t.Fatalf("Checkout(origin/david/topic): %v", err)
 	}
 	if got := gitRun(t, src, "symbolic-ref", "HEAD"); got != "refs/heads/david/topic" {
@@ -119,7 +120,7 @@ func TestCheckoutOidDetachesHead(t *testing.T) {
 	target := gitRun(t, dir, "rev-parse", "HEAD~1")
 
 	a := NewAdapter(&fakeRepoPort{fsPath: dir})
-	if err := a.Checkout(context.Background(), domain.RepositoryId("repo-1"), domain.RefName{Raw: target}); err != nil {
+	if err := a.Checkout(context.Background(), domain.RepositoryId("repo-1"), domain.RefName{Raw: target}, false, false); err != nil {
 		t.Fatalf("Checkout(%s): %v", target, err)
 	}
 	if got := gitRun(t, dir, "rev-parse", "HEAD"); got != target {
@@ -147,7 +148,7 @@ func TestCheckoutRejectsUnsafeAndMissingRefs(t *testing.T) {
 		"refs/heads/nope",          // nonexistent local branch
 	}
 	for _, raw := range cases {
-		err := a.Checkout(ctx, repoID, domain.RefName{Raw: raw})
+		err := a.Checkout(ctx, repoID, domain.RefName{Raw: raw}, false, false)
 		if err == nil {
 			t.Errorf("Checkout(%q) succeeded, want CHECKOUT_FAILED", raw)
 			continue
@@ -176,7 +177,7 @@ func TestCheckoutDirtyWorkingTreeReportsPaths(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "b.txt"), "local b\n")
 
 	a := NewAdapter(&fakeRepoPort{fsPath: dir})
-	err := a.Checkout(context.Background(), domain.RepositoryId("repo-1"), domain.RefName{Raw: "refs/heads/other"})
+	err := a.Checkout(context.Background(), domain.RepositoryId("repo-1"), domain.RefName{Raw: "refs/heads/other"}, false, false)
 	if err == nil {
 		t.Fatal("Checkout over a dirty working tree succeeded, want CHECKOUT_FAILED")
 	}
@@ -316,5 +317,223 @@ func TestCheckoutFailedFromGitBoundsPathsAndRaw(t *testing.T) {
 		if !originalLines[line] {
 			t.Fatalf("details[raw] was cut mid-line: %q is not a complete original line", line)
 		}
+	}
+}
+
+// TestCheckoutFailedFromGitClassifiesSingularUntracked proves the untracked
+// detection also matches git's singular form ("Untracked working tree file ...
+// would be overwritten by checkout."), not only the plural form, while leaving
+// the tracked-dirty classification unchanged. The tab-indented path list is
+// synthesized so the structured (paths-present) branch is exercised.
+func TestCheckoutFailedFromGitClassifiesSingularUntracked(t *testing.T) {
+	const headerLine = "error: Untracked working tree file 'c.txt' would be overwritten by checkout."
+	stderr := headerLine + "\n\tc.txt\n"
+
+	err := checkoutFailedFromGit(stderr)
+	if err.Code != domain.ErrCodeCheckoutFailed {
+		t.Fatalf("code = %q, want %q", err.Code, domain.ErrCodeCheckoutFailed)
+	}
+	if got := err.Details["reason"]; got != "untracked_working_tree" {
+		t.Fatalf("details[reason] = %q, want untracked_working_tree", got)
+	}
+	if got := err.Details["paths"]; !strings.Contains(got, "c.txt") {
+		t.Fatalf("details[paths] = %q, want it to contain c.txt", got)
+	}
+}
+
+// readFile returns a file's content, failing the test on error.
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return string(b)
+}
+
+// TestCheckoutForceDiscardsTrackedModifications proves force=true maps to
+// `git checkout -f`: a local modification to a tracked file is discarded and
+// the file matches the target branch's committed content.
+func TestCheckoutForceDiscardsTrackedModifications(t *testing.T) {
+	dir := initRepo(t)
+	gitRun(t, dir, "branch", "-M", "main")
+
+	// Target branch changes a.txt; main diverges only by a local modification.
+	gitRun(t, dir, "checkout", "-q", "-b", "other")
+	writeFile(t, filepath.Join(dir, "a.txt"), "other a\n")
+	gitRun(t, dir, "add", "a.txt")
+	gitRun(t, dir, "commit", "-q", "-m", "change a on other")
+
+	gitRun(t, dir, "checkout", "-q", "main")
+	writeFile(t, filepath.Join(dir, "a.txt"), "local dirty\n")
+
+	a := NewAdapter(&fakeRepoPort{fsPath: dir})
+	if err := a.Checkout(context.Background(), domain.RepositoryId("repo-1"), domain.RefName{Raw: "refs/heads/other"}, true, false); err != nil {
+		t.Fatalf("Checkout(force): %v", err)
+	}
+	if got := gitRun(t, dir, "symbolic-ref", "HEAD"); got != "refs/heads/other" {
+		t.Fatalf("HEAD = %q, want refs/heads/other", got)
+	}
+	if got := readFile(t, filepath.Join(dir, "a.txt")); got != "other a\n" {
+		t.Fatalf("a.txt = %q, want the target content %q (local change must be discarded)", got, "other a\n")
+	}
+	if got := gitRun(t, dir, "status", "--porcelain"); got != "" {
+		t.Fatalf("working tree not clean after force checkout: %q", got)
+	}
+}
+
+// TestCheckoutForceKeepsUntrackedFiles proves the boundary of the force flag:
+// force maps only to `git checkout -f` (discard tracked modifications), NOT to
+// an implicit `git clean`. An unrelated untracked scratch file must survive a
+// forced checkout to a valid branch.
+func TestCheckoutForceKeepsUntrackedFiles(t *testing.T) {
+	dir := initRepo(t)
+	gitRun(t, dir, "branch", "-M", "main")
+	gitRun(t, dir, "branch", "feature")
+
+	scratch := filepath.Join(dir, "scratch.txt")
+	writeFile(t, scratch, "junk\n")
+
+	a := NewAdapter(&fakeRepoPort{fsPath: dir})
+	if err := a.Checkout(context.Background(), domain.RepositoryId("repo-1"), domain.RefName{Raw: "refs/heads/feature"}, true, false); err != nil {
+		t.Fatalf("Checkout(force): %v", err)
+	}
+	if got := gitRun(t, dir, "symbolic-ref", "HEAD"); got != "refs/heads/feature" {
+		t.Fatalf("HEAD = %q, want refs/heads/feature", got)
+	}
+	if _, err := os.Stat(scratch); err != nil {
+		t.Fatalf("untracked scratch file was removed by a force checkout: %v", err)
+	}
+	if got := readFile(t, scratch); got != "junk\n" {
+		t.Fatalf("scratch.txt = %q, want %q", got, "junk\n")
+	}
+}
+
+// TestCheckoutUntrackedConflictReportsReason proves a checkout blocked by an
+// untracked file colliding with a target-branch file yields a typed
+// CHECKOUT_FAILED whose reason distinguishes it from the tracked-dirty case.
+func TestCheckoutUntrackedConflictReportsReason(t *testing.T) {
+	dir := initRepo(t)
+	gitRun(t, dir, "branch", "-M", "main")
+
+	gitRun(t, dir, "checkout", "-q", "-b", "other")
+	writeFile(t, filepath.Join(dir, "c.txt"), "from other\n")
+	gitRun(t, dir, "add", "c.txt")
+	gitRun(t, dir, "commit", "-q", "-m", "add c on other")
+
+	gitRun(t, dir, "checkout", "-q", "main")
+	writeFile(t, filepath.Join(dir, "c.txt"), "untracked local\n")
+
+	a := NewAdapter(&fakeRepoPort{fsPath: dir})
+	err := a.Checkout(context.Background(), domain.RepositoryId("repo-1"), domain.RefName{Raw: "refs/heads/other"}, false, false)
+	if err == nil {
+		t.Fatal("Checkout over a colliding untracked file succeeded, want CHECKOUT_FAILED")
+	}
+	assertAppCode(t, err, domain.ErrCodeCheckoutFailed)
+
+	var appErr domain.AppError
+	if !errors.As(err, &appErr) {
+		t.Fatalf("err = %v, want typed AppError", err)
+	}
+	if got := appErr.Details["reason"]; got != "untracked_working_tree" {
+		t.Errorf("details[reason] = %q, want untracked_working_tree", got)
+	}
+	if paths := appErr.Details["paths"]; strings.TrimSpace(paths) == "" {
+		t.Error("details[paths] is empty, want the colliding path")
+	} else if !strings.Contains(paths, "c.txt") {
+		t.Errorf("details[paths] = %q, want it to contain c.txt", paths)
+	}
+	if got := gitRun(t, dir, "symbolic-ref", "--short", "HEAD"); got != "main" {
+		t.Errorf("HEAD = %q, want main (checkout must not have switched)", got)
+	}
+}
+
+// TestCheckoutDiscardUntrackedCleansAndSwitches proves discard_untracked=true
+// runs `git clean -fd` before a forced checkout: the colliding untracked file's
+// local content is discarded (replaced by the target branch's) and any other
+// untracked file is removed.
+func TestCheckoutDiscardUntrackedCleansAndSwitches(t *testing.T) {
+	dir := initRepo(t)
+	gitRun(t, dir, "branch", "-M", "main")
+
+	gitRun(t, dir, "checkout", "-q", "-b", "other")
+	writeFile(t, filepath.Join(dir, "c.txt"), "from other\n")
+	gitRun(t, dir, "add", "c.txt")
+	gitRun(t, dir, "commit", "-q", "-m", "add c on other")
+
+	gitRun(t, dir, "checkout", "-q", "main")
+	writeFile(t, filepath.Join(dir, "c.txt"), "untracked local\n")
+	writeFile(t, filepath.Join(dir, "scratch.txt"), "junk\n")
+
+	a := NewAdapter(&fakeRepoPort{fsPath: dir})
+	if err := a.Checkout(context.Background(), domain.RepositoryId("repo-1"), domain.RefName{Raw: "refs/heads/other"}, true, true); err != nil {
+		t.Fatalf("Checkout(force, discardUntracked): %v", err)
+	}
+	if got := gitRun(t, dir, "symbolic-ref", "HEAD"); got != "refs/heads/other" {
+		t.Fatalf("HEAD = %q, want refs/heads/other", got)
+	}
+	// c.txt now comes from the target branch; the untracked local content is gone.
+	if got := readFile(t, filepath.Join(dir, "c.txt")); got != "from other\n" {
+		t.Fatalf("c.txt = %q, want the target content %q", got, "from other\n")
+	}
+	// An unrelated untracked file must have been removed by `git clean -fd`.
+	if _, err := os.Stat(filepath.Join(dir, "scratch.txt")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("scratch.txt still present after discard-untracked checkout (stat err=%v)", err)
+	}
+	if got := gitRun(t, dir, "status", "--porcelain"); got != "" {
+		t.Fatalf("working tree not clean after discard-untracked checkout: %q", got)
+	}
+}
+
+// TestCheckoutDiscardUntrackedInvalidRefKeepsUntracked proves the
+// destructive-safety boundary: when the target ref does not resolve,
+// discard_untracked=true must fail with CHECKOUT_FAILED before `git clean -fd`
+// runs, so untracked data survives a failed switch.
+func TestCheckoutDiscardUntrackedInvalidRefKeepsUntracked(t *testing.T) {
+	dir := initRepo(t)
+	gitRun(t, dir, "branch", "-M", "main")
+
+	scratch := filepath.Join(dir, "scratch.txt")
+	writeFile(t, scratch, "junk\n")
+
+	a := NewAdapter(&fakeRepoPort{fsPath: dir})
+	err := a.Checkout(context.Background(), domain.RepositoryId("repo-1"), domain.RefName{Raw: "refs/heads/does-not-exist"}, true, true)
+	if err == nil {
+		t.Fatal("Checkout(discard_untracked, invalid ref) succeeded, want CHECKOUT_FAILED")
+	}
+	assertAppCode(t, err, domain.ErrCodeCheckoutFailed)
+	if _, statErr := os.Stat(scratch); statErr != nil {
+		t.Fatalf("untracked scratch file was destroyed before the ref was verified: %v", statErr)
+	}
+	if got := currentBranch(context.Background(), dir); got != "main" {
+		t.Fatalf("HEAD branch = %q, want main (checkout must not have switched)", got)
+	}
+}
+
+// TestCheckoutRemoteTrackingWithForce proves the remote-tracking DWIM and its
+// duplicate-branch guard are unaffected by force: the ref still resolves and
+// switches to the existing local branch.
+func TestCheckoutRemoteTrackingWithForce(t *testing.T) {
+	src := initRepo(t)
+	gitRun(t, src, "branch", "-M", "main")
+	bare := initBareRemote(t)
+	gitRun(t, src, "remote", "add", "origin", bare)
+	gitRun(t, src, "push", "-q", "-u", "origin", "main")
+	gitRun(t, src, "branch", "feature")
+	gitRun(t, src, "push", "-q", "-u", "origin", "feature")
+	gitRun(t, src, "checkout", "-q", "main")
+
+	before := localBranches(t, src)
+
+	a := NewAdapter(&fakeRepoPort{fsPath: src})
+	if err := a.Checkout(context.Background(), domain.RepositoryId("repo-1"), domain.RefName{Raw: "refs/remotes/origin/feature"}, true, false); err != nil {
+		t.Fatalf("Checkout(remote-tracking, force): %v", err)
+	}
+	if got := gitRun(t, src, "symbolic-ref", "HEAD"); got != "refs/heads/feature" {
+		t.Fatalf("HEAD = %q, want refs/heads/feature", got)
+	}
+	after := localBranches(t, src)
+	if strings.Join(before, ",") != strings.Join(after, ",") {
+		t.Fatalf("local branches changed: before=%v after=%v (force must reuse the existing branch)", before, after)
 	}
 }

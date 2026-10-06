@@ -52,6 +52,8 @@ const (
 	ErrorCode_GITHUB_TOKEN_INVALID   ErrorCode = 23
 	// Additive: remote operations (Fetch/Push/Pull) carry a distinct pull code.
 	ErrorCode_PULL_FAILED ErrorCode = 24
+	// Additive: stash push (save changes before switching branch).
+	ErrorCode_STASH_FAILED ErrorCode = 25
 )
 
 // Enum value maps for ErrorCode.
@@ -82,6 +84,7 @@ var (
 		22: "GITHUB_API_ERROR",
 		23: "GITHUB_TOKEN_INVALID",
 		24: "PULL_FAILED",
+		25: "STASH_FAILED",
 	}
 	ErrorCode_value = map[string]int32{
 		"ERROR_CODE_UNSPECIFIED": 0,
@@ -109,6 +112,7 @@ var (
 		"GITHUB_API_ERROR":       22,
 		"GITHUB_TOKEN_INVALID":   23,
 		"PULL_FAILED":            24,
+		"STASH_FAILED":           25,
 	}
 )
 
@@ -211,7 +215,7 @@ const file_errors_proto_rawDesc = "" +
 	"\adetails\x18\x03 \x03(\v2'.singularitree.v1.AppError.DetailsEntryR\adetails\x1a:\n" +
 	"\fDetailsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*\x91\x04\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*\xa3\x04\n" +
 	"\tErrorCode\x12\x1a\n" +
 	"\x16ERROR_CODE_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eREPO_NOT_FOUND\x10\x01\x12\x12\n" +
@@ -239,7 +243,8 @@ const file_errors_proto_rawDesc = "" +
 	"\x13GITHUB_RATE_LIMITED\x10\x15\x12\x14\n" +
 	"\x10GITHUB_API_ERROR\x10\x16\x12\x18\n" +
 	"\x14GITHUB_TOKEN_INVALID\x10\x17\x12\x0f\n" +
-	"\vPULL_FAILED\x10\x18BJZHgithub.com/SingulariTree/go-core/gen/go/singularitree/v1;singularitreev1b\x06proto3"
+	"\vPULL_FAILED\x10\x18\x12\x10\n" +
+	"\fSTASH_FAILED\x10\x19BJZHgithub.com/SingulariTree/go-core/gen/go/singularitree/v1;singularitreev1b\x06proto3"
 
 var (
 	file_errors_proto_rawDescOnce sync.Once

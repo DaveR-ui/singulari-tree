@@ -130,6 +130,26 @@ func tagToProto(t domain.Tag) *singularitreev1.Tag {
 	return out
 }
 
+// stashToProto maps a domain stash entry to its wire form. The oid is omitted
+// when unset so the optional field stays absent; branch_name is empty when the
+// stash was created on a detached HEAD.
+func stashToProto(s *domain.Stash) *singularitreev1.Stash {
+	if s == nil {
+		return nil
+	}
+	out := &singularitreev1.Stash{
+		Index:   int32(s.Index),
+		Message: s.Message,
+	}
+	if s.Oid.Hex != "" {
+		out.Oid = oidToProto(s.Oid)
+	}
+	if s.BranchName != nil {
+		out.BranchName = *s.BranchName
+	}
+	return out
+}
+
 func repositoryToProto(r *domain.Repository) *singularitreev1.Repository {
 	if r == nil {
 		return nil
@@ -261,7 +281,7 @@ func grpcCodeFor(appCode string) codes.Code {
 	case domain.ErrCodeNotAGitRepo, domain.ErrCodeInvalidOid,
 		domain.ErrCodeDetachedHead, domain.ErrCodeStageFailed,
 		domain.ErrCodeCommitFailed, domain.ErrCodeCheckoutFailed,
-		domain.ErrCodeDiffFailed:
+		domain.ErrCodeStashFailed, domain.ErrCodeDiffFailed:
 		return codes.InvalidArgument
 	case domain.ErrCodeBranchExists:
 		return codes.AlreadyExists

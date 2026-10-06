@@ -37,6 +37,7 @@ const (
 	GitCore_Unstage_FullMethodName          = "/singularitree.v1.GitCore/Unstage"
 	GitCore_Commit_FullMethodName           = "/singularitree.v1.GitCore/Commit"
 	GitCore_Checkout_FullMethodName         = "/singularitree.v1.GitCore/Checkout"
+	GitCore_StashPush_FullMethodName        = "/singularitree.v1.GitCore/StashPush"
 	GitCore_Fetch_FullMethodName            = "/singularitree.v1.GitCore/Fetch"
 	GitCore_Push_FullMethodName             = "/singularitree.v1.GitCore/Push"
 	GitCore_Pull_FullMethodName             = "/singularitree.v1.GitCore/Pull"
@@ -69,6 +70,9 @@ type GitCoreClient interface {
 	Unstage(ctx context.Context, in *UnstageRequest, opts ...grpc.CallOption) (*UnstageResponse, error)
 	Commit(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (*Commit, error)
 	Checkout(ctx context.Context, in *CheckoutRequest, opts ...grpc.CallOption) (*CheckoutResponse, error)
+	// StashPush saves working-tree changes to a new stash entry (git stash push)
+	// so a subsequent checkout can proceed cleanly.
+	StashPush(ctx context.Context, in *StashPushRequest, opts ...grpc.CallOption) (*StashPushResponse, error)
 	Fetch(ctx context.Context, in *FetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Progress], error)
 	Push(ctx context.Context, in *PushRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Progress], error)
 	Pull(ctx context.Context, in *PullRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Progress], error)
@@ -272,6 +276,16 @@ func (c *gitCoreClient) Checkout(ctx context.Context, in *CheckoutRequest, opts 
 	return out, nil
 }
 
+func (c *gitCoreClient) StashPush(ctx context.Context, in *StashPushRequest, opts ...grpc.CallOption) (*StashPushResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StashPushResponse)
+	err := c.cc.Invoke(ctx, GitCore_StashPush_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *gitCoreClient) Fetch(ctx context.Context, in *FetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Progress], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &GitCore_ServiceDesc.Streams[1], GitCore_Fetch_FullMethodName, cOpts...)
@@ -374,6 +388,9 @@ type GitCoreServer interface {
 	Unstage(context.Context, *UnstageRequest) (*UnstageResponse, error)
 	Commit(context.Context, *CommitRequest) (*Commit, error)
 	Checkout(context.Context, *CheckoutRequest) (*CheckoutResponse, error)
+	// StashPush saves working-tree changes to a new stash entry (git stash push)
+	// so a subsequent checkout can proceed cleanly.
+	StashPush(context.Context, *StashPushRequest) (*StashPushResponse, error)
 	Fetch(*FetchRequest, grpc.ServerStreamingServer[Progress]) error
 	Push(*PushRequest, grpc.ServerStreamingServer[Progress]) error
 	Pull(*PullRequest, grpc.ServerStreamingServer[Progress]) error
@@ -441,6 +458,9 @@ func (UnimplementedGitCoreServer) Commit(context.Context, *CommitRequest) (*Comm
 }
 func (UnimplementedGitCoreServer) Checkout(context.Context, *CheckoutRequest) (*CheckoutResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Checkout not implemented")
+}
+func (UnimplementedGitCoreServer) StashPush(context.Context, *StashPushRequest) (*StashPushResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method StashPush not implemented")
 }
 func (UnimplementedGitCoreServer) Fetch(*FetchRequest, grpc.ServerStreamingServer[Progress]) error {
 	return status.Error(codes.Unimplemented, "method Fetch not implemented")
@@ -792,6 +812,24 @@ func _GitCore_Checkout_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
+func _GitCore_StashPush_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StashPushRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).StashPush(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_StashPush_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).StashPush(ctx, req.(*StashPushRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _GitCore_Fetch_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(FetchRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -910,6 +948,10 @@ var GitCore_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Checkout",
 			Handler:    _GitCore_Checkout_Handler,
+		},
+		{
+			MethodName: "StashPush",
+			Handler:    _GitCore_StashPush_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

@@ -86,6 +86,8 @@ interface StubRepoStateOptions {
   reposError?: AppError | null;
   reposOffline?: boolean;
   removingId?: string | null;
+  checkoutRunning?: boolean;
+  stashRunning?: boolean;
   checkoutError?: AppError | null;
 }
 
@@ -112,13 +114,15 @@ function makeRepoState(opts: StubRepoStateOptions = {}) {
     refsLoading: signal(opts.refsLoading ?? false),
     refsError: signal<AppError | null>(opts.refsError ?? null),
     refsOffline: signal(opts.refsOffline ?? false),
-    checkoutRunning: signal(false),
+    checkoutRunning: signal(opts.checkoutRunning ?? false),
+    stashRunning: signal(opts.stashRunning ?? false),
     checkoutError: signal<AppError | null>(opts.checkoutError ?? null),
     loadRepositories: vi.fn(async () => {}),
     setActive: vi.fn(),
     loadRefs: vi.fn(async () => {}),
     removeRepository: vi.fn(async () => true),
     checkoutBranch: vi.fn(async () => {}),
+    stashPush: vi.fn(async () => true),
     dismissCheckoutError: vi.fn(),
   };
 }
@@ -220,6 +224,12 @@ function text(fixture: { nativeElement: unknown }): string {
 
 function query<T extends Element>(fixture: { nativeElement: unknown }, testId: string): T | null {
   return (fixture.nativeElement as HTMLElement).querySelector<T>(`[data-testid="${testId}"]`);
+}
+
+function queryAll<T extends Element>(fixture: { nativeElement: unknown }, testId: string): T[] {
+  return Array.from(
+    (fixture.nativeElement as HTMLElement).querySelectorAll<T>(`[data-testid="${testId}"]`),
+  );
 }
 
 describe('LayoutComponent', () => {
@@ -607,18 +617,52 @@ describe('LayoutComponent', () => {
     expect(ipcBridge.unsubscribe).toHaveBeenCalledTimes(1);
   });
 
-  it('checks out a local branch when its sidebar row is clicked', async () => {
+  it('opens the switch confirmation before any checkout on a local branch click', async () => {
     const { fixture, repoState } = await setup({ branches: ['main', 'feature/x'] });
 
-    const row = query<HTMLElement>(fixture, 'st-sidebar-branch');
+    const row = queryAll<HTMLElement>(fixture, 'st-sidebar-branch').find(
+      (el) => el.textContent?.trim() === 'feature/x',
+    );
     expect(row).not.toBeNull();
     row!.click();
+    fixture.detectChanges();
 
-    expect(repoState.checkoutBranch).toHaveBeenCalledTimes(1);
-    expect(repoState.checkoutBranch).toHaveBeenCalledWith('main', false);
+    expect(query(fixture, 'switch-branch-message')?.textContent?.trim()).toBe(
+      "Are you sure you want to switch your working copy to a branch 'feature/x'?",
+    );
+    // The confirmation must precede the checkout: no IPC yet.
+    expect(repoState.checkoutBranch).not.toHaveBeenCalled();
   });
 
-  it('checks out a remote-tracking branch when its sidebar row is clicked', async () => {
+  it('checks out a local branch only after confirming the switch dialog', async () => {
+    const { fixture, repoState } = await setup({ branches: ['main', 'feature/x'] });
+
+    clickBranch(fixture, 'feature/x');
+    fixture.detectChanges();
+    expect(repoState.checkoutBranch).not.toHaveBeenCalled();
+
+    query<HTMLButtonElement>(fixture, 'switch-branch-confirm')!.click();
+
+    expect(repoState.checkoutBranch).toHaveBeenCalledTimes(1);
+    expect(repoState.checkoutBranch).toHaveBeenCalledWith('feature/x', false, false, false);
+  });
+
+  it('checks out the local branch with force=true when the switch checkbox is armed', async () => {
+    const { fixture, repoState } = await setup({ branches: ['main', 'feature/x'] });
+
+    clickBranch(fixture, 'feature/x');
+    fixture.detectChanges();
+    const checkbox = query<HTMLInputElement>(fixture, 'switch-branch-force-checkbox')!;
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    query<HTMLButtonElement>(fixture, 'switch-branch-confirm')!.click();
+
+    expect(repoState.checkoutBranch).toHaveBeenCalledWith('feature/x', false, true, false);
+  });
+
+  it('opens the switch confirmation before any checkout on a remote-tracking branch click', async () => {
     const { fixture, repoState } = await setup({
       remotes: ['origin'],
       remoteBranches: ['origin/david/topic'],
@@ -627,9 +671,67 @@ describe('LayoutComponent', () => {
     const row = query<HTMLElement>(fixture, 'st-sidebar-remote-branches');
     expect(row).not.toBeNull();
     row!.click();
+    fixture.detectChanges();
 
-    expect(repoState.checkoutBranch).toHaveBeenCalledTimes(1);
-    expect(repoState.checkoutBranch).toHaveBeenCalledWith('origin/david/topic', true);
+    expect(query(fixture, 'switch-branch-message')?.textContent?.trim()).toBe(
+      "Are you sure you want to switch your working copy to a branch 'origin/david/topic'?",
+    );
+    expect(repoState.checkoutBranch).not.toHaveBeenCalled();
+
+    query<HTMLButtonElement>(fixture, 'switch-branch-confirm')!.click();
+
+    expect(repoState.checkoutBranch).toHaveBeenCalledWith('origin/david/topic', true, false, false);
+  });
+
+  it('does not open the confirmation or checkout when the current local branch is clicked', async () => {
+    const { fixture, repoState } = await setup({
+      branches: ['main', 'feature/x'],
+      currentBranch: 'main',
+    });
+
+    clickBranch(fixture, 'main');
+    fixture.detectChanges();
+
+    expect(query(fixture, 'switch-branch-message')).toBeNull();
+    expect(repoState.checkoutBranch).not.toHaveBeenCalled();
+  });
+
+  it('cancels the pre-checkout confirmation without any IPC call', async () => {
+    const { fixture, repoState } = await setup({ branches: ['main', 'feature/x'] });
+
+    clickBranch(fixture, 'feature/x');
+    fixture.detectChanges();
+
+    query<HTMLButtonElement>(fixture, 'switch-branch-cancel')!.click();
+    fixture.detectChanges();
+
+    expect(repoState.checkoutBranch).not.toHaveBeenCalled();
+    expect(query(fixture, 'switch-branch-message')).toBeNull();
+  });
+
+  it('cancelling a plain confirm prompt leaves a pre-existing checkout error untouched', async () => {
+    const { fixture, repoState } = await setup({
+      branches: ['main', 'feature/x'],
+      checkoutError: {
+        code: 'CHECKOUT_FAILED',
+        message: 'Your local changes would be overwritten by checkout.',
+        details: { reason: 'dirty_working_tree' },
+      },
+    });
+
+    clickBranch(fixture, 'feature/x');
+    fixture.detectChanges();
+    expect(query(fixture, 'switch-branch-message')).not.toBeNull();
+
+    query<HTMLButtonElement>(fixture, 'switch-branch-cancel')!.click();
+    fixture.detectChanges();
+
+    // No checkout was attempted, so `confirm` cancel is a true no-op: it must
+    // not touch the unrelated checkout error and must issue no IPC.
+    expect(repoState.checkoutBranch).not.toHaveBeenCalled();
+    expect(repoState.stashPush).not.toHaveBeenCalled();
+    expect(repoState.dismissCheckoutError).not.toHaveBeenCalled();
+    expect(query(fixture, 'switch-branch-message')).toBeNull();
   });
 
   it('renders the checkout-error banner from RepoState and dismisses through the store', async () => {
@@ -660,5 +762,175 @@ describe('LayoutComponent', () => {
     const { fixture } = await setup();
 
     expect(query(fixture, 'checkout-error-banner')).toBeNull();
+  });
+
+  // -- attempt-then-prompt branch switch -----------------------------------
+
+  /** Click the sidebar branch row whose visible label matches `name`. */
+  function clickBranch(fixture: { nativeElement: unknown }, name: string): void {
+    const row = queryAll<HTMLElement>(fixture, 'st-sidebar-branch').find(
+      (el) => el.textContent?.trim() === name,
+    );
+    if (!row) throw new Error(`branch row '${name}' not found`);
+    row.click();
+  }
+
+  async function openDirtyPrompt(
+    fixture: {
+      nativeElement: unknown;
+      detectChanges: () => void;
+      whenStable: () => Promise<void>;
+    },
+    repoState: ReturnType<typeof makeRepoState>,
+    branchName = 'feature/x',
+  ): Promise<void> {
+    // Every switch now starts with the pre-checkout confirmation.
+    clickBranch(fixture, branchName);
+    fixture.detectChanges();
+    query<HTMLButtonElement>(fixture, 'switch-branch-confirm')!.click();
+    fixture.detectChanges();
+    // The unforced checkout was blocked by the dirty tree.
+    repoState.checkoutError.set({
+      code: 'CHECKOUT_FAILED',
+      message: 'Your local changes would be overwritten by checkout.',
+      details: { reason: 'dirty_working_tree' },
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  it('keeps the dirty dialog open while the checkout operation is running', async () => {
+    const { fixture, repoState } = await setup({ branches: ['main', 'feature/x'] });
+    await openDirtyPrompt(fixture, repoState);
+    expect(query(fixture, 'switch-branch-hint')).not.toBeNull();
+
+    // A retry starts by nulling `checkoutError` while the checkout is still in
+    // flight; the dialog must not flicker away before it settles.
+    repoState.checkoutRunning.set(true);
+    repoState.checkoutError.set(null);
+    fixture.detectChanges();
+
+    expect(query(fixture, 'switch-branch-message')).not.toBeNull();
+    expect(query(fixture, 'switch-branch-hint')).not.toBeNull();
+
+    // Once the operation settles the effect closes it.
+    repoState.checkoutRunning.set(false);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(query(fixture, 'switch-branch-message')).toBeNull();
+  });
+
+  it('falls through to the dirty dialog when the unforced switch is blocked', async () => {
+    const { fixture, repoState } = await setup({ branches: ['main', 'feature/x'] });
+
+    await openDirtyPrompt(fixture, repoState);
+
+    // The confirm dialog was replaced by the dirty escalation, not left open.
+    expect(query(fixture, 'switch-branch-message')?.textContent?.trim()).toBe(
+      "Are you sure you want to switch your working copy to a branch 'feature/x'?",
+    );
+    expect(query(fixture, 'switch-branch-hint')).not.toBeNull();
+    expect(query<HTMLInputElement>(fixture, 'switch-branch-force-checkbox')?.checked).toBe(false);
+    // The banner must not duplicate the error while the dialog owns it.
+    expect(query(fixture, 'checkout-error-banner')).toBeNull();
+  });
+
+  it('routes the Force checkout action with force=true and no untracked clean', async () => {
+    const { fixture, repoState } = await setup({ branches: ['main', 'feature/x'] });
+    await openDirtyPrompt(fixture, repoState);
+
+    const checkbox = query<HTMLInputElement>(fixture, 'switch-branch-force-checkbox')!;
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    query<HTMLButtonElement>(fixture, 'switch-branch-force')!.click();
+
+    expect(repoState.checkoutBranch).toHaveBeenCalledWith('feature/x', false, true, false);
+  });
+
+  it('routes Save changes through stashPush then the plain checkout', async () => {
+    const { fixture, repoState } = await setup({ branches: ['main', 'feature/x'] });
+    await openDirtyPrompt(fixture, repoState);
+
+    query<HTMLButtonElement>(fixture, 'switch-branch-save')!.click();
+    await vi.waitFor(() =>
+      expect(repoState.checkoutBranch).toHaveBeenCalledWith('feature/x', false, false, false),
+    );
+
+    expect(repoState.stashPush).toHaveBeenCalledWith(
+      "Auto-stash before switching to 'feature/x'",
+    );
+  });
+
+  it('does not retry the checkout when stashing fails', async () => {
+    const { fixture, repoState } = await setup({ branches: ['main', 'feature/x'] });
+    repoState.stashPush.mockResolvedValue(false);
+    await openDirtyPrompt(fixture, repoState);
+    // The initial blocked attempt already called checkoutBranch; only assert on retries.
+    repoState.checkoutBranch.mockClear();
+
+    query<HTMLButtonElement>(fixture, 'switch-branch-save')!.click();
+    await vi.waitFor(() => expect(repoState.stashPush).toHaveBeenCalledTimes(1));
+
+    expect(repoState.checkoutBranch).not.toHaveBeenCalled();
+  });
+
+  it('dismisses the dialog through the store on Cancel', async () => {
+    const { fixture, repoState } = await setup({ branches: ['main', 'feature/x'] });
+    await openDirtyPrompt(fixture, repoState);
+
+    query<HTMLButtonElement>(fixture, 'switch-branch-cancel')!.click();
+    fixture.detectChanges();
+
+    expect(repoState.dismissCheckoutError).toHaveBeenCalledTimes(1);
+    expect(query(fixture, 'switch-branch-message')).toBeNull();
+  });
+
+  it('escalates to the untracked warning and cleans untracked files on confirm', async () => {
+    const { fixture, repoState } = await setup({ branches: ['main', 'feature/x'] });
+    await openDirtyPrompt(fixture, repoState);
+
+    repoState.checkoutError.set({
+      code: 'CHECKOUT_FAILED',
+      message: 'The following untracked working tree files would be overwritten by checkout.',
+      details: { reason: 'untracked_working_tree' },
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(query(fixture, 'switch-branch-warning')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'All untracked files and folders will be permanently deleted. Ignored files are kept.',
+    );
+    expect(query(fixture, 'switch-branch-force-checkbox')).toBeNull();
+
+    query<HTMLButtonElement>(fixture, 'switch-branch-force')!.click();
+
+    expect(repoState.checkoutBranch).toHaveBeenCalledWith('feature/x', false, true, true);
+  });
+
+  it('keeps the fallback banner for a non-dirty checkout failure', async () => {
+    const { fixture, repoState } = await setup({ branches: ['main', 'feature/x'] });
+
+    clickBranch(fixture, 'feature/x');
+    fixture.detectChanges();
+    // Confirm the pre-checkout dialog, then the checkout fails for a non-dirty reason.
+    query<HTMLButtonElement>(fixture, 'switch-branch-confirm')!.click();
+    fixture.detectChanges();
+    repoState.checkoutError.set({
+      code: 'CHECKOUT_FAILED',
+      message: 'reference is not a tree',
+      details: { reason: 'git_error' },
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(query(fixture, 'switch-branch-message')).toBeNull();
+    expect(query(fixture, 'checkout-error-banner')).not.toBeNull();
   });
 });

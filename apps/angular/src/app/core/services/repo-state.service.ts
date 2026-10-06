@@ -70,6 +70,8 @@ export class RepoState {
   // -- checkout ------------------------------------------------------------
   /** True while a `checkout` call is in flight. */
   readonly checkoutRunning = signal(false);
+  /** True while a `stashPush` call is in flight. */
+  readonly stashRunning = signal(false);
   /** Last checkout failure, or null when idle/successful. */
   readonly checkoutError = signal<AppError | null>(null);
 
@@ -244,10 +246,20 @@ export class RepoState {
    * local click targets the already-current branch (avoids a duplicate
    * checkout). The full ref is resolved from the retained display-name map,
    * falling back to `name` (the Go adapter resolves short names defensively).
-   * On success the ref lists are reloaded; on failure `IPC_UNAVAILABLE` maps to
-   * `refsOffline` and any other error to `checkoutError`.
+   *
+   * `force` maps to `git checkout -f` (discard tracked modifications) and
+   * `discardUntracked` maps to `git clean -fd` before the checkout (implies
+   * force); both are driven by the branch-switch conflict flow, defaulting to
+   * false for a plain click. On success the ref lists are reloaded; on failure
+   * `IPC_UNAVAILABLE` maps to `refsOffline` and any other error to
+   * `checkoutError`.
    */
-  async checkoutBranch(name: string, isRemote: boolean): Promise<void> {
+  async checkoutBranch(
+    name: string,
+    isRemote: boolean,
+    force = false,
+    discardUntracked = false,
+  ): Promise<void> {
     const repoId = this.activeId();
     if (!repoId || this.checkoutRunning()) return;
     // A local click on the current branch is a no-op (no duplicate checkout).
@@ -259,7 +271,7 @@ export class RepoState {
     this.checkoutRunning.set(true);
     this.checkoutError.set(null);
     try {
-      await this.bridge.invoke('checkout', { repoId, refName });
+      await this.bridge.invoke('checkout', { repoId, refName, force, discardUntracked });
       await this.loadRefs();
     } catch (err) {
       if (isIpcUnavailable(err)) {
@@ -269,6 +281,37 @@ export class RepoState {
       }
     } finally {
       this.checkoutRunning.set(false);
+    }
+  }
+
+  /**
+   * Save the working-tree changes to the stash stack (`stashPush`), used by the
+   * branch-switch flow to "save changes" before retrying a blocked checkout.
+   *
+   * No-ops without an active repo or while another stash is running. On success
+   * the ref lists (including stashes) are reloaded and `true` is returned; on
+   * failure `IPC_UNAVAILABLE` maps to `refsOffline`, any other error to
+   * `checkoutError`, and `false` is returned.
+   */
+  async stashPush(message: string): Promise<boolean> {
+    const repoId = this.activeId();
+    if (!repoId || this.stashRunning()) return false;
+
+    this.stashRunning.set(true);
+    this.checkoutError.set(null);
+    try {
+      await this.bridge.invoke('stashPush', { repoId, message });
+      await this.loadRefs();
+      return true;
+    } catch (err) {
+      if (isIpcUnavailable(err)) {
+        this.refsOffline.set(true);
+      } else {
+        this.checkoutError.set(toAppError(err));
+      }
+      return false;
+    } finally {
+      this.stashRunning.set(false);
     }
   }
 

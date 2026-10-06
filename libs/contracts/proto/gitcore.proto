@@ -28,6 +28,9 @@ service GitCore {
   rpc Unstage(UnstageRequest) returns (UnstageResponse);
   rpc Commit(CommitRequest) returns (.singularitree.v1.Commit);
   rpc Checkout(CheckoutRequest) returns (CheckoutResponse);
+  // StashPush saves working-tree changes to a new stash entry (git stash push)
+  // so a subsequent checkout can proceed cleanly.
+  rpc StashPush(StashPushRequest) returns (StashPushResponse);
   rpc Fetch(FetchRequest) returns (stream Progress);
   rpc Push(PushRequest) returns (stream Progress);
   rpc Pull(PullRequest) returns (stream Progress);
@@ -117,8 +120,22 @@ message CommitRequest {
 message CheckoutRequest {
   string repo_id = 1;
   string ref_name = 2;
+  // git checkout -f: discard tracked working-tree modifications.
+  bool force = 3;
+  // git clean -fd before checkout: discard untracked files too. Implies force.
+  bool discard_untracked = 4;
 }
 message CheckoutResponse {}
+
+// StashPush saves the working-tree changes to the stash stack. Used by the
+// branch-switch confirmation flow to "save the changes" before checking out.
+message StashPushRequest {
+  string repo_id = 1;
+  string message = 2; // optional; empty -> core picks a default
+}
+message StashPushResponse {
+  Stash stash = 1;
+}
 
 // Fetch / Push / Pull with progress streaming.
 //

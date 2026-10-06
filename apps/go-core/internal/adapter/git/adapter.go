@@ -559,8 +559,16 @@ const maxCheckoutPathsBytes = 8192
 
 // dirtyCheckoutMarker is the git stderr fragment emitted when checkout refuses
 // because uncommitted local changes would be overwritten. The conflicting paths
-// follow on tab-indented lines.
+// follow on tab-indented lines. It also matches the untracked-files refusal.
 const dirtyCheckoutMarker = "would be overwritten by checkout"
+
+// untrackedCheckoutMarker is the shared fragment of git's untracked-files
+// refusal. It distinguishes that refusal from the tracked-dirty one, which
+// shares dirtyCheckoutMarker. Git emits the plural form ("untracked working
+// tree files would be overwritten by checkout") and, in some versions, the
+// singular ("Untracked working tree file 'x' would be overwritten by
+// checkout."), so match this lowercase fragment against rawErr lowercased.
+const untrackedCheckoutMarker = "untracked working tree file"
 
 // truncateValidUTF8 returns s unchanged when it fits within limit bytes;
 // otherwise it cuts at the largest rune boundary not exceeding limit. proto3
@@ -679,6 +687,12 @@ func parseDirtyCheckoutPaths(raw string) []string {
 // runGit envelope (`git <args>: exit status N: <stderr>`) into a short,
 // meaningful message. It never returns the raw envelope.
 func shortGitSummary(raw string) string {
+	return shortGitSummaryWithFallback(raw, "git checkout failed")
+}
+
+// shortGitSummaryWithFallback is shortGitSummary with a caller-supplied fallback
+// used when no `error:`/`fatal:` line is present.
+func shortGitSummaryWithFallback(raw, fallback string) string {
 	for _, line := range strings.Split(raw, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -690,25 +704,33 @@ func shortGitSummary(raw string) string {
 			}
 		}
 	}
-	return "git checkout failed"
+	return fallback
 }
 
 // checkoutFailedFromGit builds the CHECKOUT_FAILED error for the final
-// `git checkout` failure. When git refused because local changes would be
-// overwritten, the friendly headline sits in Message and the complete,
-// untruncated path list travels in Details; the raw stderr is retained there
-// for diagnostics only. Other failures keep a short summary plus the bounded
-// raw text.
+// `git checkout` failure. When git refused because local changes (tracked) or
+// untracked files would be overwritten, the friendly headline sits in Message
+// and the complete, untruncated path list travels in Details; the raw stderr is
+// retained there for diagnostics only. The `reason` detail distinguishes
+// tracked-dirty ("dirty_working_tree") from untracked ("untracked_working_tree")
+// so the renderer can offer the matching confirmation. Other failures keep a
+// short summary plus the bounded raw text.
 func checkoutFailedFromGit(rawErr string) domain.AppError {
 	raw := boundCheckoutRaw(rawErr)
 	paths := parseDirtyCheckoutPaths(rawErr)
 	if len(paths) > 0 {
 		bounded := boundCheckoutPaths(paths)
+		reason := "dirty_working_tree"
+		message := "Cannot switch branch: local changes would be overwritten by checkout. Commit or stash them first."
+		if strings.Contains(strings.ToLower(rawErr), untrackedCheckoutMarker) {
+			reason = "untracked_working_tree"
+			message = "Cannot switch branch: untracked working tree files would be overwritten by checkout. Remove or discard them first."
+		}
 		return domain.AppError{
 			Code:    domain.ErrCodeCheckoutFailed,
-			Message: "Cannot switch branch: local changes would be overwritten by checkout. Commit or stash them first.",
+			Message: message,
 			Details: map[string]string{
-				"reason": "dirty_working_tree",
+				"reason": reason,
 				"paths":  strings.Join(bounded, "\n"),
 				"raw":    raw,
 			},
@@ -724,6 +746,26 @@ func checkoutFailedFromGit(rawErr string) domain.AppError {
 	}
 }
 
+// stashFailed builds a typed STASH_FAILED error with a trimmed, bounded message.
+func stashFailed(message string) domain.AppError {
+	return domain.AppError{
+		Code:    domain.ErrCodeStashFailed,
+		Message: truncateValidUTF8(strings.TrimSpace(message), maxCheckoutErrLen),
+	}
+}
+
+// stashFailedFromGit builds the STASH_FAILED error for a failed
+// `git stash push` or oid resolution: a short summary plus the bounded raw text.
+func stashFailedFromGit(rawErr string) domain.AppError {
+	return domain.AppError{
+		Code:    domain.ErrCodeStashFailed,
+		Message: shortGitSummaryWithFallback(rawErr, "git stash failed"),
+		Details: map[string]string{
+			"raw": boundCheckoutRaw(rawErr),
+		},
+	}
+}
+
 // Checkout switches the working tree to ref (DWIM). The renderer sends the
 // clicked ref as-is and the core resolves it:
 //
@@ -733,12 +775,16 @@ func checkoutFailedFromGit(rawErr string) domain.AppError {
 //     <remote>/<branch>
 //   - tags / other refs / OIDs       -> git checkout <ref> (detached OK)
 //
+// force maps to `git checkout -f` (discard tracked working-tree modifications);
+// discardUntracked additionally runs `git clean -fd` first (discard untracked
+// files and directories) and implies force.
+//
 // Short inputs are canonicalized first via `git rev-parse --symbolic-full-name`
 // so e.g. `origin/foo` and `foo` resolve to their full refnames; inputs that
 // produce no symbolic name fall back to the raw value so OIDs and rev
 // expressions keep working. Ref-derived tokens that start with '-' or contain
 // control/whitespace characters are rejected to prevent option injection.
-func (a *Adapter) Checkout(ctx context.Context, repoID domain.RepositoryId, ref domain.RefName) error {
+func (a *Adapter) Checkout(ctx context.Context, repoID domain.RepositoryId, ref domain.RefName, force, discardUntracked bool) error {
 	fsPath, err := a.resolvePath(ctx, repoID)
 	if err != nil {
 		return err
@@ -760,7 +806,16 @@ func (a *Adapter) Checkout(ctx context.Context, repoID domain.RepositoryId, ref 
 		}
 	}
 
+	// Discarding untracked files implies a forced checkout: modifications are
+	// discarded either way.
+	if discardUntracked {
+		force = true
+	}
+
 	args := []string{"checkout"}
+	if force {
+		args = append(args, "-f")
+	}
 	switch {
 	case strings.HasPrefix(raw, "refs/heads/"):
 		branch := strings.TrimPrefix(raw, "refs/heads/")
@@ -795,10 +850,80 @@ func (a *Adapter) Checkout(ctx context.Context, repoID domain.RepositoryId, ref 
 		args = append(args, raw)
 	}
 
+	// Refuse destructive cleaning before the ref is known to be valid: token
+	// validation prevents option injection but does not prove the ref exists.
+	// Verify the canonicalized target resolves first, so a ref that vanished
+	// (pruned upstream, deleted branch) or an invalid headless input cannot
+	// wipe untracked files when the subsequent switch fails.
+	if discardUntracked {
+		if _, err := runGit(ctx, fsPath, "rev-parse", "--verify", "--quiet", raw); err != nil {
+			return checkoutFailed("ref does not resolve")
+		}
+		if _, err := runGit(ctx, fsPath, "clean", "-fd"); err != nil {
+			return checkoutFailedFromGit(err.Error())
+		}
+	}
+
 	if _, err := runGit(ctx, fsPath, args...); err != nil {
 		return checkoutFailedFromGit(err.Error())
 	}
 	return nil
+}
+
+// defaultStashMessage is used by StashPush when the caller passes an empty
+// message.
+const defaultStashMessage = "WIP before checkout"
+
+// StashPush saves the working-tree changes (tracked modifications and staged
+// changes) to a new stash entry via `git stash push -m <message>` and returns
+// the created entry. The new oid is resolved from refs/stash and the branch
+// recorded from HEAD. Any failure yields a typed STASH_FAILED error.
+func (a *Adapter) StashPush(ctx context.Context, repoID domain.RepositoryId, message string) (*domain.Stash, error) {
+	fsPath, err := a.resolvePath(ctx, repoID)
+	if err != nil {
+		return nil, err
+	}
+	msg := strings.TrimSpace(message)
+	if msg == "" {
+		msg = defaultStashMessage
+	}
+	// msg is always the value of `-m`, never a bare option, so it is safe to
+	// pass verbatim (including spaces and a leading '-').
+
+	out, err := runGit(ctx, fsPath, "stash", "push", "-m", msg)
+	if err != nil {
+		return nil, stashFailedFromGit(err.Error())
+	}
+	// A clean working tree makes `git stash push` a successful no-op; resolving
+	// refs/stash would then return a stale entry, so fail explicitly instead.
+	if strings.Contains(out, "No local changes to save") {
+		return nil, stashFailed("no local changes to save")
+	}
+
+	oidOut, err := runGit(ctx, fsPath, "rev-parse", "--verify", "refs/stash")
+	if err != nil {
+		return nil, stashFailedFromGit(err.Error())
+	}
+	oid := strings.TrimSpace(oidOut)
+	if oid == "" {
+		return nil, stashFailed("could not resolve stash oid")
+	}
+
+	st := &domain.Stash{Index: 0, Oid: domain.Oid{Hex: oid, Kind: oidKind(oid)}, Message: msg}
+	if branchOut, berr := runGit(ctx, fsPath, "rev-parse", "--abbrev-ref", "HEAD"); berr == nil {
+		if b := strings.TrimSpace(branchOut); b != "" && b != "HEAD" {
+			st.BranchName = &b
+		}
+	}
+	return st, nil
+}
+
+// oidKind reports the hash kind for a resolved hex oid.
+func oidKind(hex string) string {
+	if len(hex) == 64 {
+		return "SHA256"
+	}
+	return "SHA1"
 }
 
 // RemoteList lists configured remotes by folding `git config --get-regexp

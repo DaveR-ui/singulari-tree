@@ -40,4 +40,6 @@ enum ErrorCode {
   GITHUB_TOKEN_INVALID = 23;
   // Additive: remote operations (Fetch/Push/Pull) carry a distinct pull code.
   PULL_FAILED = 24;
+  // Additive: stash push (save changes before switching branch).
+  STASH_FAILED = 25;
 }

@@ -266,15 +266,29 @@ func (s *Server) Pull(req *singularitreev1.PullRequest, stream googlegrpc.Server
 
 // Checkout switches the repository's working tree to the requested ref. The
 // renderer sends the clicked ref verbatim; the adapter resolves local branches,
-// remote-tracking branches and detached refs.
+// remote-tracking branches and detached refs. force discards tracked
+// modifications and discard_untracked additionally discards untracked files.
 func (s *Server) Checkout(ctx context.Context, req *singularitreev1.CheckoutRequest) (*singularitreev1.CheckoutResponse, error) {
 	if s.gitSvc == nil {
 		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
 	}
-	if err := s.gitSvc.Checkout(ctx, domain.RepositoryId(req.GetRepoId()), domain.RefName{Raw: req.GetRefName()}); err != nil {
+	if err := s.gitSvc.Checkout(ctx, domain.RepositoryId(req.GetRepoId()), domain.RefName{Raw: req.GetRefName()}, req.GetForce(), req.GetDiscardUntracked()); err != nil {
 		return nil, appErrorToStatus(ctx, err)
 	}
 	return &singularitreev1.CheckoutResponse{}, nil
+}
+
+// StashPush saves the repository's working-tree changes to a new stash entry,
+// used by the branch-switch confirmation flow to "save the changes".
+func (s *Server) StashPush(ctx context.Context, req *singularitreev1.StashPushRequest) (*singularitreev1.StashPushResponse, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	st, err := s.gitSvc.StashPush(ctx, domain.RepositoryId(req.GetRepoId()), req.GetMessage())
+	if err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return &singularitreev1.StashPushResponse{Stash: stashToProto(st)}, nil
 }
 
 // streamProgress drains a domain RemoteOpResult channel, forwarding each

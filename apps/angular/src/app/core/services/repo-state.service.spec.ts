@@ -82,6 +82,8 @@ function makeBridge(): IpcBridge & { invoke: Mock } {
         return { repositories: [] };
       case 'checkout':
         return {};
+      case 'stashPush':
+        return { stash: undefined };
       default:
         throw new Error(`unexpected method ${method}`);
     }
@@ -415,6 +417,8 @@ describe('RepoState', () => {
     expect(bridge.invoke).toHaveBeenCalledWith('checkout', {
       repoId: REPO_A.id,
       refName: 'refs/heads/feature-a',
+      force: false,
+      discardUntracked: false,
     });
     expect(bridge.invoke.mock.calls.filter((c) => c[0] === 'getBranches')).toHaveLength(1);
     expect(store.checkoutError()).toBeNull();
@@ -431,6 +435,8 @@ describe('RepoState', () => {
     expect(bridge.invoke).toHaveBeenCalledWith('checkout', {
       repoId: REPO_A.id,
       refName: 'refs/remotes/origin/david/topic-a',
+      force: false,
+      discardUntracked: false,
     });
   });
 
@@ -444,6 +450,8 @@ describe('RepoState', () => {
     expect(bridge.invoke).toHaveBeenCalledWith('checkout', {
       repoId: REPO_A.id,
       refName: 'unmapped',
+      force: false,
+      discardUntracked: false,
     });
   });
 
@@ -524,6 +532,117 @@ describe('RepoState', () => {
     });
     expect(store.refsOffline()).toBe(false);
     expect(store.checkoutRunning()).toBe(false);
+  });
+
+  it('checkoutBranch forwards force and discardUntracked for the conflict flow', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockClear();
+
+    await store.checkoutBranch('feature-a', false, true, false);
+    await store.checkoutBranch('feature-a', false, true, true);
+
+    const checkoutCalls = bridge.invoke.mock.calls.filter((c) => c[0] === 'checkout');
+    expect(checkoutCalls[0]).toEqual([
+      'checkout',
+      {
+        repoId: REPO_A.id,
+        refName: 'refs/heads/feature-a',
+        force: true,
+        discardUntracked: false,
+      },
+    ]);
+    expect(checkoutCalls[1]).toEqual([
+      'checkout',
+      {
+        repoId: REPO_A.id,
+        refName: 'refs/heads/feature-a',
+        force: true,
+        discardUntracked: true,
+      },
+    ]);
+  });
+
+  it('stashPush sends the message, reloads refs and returns true', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockClear();
+
+    const ok = await store.stashPush('Auto-stash before switching');
+
+    expect(ok).toBe(true);
+    expect(bridge.invoke).toHaveBeenCalledWith('stashPush', {
+      repoId: REPO_A.id,
+      message: 'Auto-stash before switching',
+    });
+    expect(bridge.invoke.mock.calls.filter((c) => c[0] === 'getBranches')).toHaveLength(1);
+    expect(store.stashRunning()).toBe(false);
+    expect(store.checkoutError()).toBeNull();
+  });
+
+  it('stashPush records checkoutError and returns false on a generic failure', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockImplementation(async (method: string) => {
+      if (method === 'stashPush') throw { code: 'STASH_FAILED', message: 'boom' } as AppError;
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    const ok = await store.stashPush('msg');
+
+    expect(ok).toBe(false);
+    expect(store.checkoutError()).toEqual({ code: 'STASH_FAILED', message: 'boom', details: {} });
+    expect(store.refsOffline()).toBe(false);
+    expect(store.stashRunning()).toBe(false);
+  });
+
+  it('stashPush maps IPC_UNAVAILABLE to refsOffline and returns false', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockImplementation(async (method: string) => {
+      if (method === 'stashPush') throw { code: 'IPC_UNAVAILABLE', message: 'no bridge' } as AppError;
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    const ok = await store.stashPush('msg');
+
+    expect(ok).toBe(false);
+    expect(store.refsOffline()).toBe(true);
+    expect(store.checkoutError()).toBeNull();
+  });
+
+  it('stashPush no-ops without an active repo', async () => {
+    const ok = await store.stashPush('msg');
+
+    expect(ok).toBe(false);
+    expect(bridge.invoke).not.toHaveBeenCalledWith('stashPush', expect.anything());
+  });
+
+  it('stashPush ignores a re-entrant call while running', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockClear();
+
+    let resolveStash: (value: unknown) => void = () => {};
+    bridge.invoke.mockImplementation((method: string) => {
+      if (method === 'stashPush') {
+        return new Promise((resolve) => {
+          resolveStash = resolve;
+        });
+      }
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    const first = store.stashPush('msg');
+    expect(store.stashRunning()).toBe(true);
+
+    const second = await store.stashPush('msg');
+    expect(second).toBe(false);
+    expect(bridge.invoke.mock.calls.filter((c) => c[0] === 'stashPush')).toHaveLength(1);
+
+    resolveStash({ stash: undefined });
+    await first;
+    expect(store.stashRunning()).toBe(false);
   });
 
   it('dismissCheckoutError clears the recorded checkout failure', () => {
