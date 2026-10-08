@@ -10,6 +10,7 @@ import { Router } from '@angular/router';
 import type { Repository } from '@contracts/domain';
 import { IpcBridge, toAppError, type AppError } from '@core/services/ipc-bridge.service';
 import { RepoState } from '@core/services/repo-state.service';
+import { WorkspacesStore } from '@core/services/workspaces.store';
 
 /**
  * Dedicated repository-list page: add, open and remove persisted repositories.
@@ -237,6 +238,7 @@ import { RepoState } from '@core/services/repo-state.service';
 })
 export class ReposPage implements OnInit {
   readonly repoState = inject(RepoState);
+  private readonly workspaces = inject(WorkspacesStore);
   private readonly bridge = inject(IpcBridge);
   private readonly router = inject(Router);
 
@@ -299,13 +301,14 @@ export class ReposPage implements OnInit {
     return this.repoState.removingId() === id;
   }
 
-  /** Activate `repo` and route to the graph page. */
+  /** Register `repo` as a tab, activate it and route to the graph page. */
   open(repo: Repository): void {
+    this.workspaces.openTab(repo);
     this.repoState.setActive(repo);
     void this.router.navigate(['/repo']);
   }
 
-  /** Open the typed path, publish it as active and route to the graph page. */
+  /** Open the typed path, register it as a tab, activate it and route to the graph. */
   async add(): Promise<void> {
     const fsPath = this.path().trim();
     if (!fsPath) return;
@@ -315,6 +318,7 @@ export class ReposPage implements OnInit {
     this.adding.set(true);
     try {
       const repo = await this.bridge.invoke('openRepository', { fsPath });
+      this.workspaces.openTab(repo);
       this.repoState.setActive(repo);
       void this.router.navigate(['/repo']);
     } catch (err) {

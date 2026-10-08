@@ -1,13 +1,26 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { describe, expect, it, vi } from 'vitest';
-import type { Commit } from '@contracts/domain';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Commit, Diff } from '@contracts/domain';
 import type { GetCommitsResponse } from '@contracts/gitcore';
 import { IpcBridge } from '@core/services/ipc-bridge.service';
 import { KeyboardShortcutService } from '@core/services/keyboard-shortcut.service';
+import { RepoState } from '@core/services/repo-state.service';
 import { GraphStore, WIP_OID } from '../graph.store';
 import type { CommitRow } from '../../repo-models';
 import { GraphPage } from './graph-page';
+
+const EMPTY_DIFF: Diff = {
+  from: undefined,
+  to: undefined,
+  hunks: [],
+  additions: 0,
+  deletions: 0,
+  isBinary: false,
+  hasConflictMarkers: false,
+  files: [],
+  truncated: false,
+};
 
 // The virtual viewport itself is CDK's concern (and needs real layout, absent in
 // jsdom). This spec drives the page's wiring — filter, WIP selection, prefetch
@@ -50,24 +63,49 @@ function makeShortcuts(): ShortcutStub {
 }
 
 async function setup(commits = 3, total = commits) {
-  const store = new GraphStore({
-    invoke: vi.fn(() => Promise.resolve(makePage(commits, total))),
-  } as unknown as IpcBridge);
+  const invoke = vi.fn((method: string) => {
+    if (method === 'getCommits') return Promise.resolve(makePage(commits, total));
+    if (method === 'getDiff') return Promise.resolve(EMPTY_DIFF);
+    if (method === 'reset') return Promise.resolve({});
+    if (method === 'getCommitStats') return Promise.resolve({ stats: [] });
+    return Promise.resolve({});
+  });
+  const store = new GraphStore({ invoke } as unknown as IpcBridge);
   store.repoId.set('repo-1');
   await store.loadWindow(0);
 
   const shortcuts = makeShortcuts();
+  const repoState = {
+    checkoutBranch: vi.fn(async () => {}),
+    clearRefOpError: vi.fn(),
+    createBranch: vi.fn(async () => true),
+    createTag: vi.fn(async () => true),
+  };
 
   await TestBed.configureTestingModule({
     providers: [
       provideZonelessChangeDetection(),
       { provide: GraphStore, useValue: store },
       { provide: KeyboardShortcutService, useValue: shortcuts },
+      { provide: RepoState, useValue: repoState },
     ],
   }).compileComponents();
 
   const page = TestBed.runInInjectionContext(() => new GraphPage());
-  return { store, page, shortcuts };
+  return { store, page, shortcuts, repoState, invoke };
+}
+
+function makeRow(index: number): CommitRow {
+  return {
+    commit: makeCommit(index),
+    lane: { index: 0, color: 0, continues: false },
+    refs: [],
+    isHead: false,
+  };
+}
+
+function menuEvent(clientX = 100, clientY = 120): MouseEvent {
+  return new MouseEvent('contextmenu', { clientX, clientY, bubbles: true, cancelable: true });
 }
 
 describe('GraphPage', () => {
@@ -171,5 +209,268 @@ describe('GraphPage', () => {
 
     handlerFor(' ')(new KeyboardEvent('keydown'));
     expect(store.diffIntent()).toEqual({ oid: store.selectedOid() });
+  });
+
+  // -- context menu --------------------------------------------------------
+
+  it('opens the menu for a commit row and clamps it into the viewport', async () => {
+    const { page } = await setup(3);
+
+    page.onRowContextMenu(menuEvent(100, 120), makeRow(0));
+    expect(page.contextMenuTarget()?.oid).toBe(makeCommit(0).oid?.hex);
+    expect(page.contextMenu()?.x).toBe(100);
+
+    page.onRowContextMenu(menuEvent(100000, 100000), makeRow(1));
+    expect(page.contextMenu()?.x).toBe(Math.max(0, window.innerWidth - 220));
+    expect(page.contextMenu()?.y).toBe(Math.max(0, window.innerHeight - 260));
+  });
+
+  it('ignores a context menu on a row without an oid', async () => {
+    const { page } = await setup(1);
+    const row: CommitRow = { ...makeRow(0), commit: { ...makeCommit(0), oid: undefined } };
+
+    page.onRowContextMenu(menuEvent(), row);
+
+    expect(page.contextMenu()).toBeNull();
+  });
+
+  it('enables Compare only for a distinct, non-WIP selection', async () => {
+    const { store, page } = await setup(3);
+    page.onRowContextMenu(menuEvent(), makeRow(0));
+    expect(page.canCompare()).toBe(false);
+
+    store.select(makeCommit(1).oid?.hex ?? '');
+    expect(page.canCompare()).toBe(true);
+
+    store.select(makeCommit(0).oid?.hex ?? '');
+    expect(page.canCompare()).toBe(false);
+
+    store.select(WIP_OID);
+    expect(page.canCompare()).toBe(false);
+  });
+
+  it('closes the menu explicitly', async () => {
+    const { page } = await setup();
+    page.onRowContextMenu(menuEvent(), makeRow(0));
+
+    page.closeContextMenu();
+
+    expect(page.contextMenu()).toBeNull();
+  });
+
+  it('routes Checkout through RepoState with the resolved ref', async () => {
+    const { page, repoState } = await setup();
+    page.onRowContextMenu(menuEvent(), makeRow(0));
+
+    page.onCheckout({ refName: 'feature/x', isRemote: false, label: 'feature/x' });
+
+    expect(repoState.checkoutBranch).toHaveBeenCalledWith('feature/x', false);
+    expect(page.contextMenu()).toBeNull();
+  });
+
+  it('compares the selected base with the menu target', async () => {
+    const { store, page, invoke } = await setup(3);
+    const base = makeCommit(2).oid?.hex ?? '';
+    store.select(base);
+    page.onRowContextMenu(menuEvent(), makeRow(0));
+
+    page.onCompare();
+
+    await vi.waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('getDiff', {
+        repoId: 'repo-1',
+        from: base,
+        to: makeCommit(0).oid?.hex,
+        path: '',
+        staged: false,
+      }),
+    );
+    expect(page.contextMenu()).toBeNull();
+  });
+
+  it('does not compare when the base is the menu target', async () => {
+    const { store, page, invoke } = await setup(3);
+    store.select(makeCommit(0).oid?.hex ?? '');
+    page.onRowContextMenu(menuEvent(), makeRow(0));
+    invoke.mockClear();
+
+    page.onCompare();
+
+    expect(invoke).not.toHaveBeenCalledWith('getDiff', expect.anything());
+  });
+
+  it('copies the full SHA via the Clipboard API', async () => {
+    const { page } = await setup();
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+
+    const ok = await page.copyToClipboard('c'.repeat(40));
+
+    expect(ok).toBe(true);
+    expect(writeText).toHaveBeenCalledWith('c'.repeat(40));
+  });
+
+  it('falls back to a hidden textarea when the Clipboard API rejects', async () => {
+    const { page } = await setup();
+    const writeText = vi.fn(() => Promise.reject(new Error('denied')));
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const execCommand = vi.fn(() => true);
+    (document as unknown as { execCommand: typeof execCommand }).execCommand = execCommand;
+
+    const ok = await page.copyToClipboard('d'.repeat(40));
+
+    expect(ok).toBe(true);
+    expect(execCommand).toHaveBeenCalledWith('copy');
+  });
+
+  it('returns false when neither clipboard path is available', async () => {
+    const { page } = await setup();
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+    (document as unknown as { execCommand?: () => boolean }).execCommand = undefined;
+
+    const ok = await page.copyToClipboard('e'.repeat(40));
+
+    expect(ok).toBe(false);
+  });
+
+  it('runs soft and mixed resets immediately', async () => {
+    const { page, invoke } = await setup();
+    const oid = makeCommit(0).oid?.hex ?? '';
+    page.onRowContextMenu(menuEvent(), makeRow(0));
+
+    page.onReset('SOFT');
+    await vi.waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('reset', { repoId: 'repo-1', to: oid, mode: 'SOFT' }),
+    );
+
+    page.onRowContextMenu(menuEvent(), makeRow(1));
+    page.onReset('MIXED');
+    await vi.waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('reset', {
+        repoId: 'repo-1',
+        to: makeCommit(1).oid?.hex,
+        mode: 'MIXED',
+      }),
+    );
+  });
+
+  it('gates a hard reset behind the confirmation dialog', async () => {
+    const { page, invoke } = await setup();
+    const oid = makeCommit(0).oid?.hex ?? '';
+    page.onRowContextMenu(menuEvent(), makeRow(0));
+    invoke.mockClear();
+
+    page.onReset('HARD');
+
+    // No RPC until the user confirms.
+    expect(invoke).not.toHaveBeenCalledWith('reset', expect.anything());
+    expect(page.resetConfirm()).toEqual({ oid });
+
+    page.onResetConfirmed();
+
+    await vi.waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('reset', { repoId: 'repo-1', to: oid, mode: 'HARD' }),
+    );
+    expect(page.resetConfirm()).toBeNull();
+  });
+
+  it('cancels a pending hard reset without calling the bridge', async () => {
+    const { page, invoke } = await setup();
+    page.onRowContextMenu(menuEvent(), makeRow(0));
+    page.onReset('HARD');
+    invoke.mockClear();
+
+    page.onResetCancelled();
+
+    expect(page.resetConfirm()).toBeNull();
+    expect(invoke).not.toHaveBeenCalledWith('reset', expect.anything());
+  });
+
+  it('ignores reset when no menu target is open', async () => {
+    const { page, invoke } = await setup();
+    invoke.mockClear();
+
+    page.onReset('SOFT');
+
+    expect(invoke).not.toHaveBeenCalledWith('reset', expect.anything());
+  });
+
+  // -- create branch / tag at a commit (ADR-028) ---------------------------
+
+  it('opens the create-branch dialog prefilled with the menu commit oid', async () => {
+    const { page } = await setup(3);
+    const oid = makeCommit(1).oid?.hex ?? '';
+    page.onRowContextMenu(menuEvent(), makeRow(1));
+
+    page.onCreateBranchHere(oid);
+
+    expect(page.branchDialog()).toEqual({ startPoint: oid });
+    expect(page.contextMenu()).toBeNull();
+  });
+
+  it('routes the branch-create submit to RepoState and closes on success', async () => {
+    const { page, repoState } = await setup();
+    page.branchDialog.set({ startPoint: 'abc' });
+
+    page.onBranchCreateSubmitted({ name: 'topic', startPoint: 'abc', checkout: true });
+
+    await vi.waitFor(() =>
+      expect(repoState.createBranch).toHaveBeenCalledWith('topic', 'abc', true),
+    );
+    await vi.waitFor(() => expect(page.branchDialog()).toBeNull());
+  });
+
+  it('keeps the branch dialog open and clears the error on cancel', async () => {
+    const { page, repoState } = await setup();
+    page.branchDialog.set({ startPoint: 'abc' });
+
+    page.onBranchCreateCancelled();
+
+    expect(page.branchDialog()).toBeNull();
+    expect(repoState.clearRefOpError).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the create-tag dialog prefilled with the menu commit oid', async () => {
+    const { page } = await setup(3);
+    const oid = makeCommit(1).oid?.hex ?? '';
+    page.onRowContextMenu(menuEvent(), makeRow(1));
+
+    page.onTagCommit(oid);
+
+    expect(page.tagDialog()).toEqual({ target: oid });
+    expect(page.contextMenu()).toBeNull();
+  });
+
+  it('routes the tag-create submit to RepoState and closes on success', async () => {
+    const { page, repoState } = await setup();
+    page.tagDialog.set({ target: 'abc' });
+
+    page.onTagCreateSubmitted({
+      name: 'v1.0.0',
+      target: 'abc',
+      annotated: true,
+      message: 'notes',
+      force: false,
+    });
+
+    await vi.waitFor(() =>
+      expect(repoState.createTag).toHaveBeenCalledWith('v1.0.0', 'abc', true, 'notes', false),
+    );
+    await vi.waitFor(() => expect(page.tagDialog()).toBeNull());
+  });
+
+  it('closes the tag dialog and clears the error on cancel', async () => {
+    const { page, repoState } = await setup();
+    page.tagDialog.set({ target: 'abc' });
+
+    page.onTagCreateCancelled();
+
+    expect(page.tagDialog()).toBeNull();
+    expect(repoState.clearRefOpError).toHaveBeenCalledTimes(1);
+  });
+
+  afterEach(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+    (document as unknown as { execCommand?: () => boolean }).execCommand = undefined;
   });
 });

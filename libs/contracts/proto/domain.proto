@@ -119,14 +119,47 @@ message Hunk {
   repeated DiffLine lines = 5;
 }
 
+// Per-file diff section (ADR-0020). One FileDiff per changed path; it is the
+// addressing substrate for hunk/line staging and discard. `status` is a
+// porcelain-v2 code (M, A, D, R, C, T, U, ...); `old_path` is set only for
+// renames/copies and empty otherwise.
+message FileDiff {
+  string path = 1;
+  string old_path = 2; // optional (renames/copies)
+  string status = 3;   // porcelain v2 code
+  repeated Hunk hunks = 4;
+  int32 additions = 5;
+  int32 deletions = 6;
+  bool is_binary = 7;
+  bool has_conflict_markers = 8;
+}
+
 message Diff {
   Oid from = 1;
   Oid to = 2;
+  // DEPRECATED in favor of `files`; flattened for back-compat (every file's
+  // hunks concatenated in git order). Kept so the legacy Monaco viewer and the
+  // e2e suite keep working; never renumber or remove it.
   repeated Hunk hunks = 3;
   int32 additions = 4;
   int32 deletions = 5;
   bool is_binary = 6;
   bool has_conflict_markers = 7;
+  // Per-file sections (ADR-0020). Populated alongside the deprecated flat
+  // `hunks`; group by these when addressing a file, hunk or line.
+  repeated FileDiff files = 8;
+  // True when the payload was capped by the core (MaxDiffHunks/MaxDiffLines),
+  // instead of returning an unbounded diff (ADR-0020 (c)).
+  bool truncated = 9;
+}
+
+// Per-commit change-size counts (ADR-0023). Counts only — this entity is cached
+// in SQLite and NEVER carries Git objects/blobs.
+message CommitStats {
+  string oid = 1;
+  int32 additions = 2;
+  int32 deletions = 3;
+  int32 files_changed = 4;
 }
 
 // File status (porcelain v2)

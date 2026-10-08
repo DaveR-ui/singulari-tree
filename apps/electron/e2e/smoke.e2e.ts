@@ -12,16 +12,22 @@ import { _electron as electron, type ElectronApplication, type Page } from 'play
  * "open repo → graph → stage → commit → diff" (docs/context/git-client/roadmap-mvp.md).
  *
  * WHAT THIS SPEC ACTUALLY COVERS (honest scope)
- *   1. open repo   — type the fixture path into the repo picker and open it.
- *   2. graph       — the routed graph page renders real commits from go-core
- *                    (gRPC round-trip through the Electron IPC bridge).
- *   3. select      — clicking a row shows its details (message/oid).
- *   4. WIP row     — the synthetic working-tree row + WIP details panel render.
+ *   1. open repo       — type the fixture path into the repo picker and open it.
+ *   2. graph           — the routed graph page renders real commits from go-core
+ *                        (gRPC round-trip through the Electron IPC bridge).
+ *   3. select          — clicking a row shows its details (message/oid).
+ *   4. WIP row         — the synthetic working-tree row + WIP details panel render.
+ *   5. status / stage  — the status region lists the untracked fixture file and
+ *                        stage → unstage round-trips through the real IPC path.
+ *   6. commit          — committing the staged file moves HEAD, so the graph
+ *                        reloads and shows the new commit row (IPC → gRPC → git).
+ *   7. diff            — selecting that new commit renders its diff in the viewer.
  *
- * WHAT IS ABSENT THIS ITERATION (asserted only as a documented skip, never faked)
- *   stage → commit → diff. The graph page exposes no stage/commit/diff controls;
- *   the shell toolbar's "Commit" button is inert chrome (see shell-toolbar.ts).
- *   `GraphStore.diffIntent` exists but is explicitly "not-yet-implemented".
+ * WHAT IS ABSENT THIS ITERATION
+ *   Nothing from the Week-3 bar item "open repo → graph → stage → commit → diff":
+ *   the whole flow is now driven against the fixture repo. `GraphStore.diffIntent`
+ *   (the space-to-diff intent signal) is still UI-only, but the diff viewer itself
+ *   is wired through `StatusStore` and is covered by the last test below.
  *
  * PREREQUISITES (build from the repo root)
  *   ./tools/scripts/build-go-core.sh                 -> dist/go-core (posix) / dist/go-core.exe (win32)
@@ -175,7 +181,7 @@ let window: Page | null = null;
 let server: http.Server | null = null;
 let fixture: Fixture | null = null;
 
-test.describe('SingulariTree Electron smoke: open repo → graph → select → WIP', () => {
+test.describe('SingulariTree Electron smoke: open repo → graph → stage → commit → diff', () => {
   test.beforeAll(async () => {
     if (missing.length > 0) {
       // In CI a skip exits 0 and hides a broken build — fail loudly instead.
@@ -251,7 +257,7 @@ test.describe('SingulariTree Electron smoke: open repo → graph → select → 
     test.skip(missing.length > 0 && !requirePrereqs, `missing prerequisites: ${missing.join('; ')}`);
     if (!window || !fixture) throw new Error('e2e setup did not initialise');
 
-    // (c) selection → details panel (read-only; no stage/commit UI exists).
+    // (c) selection → details panel (read-only history + details).
     await window.getByTestId('graph-row-message').first().click();
     const detailMessage = window.getByTestId('commit-details-message');
     await expect(detailMessage).toBeVisible();
@@ -264,10 +270,74 @@ test.describe('SingulariTree Electron smoke: open repo → graph → select → 
     await expect(window.getByTestId('wip-row-label')).toContainText('Uncommitted changes');
   });
 
-  test('stage → commit → diff (absent this iteration)', () => {
-    test.skip(
-      true,
-      'No functional stage/commit/diff UI exists in this iteration: the graph page is read-only history + a synthetic WIP row, and the shell toolbar "Commit" button is inert chrome. GraphStore.diffIntent is explicitly not-yet-implemented. Covered steps in this spec: open repo → graph → select → WIP.',
-    );
+  test('stage → commit → diff against the real git core', async () => {
+    test.skip(missing.length > 0 && !requirePrereqs, `missing prerequisites: ${missing.join('; ')}`);
+    if (!window || !fixture) throw new Error('e2e setup did not initialise');
+
+    // (e) pinned WIP row -> real working-tree status (IPC → gRPC → git status).
+    // The fixture leaves an untracked `wip.txt`, so the status region must list it.
+    await window.getByTestId('graph-wip').click();
+
+    const wipFile = window.getByTestId('status-file').filter({ hasText: 'wip.txt' });
+    await expect(wipFile).toHaveCount(1, { timeout: 30_000 });
+    await expect(wipFile).toBeVisible();
+    await expect(window.getByTestId('status-error')).toHaveCount(0);
+
+    // (f) stage: the row moves to the staged section, exposing "Unstage".
+    await wipFile.getByTestId('status-stage').click();
+    await expect(
+      window.getByTestId('status-file').filter({ hasText: 'wip.txt' }).getByTestId('status-unstage'),
+    ).toBeVisible({ timeout: 30_000 });
+
+    // (g) unstage round-trip: the row returns to unstaged, exposing "Stage" again.
+    await window
+      .getByTestId('status-file')
+      .filter({ hasText: 'wip.txt' })
+      .getByTestId('status-unstage')
+      .click();
+    await expect(
+      window.getByTestId('status-file').filter({ hasText: 'wip.txt' }).getByTestId('status-stage'),
+    ).toBeVisible({ timeout: 30_000 });
+
+    // (h) stage again, write a message and commit through the full IPC path.
+    await window
+      .getByTestId('status-file')
+      .filter({ hasText: 'wip.txt' })
+      .getByTestId('status-stage')
+      .click();
+    await expect(
+      window.getByTestId('status-file').filter({ hasText: 'wip.txt' }).getByTestId('status-unstage'),
+    ).toBeVisible({ timeout: 30_000 });
+
+    await window.getByTestId('commit-message-input').fill('wip commit');
+    const commitButton = window.getByTestId('commit-button');
+    await expect(commitButton).toBeEnabled();
+    await commitButton.click();
+
+    // (i) a real commit exists: HEAD moved, the graph reloads and pins the new node.
+    const newCommitMessage = window.getByTestId('graph-row-message').filter({ hasText: 'wip commit' });
+    await expect(newCommitMessage).toHaveCount(1, { timeout: 60_000 });
+    await expect(newCommitMessage).toBeVisible();
+    await expect(window.getByTestId('commit-error')).toHaveCount(0);
+    await expect(window.getByTestId('graph-error')).toHaveCount(0);
+
+    // (j) select the new commit -> the diff viewer renders its (non-empty) diff.
+    // Assert the viewer host, not Monaco internals: Monaco loads lazily and the
+    // plain unified fallback stands in until (and if) it does.
+    await newCommitMessage.click();
+    const diffViewer = window.locator('[data-testid="diff-viewer"]');
+    await expect(diffViewer).toBeVisible();
+    await expect(diffViewer.getByTestId('diff-empty')).toHaveCount(0);
+    await expect(diffViewer.getByTestId('diff-error')).toHaveCount(0);
+    // Monaco mounts several `.monaco-editor` nodes (gutter + original + modified);
+    // the gutter is zero-size, so assert "fallback visible OR a diff editor present"
+    // (count, not visibility of an arbitrary node) rather than a bare visibility check.
+    const diffFallback = diffViewer.getByTestId('diff-fallback');
+    const monacoDiff = diffViewer.locator('.monaco-diff-editor');
+    await expect(async () => {
+      const fallbackVisible = await diffFallback.isVisible().catch(() => false);
+      const monacoCount = await monacoDiff.count();
+      expect(fallbackVisible || monacoCount > 0).toBe(true);
+    }).toPass({ timeout: 30_000 });
   });
 });

@@ -39,6 +39,20 @@ export enum ErrorCode {
   PULL_FAILED = 24,
   /** STASH_FAILED - Additive: stash push (save changes before switching branch). */
   STASH_FAILED = 25,
+  /** RESET_FAILED - Additive: reset soft/mixed/hard (ADR-0021; next free number after 25). */
+  RESET_FAILED = 26,
+  /**
+   * DISCARD_FAILED - Additive: file/hunk discard (ADR-0020). The ADR left the code at decision
+   * level; the next free number (27) is used.
+   */
+  DISCARD_FAILED = 27,
+  /** MERGE_CONFLICT - Additive: advanced-git mutations (ADR-028), next free numbers after 27. */
+  MERGE_CONFLICT = 28,
+  MERGE_FAILED = 29,
+  TAG_EXISTS = 30,
+  TAG_NOT_FOUND = 31,
+  /** GIT_FLOW_FAILED - Additive: git-flow presets (ADR-027), next free number after 31. */
+  GIT_FLOW_FAILED = 32,
   UNRECOGNIZED = -1,
 }
 

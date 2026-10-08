@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { IpcBridge, toAppError } from './ipc-bridge.service';
 
 /** Frozen envelope prefix, mirrored from the Electron main process. */
@@ -116,5 +116,53 @@ describe('IpcBridge.invoke', () => {
     const bridge = new IpcBridge();
 
     expect(() => bridge.invoke('getBranches', { repoId: 'r1' })).toThrow();
+  });
+});
+
+describe('IpcBridge.onDeepLink', () => {
+  afterEach(clearBridge);
+
+  it('delegates to the preload bridge and returns its unsubscribe', () => {
+    const unsubscribe = vi.fn();
+    const onDeepLink = vi.fn((_cb: unknown) => unsubscribe);
+    installBridge({ onDeepLink });
+    const bridge = new IpcBridge();
+    const cb = vi.fn();
+
+    const off = bridge.onDeepLink(cb);
+
+    expect(onDeepLink).toHaveBeenCalledWith(cb);
+    off();
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a no-op unsubscribe when the bridge is absent', () => {
+    clearBridge();
+    const bridge = new IpcBridge();
+
+    expect(() => bridge.onDeepLink(() => {})()).not.toThrow();
+  });
+});
+
+describe('IpcBridge.signalDeepLinkReady', () => {
+  afterEach(clearBridge);
+
+  it('forwards the readiness ack to the preload bridge', () => {
+    const signalDeepLinkReady = vi.fn();
+    installBridge({ signalDeepLinkReady });
+    const bridge = new IpcBridge();
+
+    bridge.signalDeepLinkReady();
+
+    expect(signalDeepLinkReady).toHaveBeenCalledTimes(1);
+  });
+
+  it('is a no-op when the bridge or the method is absent', () => {
+    clearBridge();
+    const bridge = new IpcBridge();
+    expect(() => bridge.signalDeepLinkReady()).not.toThrow();
+
+    installBridge({});
+    expect(() => bridge.signalDeepLinkReady()).not.toThrow();
   });
 });

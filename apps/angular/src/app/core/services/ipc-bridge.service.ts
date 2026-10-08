@@ -9,18 +9,32 @@ import type {
   LogoutRequest,
   LogoutResponse,
 } from '@contracts/auth';
-import type { Commit, Diff, Repository } from '@contracts/domain';
+import type { Branch, Commit, Diff, Repository, Tag } from '@contracts/domain';
 import type {
   CheckoutRequest,
   CheckoutResponse,
   CommitRequest,
+  CreateBranchRequest,
+  CreateTagRequest,
+  DeleteBranchRequest,
+  DeleteBranchResponse,
+  DeleteTagRequest,
+  DeleteTagResponse,
+  DiscardHunkRequest,
+  DiscardHunkResponse,
+  DiscardRequest,
+  DiscardResponse,
   FetchRequest,
+  FinishGitFlowRequest,
   FsChangedEvent,
   GetBranchesRequest,
   GetBranchesResponse,
+  GetCommitStatsRequest,
+  GetCommitStatsResponse,
   GetCommitsRequest,
   GetCommitsResponse,
   GetDiffRequest,
+  GetGitFlowConfigRequest,
   GetRemotesRequest,
   GetRemotesResponse,
   GetStashesRequest,
@@ -29,20 +43,42 @@ import type {
   GetStatusResponse,
   GetTagsRequest,
   GetTagsResponse,
+  GitFlowConfig,
+  GitFlowResult,
   ListRepositoriesRequest,
   ListRepositoriesResponse,
+  MergeRequest,
+  MergeResponse,
   OpenRepositoryRequest,
   Progress,
   PullRequest,
   PushRequest,
   RemoveRepositoryRequest,
   RemoveRepositoryResponse,
+  RenameBranchRequest,
+  ResetRequest,
+  ResetResponse,
+  SearchCommitsRequest,
+  SearchCommitsResponse,
+  SetGitFlowConfigRequest,
+  StageHunkRequest,
+  StageHunkResponse,
   StageRequest,
   StageResponse,
+  StashApplyRequest,
+  StashApplyResponse,
+  StashDropRequest,
+  StashDropResponse,
+  StashPopRequest,
+  StashPopResponse,
   StashPushRequest,
   StashPushResponse,
+  StartGitFlowRequest,
+  UnstageHunkRequest,
+  UnstageHunkResponse,
   UnstageRequest,
   UnstageResponse,
+  WatchRequest,
 } from '@contracts/gitcore';
 
 /**
@@ -69,6 +105,16 @@ export interface MenuNavigatePayload {
   route: string;
 }
 
+/**
+ * Normalized OS deep link pushed by the Electron main process (channel
+ * `deeplink:open`, ADR-025). Mirrors `apps/electron/src/main/deep-link.ts`.
+ */
+export type DeepLinkPayload =
+  | { kind: 'open-path'; path: string }
+  | { kind: 'open-commit'; repo: string; oid: string }
+  | { kind: 'open-branch'; repo: string; branch: string }
+  | { kind: 'clone'; url: string };
+
 // Typed mirror of the preload bridge (`window.gitClientApi`, ipc-strategy.md §1.2).
 // Channel -> proto request/response pulled from the generated contracts. `fetch`,
 // `pull` and `push` are server-streaming in proto; progress arrives via `onProgress`
@@ -86,12 +132,41 @@ export interface GitClientApi {
   getDiff: (req: GetDiffRequest) => Promise<Diff>;
   stage: (req: StageRequest) => Promise<StageResponse>;
   unstage: (req: UnstageRequest) => Promise<UnstageResponse>;
+  stageHunk: (req: StageHunkRequest) => Promise<StageHunkResponse>;
+  unstageHunk: (req: UnstageHunkRequest) => Promise<UnstageHunkResponse>;
+  discardHunk: (req: DiscardHunkRequest) => Promise<DiscardHunkResponse>;
+  discard: (req: DiscardRequest) => Promise<DiscardResponse>;
+  reset: (req: ResetRequest) => Promise<ResetResponse>;
+  getCommitStats: (req: GetCommitStatsRequest) => Promise<GetCommitStatsResponse>;
   commit: (req: CommitRequest) => Promise<Commit>;
   checkout: (req: CheckoutRequest) => Promise<CheckoutResponse>;
   stashPush: (req: StashPushRequest) => Promise<StashPushResponse>;
+  // Advanced-git mutations (ADR-028): branch CRUD, merge, tag CRUD, stash ops.
+  createBranch: (req: CreateBranchRequest) => Promise<Branch>;
+  renameBranch: (req: RenameBranchRequest) => Promise<Branch>;
+  deleteBranch: (req: DeleteBranchRequest) => Promise<DeleteBranchResponse>;
+  merge: (req: MergeRequest) => Promise<MergeResponse>;
+  createTag: (req: CreateTagRequest) => Promise<Tag>;
+  deleteTag: (req: DeleteTagRequest) => Promise<DeleteTagResponse>;
+  stashApply: (req: StashApplyRequest) => Promise<StashApplyResponse>;
+  stashPop: (req: StashPopRequest) => Promise<StashPopResponse>;
+  stashDrop: (req: StashDropRequest) => Promise<StashDropResponse>;
+  // Cross-repo commit search (ADR-026) + git-flow presets (ADR-027).
+  searchCommits: (req: SearchCommitsRequest) => Promise<SearchCommitsResponse>;
+  getGitFlowConfig: (req: GetGitFlowConfigRequest) => Promise<GitFlowConfig>;
+  setGitFlowConfig: (req: SetGitFlowConfigRequest) => Promise<GitFlowConfig>;
+  startGitFlow: (req: StartGitFlowRequest) => Promise<GitFlowResult>;
+  finishGitFlow: (req: FinishGitFlowRequest) => Promise<GitFlowResult>;
   fetch: (req: FetchRequest) => Promise<void>;
   pull: (req: PullRequest) => Promise<void>;
   push: (req: PushRequest) => Promise<void>;
+  /**
+   * Start the background filesystem `Watch` server-stream for one repository;
+   * resolves an ack immediately (never awaits the stream). Changes arrive via
+   * `onFsChanged`. `Promise<void>` mirrors `fetch`/`pull`/`push` and the ack is
+   * intentionally discarded by the caller.
+   */
+  watch: (req: WatchRequest) => Promise<void>;
   getAuthStatus: (req: GetAuthStatusRequest) => Promise<GetAuthStatusResponse>;
   connectGitHubFromCLI: (req: ConnectGitHubFromCLIRequest) => Promise<ConnectGitHubFromCLIResponse>;
   listGitHubRepos: (req: ListGitHubReposRequest) => Promise<ListGitHubReposResponse>;
@@ -101,6 +176,13 @@ export interface GitClientApi {
   onProgress: (cb: (payload: Progress) => void) => () => void;
   /** Native-menu navigation pushed from the Electron main process (channel `menu:navigate`). */
   onMenuNavigate: (cb: (payload: MenuNavigatePayload) => void) => () => void;
+  /** Validated OS deep links pushed from the Electron main process (channel `deeplink:open`). */
+  onDeepLink: (cb: (payload: DeepLinkPayload) => void) => () => void;
+  /**
+   * Renderer → main readiness ack for deep-link delivery (channel
+   * `deeplink:ready`). Sent once the renderer has subscribed to `onDeepLink`.
+   */
+  signalDeepLinkReady: () => void;
   /** Native folder picker exposed by the Electron shell (channel `dialog:chooseDirectory`). */
   chooseDirectory: (req: ChooseDirectoryRequest) => Promise<ChooseDirectoryResponse>;
 }
@@ -255,5 +337,20 @@ export class IpcBridge {
     const api = this.api;
     if (!api?.onMenuNavigate) return () => {};
     return api.onMenuNavigate(cb);
+  }
+
+  onDeepLink(cb: (payload: DeepLinkPayload) => void): () => void {
+    const api = this.api;
+    if (!api?.onDeepLink) return () => {};
+    return api.onDeepLink(cb);
+  }
+
+  /**
+   * Signal deep-link readiness to the shell. Best-effort: a missing bridge or an
+   * older preload without the method is a no-op (the shell's bounded fallback
+   * still delivers queued links).
+   */
+  signalDeepLinkReady(): void {
+    this.api?.signalDeepLinkReady?.();
   }
 }

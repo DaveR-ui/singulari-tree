@@ -8,7 +8,7 @@ aliases:
 - Desktop Shell slice
 related:
 - slices-index
-version: 1.0.1
+version: 1.1.0
 status: active
 ---
 
@@ -51,5 +51,6 @@ Electron shell that hosts the desktop application: main process, preload, typed 
 
 ## Known gaps & accepted debt
 
+- M3 landed: `singularitree://` scheme registration behind the single-instance lock, macOS `open-url` plus Windows/Linux argv / `second-instance` handling, and the normalized `deeplink:open` IPC event forwarded to the renderer (the shell never runs Git) — [[adr-025-deep-links-and-clipboard-clone]].
 - e2e backed by mocks.
 - Packaging (`electron-builder`) not yet configured.

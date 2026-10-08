@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -221,5 +222,110 @@ func TestWatcherServiceWindowDefaults(t *testing.T) {
 	}
 	if svc := NewWatcherServiceWithWindow(nil, 0); svc.window != DefaultDebounceWindow {
 		t.Fatalf("WithWindow(0) window = %v, want default %v", svc.window, DefaultDebounceWindow)
+	}
+}
+
+// fakeWatcherPort is a domain.WatcherPort whose event channel the test owns, so
+// delivery and closure can be driven deterministically.
+type fakeWatcherPort struct {
+	ch chan domain.FsChangedEvent
+}
+
+func (f *fakeWatcherPort) Watch(context.Context, domain.RepositoryId) (<-chan domain.FsChangedEvent, error) {
+	return f.ch, nil
+}
+
+func (f *fakeWatcherPort) Unwatch(domain.RepositoryId) error { return nil }
+
+// TestWatchForwardsAndFeedsEmit proves Watch both forwards port events to the
+// caller and feeds them into Emit, so a registered OnChange callback fires.
+func TestWatchForwardsAndFeedsEmit(t *testing.T) {
+	sched := newFakeScheduler()
+	port := &fakeWatcherPort{ch: make(chan domain.FsChangedEvent, 4)}
+	svc := newWatcherService(port, 150*time.Millisecond, sched)
+
+	var c collector
+	svc.OnChange(c.add)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	out, err := svc.Watch(ctx, domain.RepositoryId("repo-1"))
+	if err != nil {
+		t.Fatalf("Watch: %v", err)
+	}
+
+	want := domain.FsChangedEvent{RepoID: "repo-1", Paths: []string{"a.txt"}}
+	port.ch <- want
+
+	select {
+	case got := <-out:
+		if got.RepoID != want.RepoID || len(got.Paths) != 1 || got.Paths[0] != "a.txt" {
+			t.Fatalf("forwarded event = %+v, want %+v", got, want)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for forwarded event")
+	}
+
+	// The event reached Emit: firing the debounce window yields exactly one
+	// callback carrying it (this is the invalidation path main.go wires).
+	if got := c.snapshot(); len(got) != 0 {
+		t.Fatalf("callback fired before window elapsed = %d, want 0", len(got))
+	}
+	sched.fireAll()
+	got := c.snapshot()
+	if len(got) != 1 {
+		t.Fatalf("callbacks after window = %d, want 1", len(got))
+	}
+	if got[0].RepoID != want.RepoID || len(got[0].Paths) != 1 || got[0].Paths[0] != "a.txt" {
+		t.Fatalf("callback event = %+v, want %+v", got[0], want)
+	}
+}
+
+// TestWatchClosesForwardedChannelWhenPortCloses proves the pump exits and the
+// forwarded channel closes when the port channel closes.
+func TestWatchClosesForwardedChannelWhenPortCloses(t *testing.T) {
+	port := &fakeWatcherPort{ch: make(chan domain.FsChangedEvent)}
+	svc := NewWatcherService(port)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	out, err := svc.Watch(ctx, domain.RepositoryId("repo-1"))
+	if err != nil {
+		t.Fatalf("Watch: %v", err)
+	}
+
+	close(port.ch)
+
+	select {
+	case _, ok := <-out:
+		if ok {
+			t.Fatal("forwarded channel delivered a value after port close, want closed")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out: pump did not close forwarded channel on port close")
+	}
+}
+
+// TestWatchPumpExitsOnContextCancel proves ctx cancellation ends the pump even
+// when the port never closes its channel.
+func TestWatchPumpExitsOnContextCancel(t *testing.T) {
+	port := &fakeWatcherPort{ch: make(chan domain.FsChangedEvent)}
+	svc := NewWatcherService(port)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	out, err := svc.Watch(ctx, domain.RepositoryId("repo-1"))
+	if err != nil {
+		t.Fatalf("Watch: %v", err)
+	}
+
+	cancel()
+
+	select {
+	case _, ok := <-out:
+		if ok {
+			t.Fatal("forwarded channel delivered a value after ctx cancel, want closed")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out: pump did not exit on ctx cancellation")
 	}
 }

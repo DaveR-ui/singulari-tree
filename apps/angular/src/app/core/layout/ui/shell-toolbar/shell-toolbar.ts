@@ -47,6 +47,33 @@ import { BadgeComponent } from '@singularitree/ui-kit';
       >
         <i>⟳</i><span i18n>Fetch</span>
       </button>
+      <button
+        class="st-tool"
+        type="button"
+        data-testid="toolbar-fetch-all"
+        [disabled]="!canFetchAll()"
+        (click)="fetchAllRequested.emit()"
+      >
+        <i>⇊</i><span i18n>Fetch all</span>
+      </button>
+      <div class="st-toolbar__sep"></div>
+      <button
+        class="st-tool"
+        type="button"
+        data-testid="toolbar-clone-clipboard"
+        (click)="cloneFromClipboardRequested.emit()"
+      >
+        <i>⇩</i><span i18n>Clone from clipboard</span>
+      </button>
+      <button
+        class="st-tool"
+        type="button"
+        data-testid="toolbar-copy-repo-url"
+        [disabled]="!hasActiveRepo()"
+        (click)="copyRepoUrlRequested.emit()"
+      >
+        <i>🔗</i><span i18n>Copy repo URL</span>
+      </button>
       <div class="st-toolbar__sep"></div>
       <button class="st-tool" type="button"><i>⑂</i><span i18n>Branch</span></button>
       <button class="st-tool" type="button"><i>⑃</i><span i18n>Merge</span></button>
@@ -167,10 +194,18 @@ import { BadgeComponent } from '@singularitree/ui-kit';
 export class ShellToolbar {
   /** Whether a repository is active; Pull/Push/Fetch are disabled otherwise. */
   readonly hasActiveRepo = input(true);
+  /** Whether any repository tab is open; "Fetch all" is disabled otherwise. */
+  readonly canFetchAll = input(false);
   /** Pull-pending commit count of the current branch; badges Pull when > 0. */
   readonly pullPending = input(0);
 
   readonly pullRequested = output<void>();
   readonly pushRequested = output<void>();
   readonly fetchRequested = output<void>();
+  /** Fan-out fetch across every open repository tab (ADR-024). */
+  readonly fetchAllRequested = output<void>();
+  /** Read a git URL from the clipboard and prefill the clone dialog (ADR-025). */
+  readonly cloneFromClipboardRequested = output<void>();
+  /** Copy the active repository's URL to the clipboard (ADR-025). */
+  readonly copyRepoUrlRequested = output<void>();
 }

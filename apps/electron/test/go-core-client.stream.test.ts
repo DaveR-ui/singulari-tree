@@ -1,11 +1,12 @@
 import { EventEmitter } from 'node:events';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as grpc from '@grpc/grpc-js';
 import {
   DEFAULT_STREAM_TIMEOUT_MS,
   GoCoreClient,
+  type AppError,
   type Progress,
 } from '../src/main/go-core-client';
 
@@ -41,7 +42,9 @@ function arm(
 }
 
 /** Minimal stand-in for grpc-js `ClientReadableStream` (EventEmitter). */
-class FakeStream extends EventEmitter {}
+class FakeStream extends EventEmitter {
+  cancel = vi.fn();
+}
 
 describe('GoCoreClient.invokeStream', () => {
   it('calls onProgress per data event and resolves on end (EOF)', async () => {
@@ -173,14 +176,82 @@ describe('GoCoreClient.invoke streaming routing', () => {
     await expect(promise).resolves.toBeUndefined();
   });
 
-  it.each(['StreamCommits', 'Watch'])(
-    'still rejects %s with NOT_IMPLEMENTED',
-    async (rpc) => {
-      const client = makeClient();
-      arm(client, {});
-      await expect(client.invoke(rpc, {})).rejects.toMatchObject({
-        code: 'NOT_IMPLEMENTED',
-      });
-    },
-  );
+  it('still rejects StreamCommits with NOT_IMPLEMENTED', async () => {
+    const client = makeClient();
+    arm(client, {});
+    await expect(client.invoke('StreamCommits', {})).rejects.toMatchObject({
+      code: 'NOT_IMPLEMENTED',
+    });
+  });
+});
+
+describe('GoCoreClient.openStream (background Watch)', () => {
+  it('forwards each data message, applies no deadline, and cancels idempotently', () => {
+    const client = makeClient();
+    const stream = new FakeStream();
+    let captured: grpc.CallOptions | undefined;
+    arm(client, {
+      Watch: (_req: unknown, _md: grpc.Metadata, options: grpc.CallOptions) => {
+        captured = options;
+        return stream;
+      },
+    });
+
+    const seen: Array<{ repoId: string; paths: string[] }> = [];
+    const handle = client.openStream<{ repoId: string; paths: string[] }>(
+      'Watch',
+      { repoId: 'repo-1' },
+      (msg) => seen.push(msg),
+    );
+
+    // A watch is long-lived: unlike Fetch/Push/Pull no bounded deadline is set.
+    expect(captured?.deadline).toBeUndefined();
+
+    stream.emit('data', { repoId: 'repo-1', paths: ['a.ts'] });
+    expect(seen).toEqual([{ repoId: 'repo-1', paths: ['a.ts'] }]);
+
+    handle.cancel();
+    expect(stream.cancel).toHaveBeenCalledTimes(1);
+    handle.cancel(); // idempotent
+    expect(stream.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes stream errors to onError and swallows them after cancel', () => {
+    const client = makeClient();
+    const stream = new FakeStream();
+    arm(client, { Watch: () => stream });
+
+    const errors: AppError[] = [];
+    const handle = client.openStream('Watch', { repoId: 'r' }, () => {}, (e) =>
+      errors.push(e),
+    );
+
+    stream.emit(
+      'error',
+      Object.assign(new Error('boom'), {
+        code: grpc.status.UNAVAILABLE,
+        details: 'unavailable',
+      }),
+    );
+    expect(errors).toEqual([
+      expect.objectContaining({ code: 'UNAVAILABLE', message: 'unavailable' }),
+    ]);
+
+    handle.cancel();
+    // grpc-js reports CANCELLED on teardown; that is deliberate, not an error.
+    stream.emit('error', Object.assign(new Error('cancel'), { code: grpc.status.CANCELLED }));
+    expect(errors).toHaveLength(1);
+  });
+
+  it('throws UNKNOWN_RPC for a method absent from the service', () => {
+    const client = makeClient();
+    arm(client, {});
+    let thrown: unknown;
+    try {
+      client.openStream('Nope', {}, () => {});
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toMatchObject({ code: 'UNKNOWN_RPC' });
+  });
 });

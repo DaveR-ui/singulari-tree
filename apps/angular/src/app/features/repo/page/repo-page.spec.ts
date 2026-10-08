@@ -2,6 +2,7 @@ import { provideZonelessChangeDetection, computed, signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Repository } from '@contracts/domain';
+import { CommitFocusService } from '@core/services/commit-focus.service';
 import { RepoState } from '@core/services/repo-state.service';
 import { GraphStore } from '../graph/graph.store';
 import { RepoPage } from './repo-page';
@@ -57,7 +58,8 @@ function makeGraphStore() {
     repoId.set(repo.id);
     return repo;
   });
-  return { repoId, openRepository };
+  const focusCommit = vi.fn(async (_oid: string) => {});
+  return { repoId, openRepository, focusCommit };
 }
 
 async function setup(initial: Repository | null = REPO_A) {
@@ -128,5 +130,33 @@ describe('RepoPage hydration', () => {
     expect(graphStore.openRepository).toHaveBeenCalledTimes(2);
     expect(graphStore.openRepository).toHaveBeenLastCalledWith(REPO_B.fsPath);
     expect(graphStore.repoId()).toBe(REPO_B.id);
+  });
+
+  // -- cross-repo search focus hand-off (ADR-026) --------------------------
+
+  it('focuses a queued commit when its repository is already open', async () => {
+    const { graphStore } = await setup(REPO_A);
+    const focus = TestBed.inject(CommitFocusService);
+    graphStore.focusCommit.mockClear();
+
+    focus.request(REPO_A.id, 'abc123');
+    TestBed.tick();
+    await Promise.resolve();
+
+    expect(graphStore.focusCommit).toHaveBeenCalledWith('abc123');
+    expect(focus.pending()).toBeNull();
+  });
+
+  it('consumes a queued commit when its repository is opened by selection', async () => {
+    const { repoState, graphStore } = await setup(REPO_A);
+    const focus = TestBed.inject(CommitFocusService);
+    graphStore.focusCommit.mockClear();
+
+    focus.request(REPO_B.id, 'def456');
+    repoState.setActive(REPO_B);
+    TestBed.tick();
+
+    await vi.waitFor(() => expect(graphStore.focusCommit).toHaveBeenCalledWith('def456'));
+    expect(focus.pending()).toBeNull();
   });
 });

@@ -4,13 +4,13 @@
 # SingulariTree — Documentation index
 
 <!-- BEGIN GENERATED: index -->
-<!-- snapshot: 2026-10-05 -->
+<!-- snapshot: 2026-10-07 -->
 ## Generated index
 
 ### Overview
 
-- Markdown files: 22
-- Context docs: 3 | Notes: 6 | Hubs: 2 | adrs: 6 | templates: 0 | protocols: 3
+- Markdown files: 32
+- Context docs: 4 | Notes: 6 | Hubs: 2 | adrs: 15 | templates: 0 | protocols: 3
 
 ### Tree
 
@@ -23,10 +23,20 @@
   - adr-0017-docs-language-en.md — adr, id: `adr-0017-docs-language-en`
   - adr-0018-renderer-i18n-locale-switch.md — adr, id: `adr-0018-renderer-i18n-locale-switch`
   - adr-0019-adr-translation-authorization.md — adr, id: `adr-0019-adr-translation-authorization`
+  - adr-0020-diff-per-file-and-hunk-staging.md — adr, id: `adr-0020-diff-per-file-and-hunk-staging`
+  - adr-0021-reset-modes.md — adr, id: `adr-0021-reset-modes`
+  - adr-0022-graph-context-menu-shell.md — adr, id: `adr-0022-graph-context-menu-shell`
+  - adr-0023-commit-change-size-gauge.md — adr, id: `adr-0023-commit-change-size-gauge`
+  - adr-024-multi-repo-workspaces.md — adr, id: `adr-024-multi-repo-workspaces`
+  - adr-025-deep-links-and-clipboard-clone.md — adr, id: `adr-025-deep-links-and-clipboard-clone`
+  - adr-026-cross-repo-commit-search.md — adr, id: `adr-026-cross-repo-commit-search`
+  - adr-027-git-flow-presets.md — adr, id: `adr-027-git-flow-presets`
+  - adr-028-advanced-git-rpcs.md — adr, id: `adr-028-advanced-git-rpcs`
   - adr-index.md — hub, id: `adr-index`
 - context/
   - accepted-debt.md — context-doc
   - documentation-system.md — context-doc
+  - feature-gap-analysis.md — context-doc
 - protocols/
   - bootstrap-protocol.md — protocol, id: `bootstrap-protocol`
   - docs-review-protocol.md — protocol, id: `docs-review-protocol`

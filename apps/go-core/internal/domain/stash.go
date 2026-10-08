@@ -14,6 +14,9 @@ type Stash struct {
 type StashPort interface {
 	List(ctx context.Context, repoID RepositoryId) ([]Stash, error)
 	Push(ctx context.Context, repoID RepositoryId, message string) (*Stash, error)
+	// Apply maps to `git stash apply [--index] stash@{N}`; restoreIndex selects
+	// --index (reapply the staged state too).
+	Apply(ctx context.Context, repoID RepositoryId, index int, restoreIndex bool) error
 	Pop(ctx context.Context, repoID RepositoryId, index int) error
 	Drop(ctx context.Context, repoID RepositoryId, index int) error
 }

@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 import { BadgeComponent } from '@singularitree/ui-kit';
+import type { Stash } from '@contracts/domain';
 import type { AppError } from '@core/services/ipc-bridge.service';
 
 interface WorkspaceItem {
@@ -12,6 +13,14 @@ interface WorkspaceItem {
 interface RemoteGroup {
   readonly remote: string;
   readonly branches: string[];
+}
+
+/** Open per-row context menu state for a branch or tag row. */
+interface RowMenu {
+  readonly x: number;
+  readonly y: number;
+  readonly kind: 'branch' | 'tag';
+  readonly name: string;
 }
 
 /**
@@ -55,14 +64,26 @@ interface RemoteGroup {
       </div>
 
       <div class="st-left__section">
-        <button
-          class="st-left__head"
-          type="button"
-          (click)="branchesExpanded.set(!branchesExpanded())"
-        >
-          <span class="st-left__arrow">{{ branchesExpanded() ? '▾' : '▸' }}</span
-          ><span i18n>BRANCHES</span>
-        </button>
+        <div class="st-left__headrow">
+          <button
+            class="st-left__head"
+            type="button"
+            (click)="branchesExpanded.set(!branchesExpanded())"
+          >
+            <span class="st-left__arrow">{{ branchesExpanded() ? '▾' : '▸' }}</span
+            ><span i18n>BRANCHES</span>
+          </button>
+          <button
+            class="st-left__add"
+            type="button"
+            data-testid="st-sidebar-add-branch"
+            title="New branch"
+            i18n-title
+            (click)="newBranchRequested.emit()"
+          >
+            +
+          </button>
+        </div>
         @if (branchesExpanded()) {
           @if (loading()) {
             <p class="st-left__empty" data-testid="st-sidebar-refs-loading" i18n>Loading…</p>
@@ -82,6 +103,7 @@ interface RemoteGroup {
                   tabindex="0"
                   (dblclick)="selectBranch(branch)"
                   (keydown)="onBranchKeydown($event, branch)"
+                  (contextmenu)="onBranchContextMenu($event, branch)"
                 >
                   {{ branch }}
                   @if (branch === currentBranch() && currentBranchBehind() > 0) {
@@ -98,10 +120,22 @@ interface RemoteGroup {
       </div>
 
       <div class="st-left__section">
-        <button class="st-left__head" type="button" (click)="tagsExpanded.set(!tagsExpanded())">
-          <span class="st-left__arrow">{{ tagsExpanded() ? '▾' : '▸' }}</span
-          ><span i18n>TAGS</span>
-        </button>
+        <div class="st-left__headrow">
+          <button class="st-left__head" type="button" (click)="tagsExpanded.set(!tagsExpanded())">
+            <span class="st-left__arrow">{{ tagsExpanded() ? '▾' : '▸' }}</span
+            ><span i18n>TAGS</span>
+          </button>
+          <button
+            class="st-left__add"
+            type="button"
+            data-testid="st-sidebar-add-tag"
+            title="New tag"
+            i18n-title
+            (click)="newTagRequested.emit()"
+          >
+            +
+          </button>
+        </div>
         @if (tagsExpanded()) {
           @if (loading()) {
             <p class="st-left__empty" data-testid="st-sidebar-refs-loading" i18n>Loading…</p>
@@ -114,7 +148,13 @@ interface RemoteGroup {
           } @else {
             <ul class="st-left__list" data-testid="st-sidebar-tags">
               @for (tag of tags(); track tag) {
-                <li class="st-left__item st-left__sub">{{ tag }}</li>
+                <li
+                  class="st-left__item st-left__sub"
+                  data-testid="st-sidebar-tag"
+                  (contextmenu)="onTagContextMenu($event, tag)"
+                >
+                  {{ tag }}
+                </li>
               }
             </ul>
           }
@@ -162,6 +202,145 @@ interface RemoteGroup {
           }
         }
       </div>
+
+      <div class="st-left__section">
+        <div class="st-left__headrow">
+          <button
+            class="st-left__head"
+            type="button"
+            (click)="stashesExpanded.set(!stashesExpanded())"
+          >
+            <span class="st-left__arrow">{{ stashesExpanded() ? '▾' : '▸' }}</span
+            ><span i18n>STASHES</span>
+          </button>
+          <button
+            class="st-left__add"
+            type="button"
+            data-testid="st-sidebar-stash-push"
+            title="Stash current changes"
+            i18n-title
+            (click)="stashPushRequested.emit()"
+          >
+            +
+          </button>
+        </div>
+        @if (stashesExpanded()) {
+          @if (stashesLoading()) {
+            <p class="st-left__empty" data-testid="st-sidebar-stashes-loading" i18n>Loading…</p>
+          } @else if (offline()) {
+            <p class="st-left__empty" data-testid="st-sidebar-stashes-offline" i18n>Git core offline</p>
+          } @else if (stashesError(); as err) {
+            <p class="st-left__empty" data-testid="st-sidebar-stashes-error">{{ err.message }}</p>
+          } @else if (stashes().length === 0) {
+            <p class="st-left__empty" data-testid="st-sidebar-stashes-empty" i18n>No stashes</p>
+          } @else {
+            <ul class="st-left__list" data-testid="st-sidebar-stashes">
+              @for (stash of stashes(); track stash.index) {
+                <li class="st-left__item st-left__sub st-left__stash" data-testid="st-sidebar-stash">
+                  <span class="st-left__stash-label">
+                    <span class="st-left__stash-msg">{{ stashLabel(stash) }}</span>
+                    @if (stash.branchName) {
+                      <span class="st-left__stash-branch">{{ stash.branchName }}</span>
+                    }
+                  </span>
+                  <span class="st-left__stash-actions">
+                    <button
+                      type="button"
+                      data-testid="st-sidebar-stash-apply"
+                      [disabled]="stashOpRunning()"
+                      (click)="stashApplyRequested.emit(stash)"
+                    >
+                      <span i18n>Apply</span>
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="st-sidebar-stash-pop"
+                      [disabled]="stashOpRunning()"
+                      (click)="stashPopRequested.emit(stash)"
+                    >
+                      <span i18n>Pop</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="st-left__menu-danger"
+                      data-testid="st-sidebar-stash-drop"
+                      [disabled]="stashOpRunning()"
+                      (click)="stashDropRequested.emit(stash)"
+                    >
+                      <span i18n>Drop</span>
+                    </button>
+                  </span>
+                </li>
+              }
+            </ul>
+          }
+        }
+      </div>
+
+      <div class="st-left__section">
+        <div class="st-left__headrow">
+          <button
+            class="st-left__head"
+            type="button"
+            data-testid="st-sidebar-git-flow"
+            (click)="gitFlowRequested.emit()"
+          >
+            <span class="st-left__arrow">⚙</span><span i18n>GIT FLOW</span>
+          </button>
+        </div>
+      </div>
+
+      @if (rowMenu(); as menu) {
+        <div
+          class="st-left__menu-backdrop"
+          data-testid="st-sidebar-menu-backdrop"
+          (click)="closeRowMenu()"
+          (contextmenu)="onMenuBackdropContextMenu($event)"
+        ></div>
+        <div
+          class="st-left__menu"
+          role="menu"
+          data-testid="st-sidebar-row-menu"
+          [style.left.px]="menu.x"
+          [style.top.px]="menu.y"
+        >
+          @if (menu.kind === 'branch') {
+            <button
+              type="button"
+              role="menuitem"
+              data-testid="st-sidebar-menu-checkout"
+              (click)="menuCheckout(menu)"
+            >
+              <span i18n>Checkout</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-testid="st-sidebar-menu-rename"
+              (click)="menuRename(menu)"
+            >
+              <span i18n>Rename…</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-testid="st-sidebar-menu-merge"
+              (click)="menuMerge(menu)"
+            >
+              <span i18n>Merge into current…</span>
+            </button>
+          }
+          <button
+            type="button"
+            role="menuitem"
+            class="st-left__menu-danger"
+            data-testid="st-sidebar-menu-delete"
+            (click)="menuDelete(menu)"
+          >
+            <span i18n>Delete…</span>
+          </button>
+        </div>
+      }
 
       <div class="st-left__footer">
         <button
@@ -212,8 +391,14 @@ interface RemoteGroup {
       padding: 6px 0;
     }
 
+    .st-left__headrow {
+      display: flex;
+      align-items: center;
+    }
+
     .st-left__head {
-      width: 100%;
+      flex: 1;
+      min-width: 0;
       display: flex;
       align-items: center;
       gap: 6px;
@@ -226,6 +411,24 @@ interface RemoteGroup {
       padding: 6px 10px;
       cursor: pointer;
       text-align: left;
+    }
+
+    .st-left__add {
+      flex: none;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--muted, #8a8a9a);
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+      padding: 1px 7px;
+      margin-right: 6px;
+    }
+
+    .st-left__add:hover {
+      color: var(--st-color-text, #d6d6de);
+      border-color: var(--st-color-border, #2f2f44);
     }
 
     .st-left__head:hover {
@@ -304,6 +507,98 @@ interface RemoteGroup {
       font-style: italic;
     }
 
+    .st-left__stash {
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 6px;
+      padding-right: 8px;
+    }
+
+    .st-left__stash-label {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .st-left__stash-msg {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .st-left__stash-branch {
+      color: var(--muted, #8a8a9a);
+      font-size: 11px;
+    }
+
+    .st-left__stash-actions {
+      display: flex;
+      flex: none;
+      gap: 2px;
+    }
+
+    .st-left__stash-actions button {
+      background: transparent;
+      border: 1px solid var(--st-color-border, #2f2f44);
+      border-radius: 4px;
+      color: var(--muted, #8a8a9a);
+      cursor: pointer;
+      font: inherit;
+      font-size: 11px;
+      padding: 1px 6px;
+    }
+
+    .st-left__stash-actions button:hover:not(:disabled) {
+      color: var(--st-color-text, #d6d6de);
+    }
+
+    .st-left__stash-actions button:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    .st-left__menu-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 119;
+    }
+
+    .st-left__menu {
+      position: fixed;
+      z-index: 120;
+      min-width: 168px;
+      padding: 4px;
+      background: var(--st-color-surface, #252536);
+      border: 1px solid var(--st-color-border, #2f2f44);
+      border-radius: 8px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+      color: var(--st-color-text, #d6d6de);
+      font-size: 12px;
+    }
+
+    .st-left__menu button {
+      display: block;
+      width: 100%;
+      padding: 6px 10px;
+      background: transparent;
+      border: 0;
+      border-radius: 5px;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .st-left__menu button:hover,
+    .st-left__menu button:focus-visible {
+      background: color-mix(in srgb, var(--st-color-accent, #0a84ff) 22%, transparent);
+      outline: none;
+    }
+
+    .st-left__menu-danger {
+      color: #ff6b6b;
+    }
+
     .st-left__footer {
       margin-top: auto;
       padding: 8px;
@@ -350,6 +645,12 @@ export class SidebarLeft {
   readonly tags = input<readonly string[]>([]);
   /** Remote config names (not remote branches). */
   readonly remotes = input<readonly string[]>([]);
+  /** Stash entries for the active repository (newest first). */
+  readonly stashes = input<readonly Stash[]>([]);
+  readonly stashesLoading = input(false);
+  readonly stashesError = input<AppError | null>(null);
+  /** True while a stash apply/pop/drop mutation is in flight. */
+  readonly stashOpRunning = input(false);
   readonly loading = input(false);
   readonly offline = input(false);
   readonly error = input<AppError | null>(null);
@@ -362,6 +663,28 @@ export class SidebarLeft {
   readonly branchSelected = output<string>();
   /** Remote-tracking branch short name requested for checkout (`<remote>/<branch>`). */
   readonly remoteBranchSelected = output<string>();
+  /** User asked to create a new branch ("+" in the BRANCHES header). */
+  readonly newBranchRequested = output<void>();
+  /** User asked to create a new tag ("+" in the TAGS header). */
+  readonly newTagRequested = output<void>();
+  /** Local branch name requested for rename (row context menu). */
+  readonly branchRenameRequested = output<string>();
+  /** Local branch name requested for deletion (row context menu). */
+  readonly branchDeleteRequested = output<string>();
+  /** Local branch name requested to be merged into the current branch. */
+  readonly branchMergeRequested = output<string>();
+  /** Tag name requested for deletion (row context menu). */
+  readonly tagDeleteRequested = output<string>();
+  /** User asked to stash the current changes ("+" in the STASHES header). */
+  readonly stashPushRequested = output<void>();
+  /** Stash entry requested to be applied to the working tree. */
+  readonly stashApplyRequested = output<Stash>();
+  /** Stash entry requested to be popped (applied and dropped). */
+  readonly stashPopRequested = output<Stash>();
+  /** Stash entry requested to be dropped (the parent confirms first). */
+  readonly stashDropRequested = output<Stash>();
+  /** User asked to open the git-flow panel (GIT FLOW header). */
+  readonly gitFlowRequested = output<void>();
 
   /**
    * REMOTES groups: every configured remote (in order) plus any remote derived
@@ -406,9 +729,20 @@ export class SidebarLeft {
   readonly branchesExpanded = signal(true);
   readonly tagsExpanded = signal(false);
   readonly remotesExpanded = signal(true);
+  readonly stashesExpanded = signal(false);
+  /** Open per-row menu (branch or tag), or null when closed. */
+  readonly rowMenu = signal<RowMenu | null>(null);
 
   selectWorkspace(kind: string): void {
     this.workspaceSelected.emit(kind);
+  }
+
+  /**
+   * Display label for a stash row: its message, falling back to the Git-style
+   * `stash@{index}` when the core returned an empty message.
+   */
+  stashLabel(stash: Stash): string {
+    return stash.message || `stash@{${stash.index}}`;
   }
 
   /** Emit a local branch name for checkout. */
@@ -437,6 +771,54 @@ export class SidebarLeft {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       this.selectRemoteBranch(remote, shortName);
+    }
+  }
+
+  // -- per-row context menu ------------------------------------------------
+
+  /** Open the row menu for a local branch at the pointer. */
+  onBranchContextMenu(event: MouseEvent, name: string): void {
+    event.preventDefault();
+    this.rowMenu.set({ x: event.clientX, y: event.clientY, kind: 'branch', name });
+  }
+
+  /** Open the row menu for a tag at the pointer. */
+  onTagContextMenu(event: MouseEvent, name: string): void {
+    event.preventDefault();
+    this.rowMenu.set({ x: event.clientX, y: event.clientY, kind: 'tag', name });
+  }
+
+  closeRowMenu(): void {
+    this.rowMenu.set(null);
+  }
+
+  /** A right-click on the menu backdrop dismisses the menu. */
+  onMenuBackdropContextMenu(event: MouseEvent): void {
+    event.preventDefault();
+    this.closeRowMenu();
+  }
+
+  menuCheckout(menu: RowMenu): void {
+    this.closeRowMenu();
+    this.branchSelected.emit(menu.name);
+  }
+
+  menuRename(menu: RowMenu): void {
+    this.closeRowMenu();
+    this.branchRenameRequested.emit(menu.name);
+  }
+
+  menuMerge(menu: RowMenu): void {
+    this.closeRowMenu();
+    this.branchMergeRequested.emit(menu.name);
+  }
+
+  menuDelete(menu: RowMenu): void {
+    this.closeRowMenu();
+    if (menu.kind === 'branch') {
+      this.branchDeleteRequested.emit(menu.name);
+    } else {
+      this.tagDeleteRequested.emit(menu.name);
     }
   }
 }

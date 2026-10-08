@@ -5,6 +5,7 @@ import type { Commit, Lane, Repository } from '@contracts/domain';
 import type { GetCommitsResponse } from '@contracts/gitcore';
 import { IpcBridge } from '@core/services/ipc-bridge.service';
 import { RepoState } from '@core/services/repo-state.service';
+import { WorkspacesStore } from '@core/services/workspaces.store';
 import { GraphStore } from '../graph/graph.store';
 import { RepoPicker } from './repo-picker';
 
@@ -82,13 +83,14 @@ async function setup(opts: { recent?: Repository[]; offline?: boolean } = {}) {
   }).compileComponents();
 
   const repoState = TestBed.inject(RepoState);
+  const workspaces = TestBed.inject(WorkspacesStore);
   const fixture = TestBed.createComponent(RepoPicker);
   fixture.detectChanges();
   // Let the constructor's `loadRecentRepos()` microtask settle.
   await Promise.resolve();
   await Promise.resolve();
   fixture.detectChanges();
-  return { store, fixture, bridge, repoState };
+  return { store, fixture, bridge, repoState, workspaces };
 }
 
 function query<T extends Element>(fixture: { nativeElement: unknown }, testId: string): T | null {
@@ -122,7 +124,7 @@ describe('RepoPicker', () => {
   });
 
   it('opens the typed path and loads the graph window', async () => {
-    const { store, fixture, bridge, repoState } = await setup({ recent: [] });
+    const { store, fixture, bridge, repoState, workspaces } = await setup({ recent: [] });
 
     const input = query<HTMLInputElement>(fixture, 'repo-path-input');
     expect(input).not.toBeNull();
@@ -141,9 +143,11 @@ describe('RepoPicker', () => {
     expect(bridge.invoke).toHaveBeenCalledWith('openRepository', { fsPath: '/tmp/repo' });
     expect(store.repoId()).toBe('repo-1');
 
-    // The opened repository is published to the root RepoState.
+    // The opened repository is published to the root RepoState and registered
+    // as a workspace tab (ADR-024).
     expect(repoState.activeId()).toBe('repo-1');
     expect(repoState.repos().some((repo) => repo.id === 'repo-1')).toBe(true);
+    expect(workspaces.tabs().map((tab) => tab.repoId)).toEqual(['repo-1']);
   });
 
   it('ignores empty/whitespace input', async () => {

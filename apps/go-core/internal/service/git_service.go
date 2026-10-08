@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"strings"
 
 	"github.com/SingulariTree/go-core/internal/domain"
 )
@@ -25,6 +27,16 @@ func (s *GitService) notifyChange(repoID domain.RepositoryId) {
 	if s.watcher != nil {
 		s.watcher.Emit(domain.FsChangedEvent{RepoID: repoID})
 	}
+}
+
+// afterMutation invalidates the repo cache and notifies the watcher after a
+// successful working-tree/index mutation, so file_status, the commit cache and
+// the commit_stats gauge are recomputed.
+func (s *GitService) afterMutation(repoID domain.RepositoryId) {
+	if s.cachePort != nil {
+		s.cachePort.Invalidate(repoID)
+	}
+	s.notifyChange(repoID)
 }
 
 // Status returns working-tree file status.
@@ -81,12 +93,121 @@ func (s *GitService) Commit(ctx context.Context, repoID domain.RepositoryId, msg
 	return c, nil
 }
 
-// Diff returns diff between two oids.
-func (s *GitService) Diff(ctx context.Context, repoID domain.RepositoryId, from, to domain.Oid) (*domain.Diff, error) {
+// StageHunk stages one hunk (or selected lines) of path from the working tree
+// into the index (ADR-0020). The core re-derives the diff and constructs the
+// patch; the caller sends indices only.
+func (s *GitService) StageHunk(ctx context.Context, repoID domain.RepositoryId, path string, hunkIndex uint32, lineIndices []uint32) error {
+	if s.gitPort == nil {
+		return nil
+	}
+	if err := s.gitPort.StageHunk(ctx, repoID, path, hunkIndex, lineIndices); err != nil {
+		return err
+	}
+	s.afterMutation(repoID)
+	return nil
+}
+
+// UnstageHunk removes one hunk (or selected lines) of path from the index
+// (ADR-0020).
+func (s *GitService) UnstageHunk(ctx context.Context, repoID domain.RepositoryId, path string, hunkIndex uint32, lineIndices []uint32) error {
+	if s.gitPort == nil {
+		return nil
+	}
+	if err := s.gitPort.UnstageHunk(ctx, repoID, path, hunkIndex, lineIndices); err != nil {
+		return err
+	}
+	s.afterMutation(repoID)
+	return nil
+}
+
+// DiscardHunk reverts one hunk (or selected lines) of path in the working tree
+// (ADR-0020).
+func (s *GitService) DiscardHunk(ctx context.Context, repoID domain.RepositoryId, path string, hunkIndex uint32, lineIndices []uint32) error {
+	if s.gitPort == nil {
+		return nil
+	}
+	if err := s.gitPort.DiscardHunk(ctx, repoID, path, hunkIndex, lineIndices); err != nil {
+		return err
+	}
+	s.afterMutation(repoID)
+	return nil
+}
+
+// Discard reverts file-level changes; tracked paths from HEAD/index, untracked
+// paths by removal (ADR-0020).
+func (s *GitService) Discard(ctx context.Context, repoID domain.RepositoryId, paths []string) error {
+	if s.gitPort == nil {
+		return nil
+	}
+	if err := s.gitPort.Discard(ctx, repoID, paths); err != nil {
+		return err
+	}
+	s.afterMutation(repoID)
+	return nil
+}
+
+// Reset runs `git reset --<mode> <to>` (ADR-0021). The mode is mandatory;
+// MODE_UNSPECIFIED is rejected by the adapter.
+func (s *GitService) Reset(ctx context.Context, repoID domain.RepositoryId, to string, mode domain.ResetMode) error {
+	if s.gitPort == nil {
+		return nil
+	}
+	if err := s.gitPort.Reset(ctx, repoID, to, mode); err != nil {
+		return err
+	}
+	s.afterMutation(repoID)
+	return nil
+}
+
+// CommitStats returns the change-size counts for a batch of oids (ADR-0023),
+// cache-through: cached oids come from SQLite, misses are computed via git and
+// written back. Only counts are persisted.
+func (s *GitService) CommitStats(ctx context.Context, repoID domain.RepositoryId, oids []string) ([]domain.CommitStats, error) {
 	if s.gitPort == nil {
 		return nil, domain.AppError{Code: domain.ErrCodeDiffFailed, Message: "git not configured"}
 	}
-	return s.gitPort.Diff(ctx, repoID, from, to)
+	byOid := make(map[string]domain.CommitStats, len(oids))
+	if s.cachePort != nil {
+		if cached, ok := s.cachePort.GetCommitStats(ctx, repoID, oids); ok {
+			for _, st := range cached {
+				byOid[st.Oid] = st
+			}
+		}
+	}
+	missing := make([]string, 0, len(oids))
+	for _, oid := range oids {
+		if _, ok := byOid[oid]; !ok {
+			missing = append(missing, oid)
+		}
+	}
+	if len(missing) > 0 {
+		computed, err := s.gitPort.CommitStats(ctx, repoID, missing)
+		if err != nil {
+			return nil, err
+		}
+		if s.cachePort != nil {
+			_ = s.cachePort.PutCommitStats(ctx, repoID, computed)
+		}
+		for _, st := range computed {
+			byOid[st.Oid] = st
+		}
+	}
+	out := make([]domain.CommitStats, 0, len(oids))
+	for _, oid := range oids {
+		if st, ok := byOid[oid]; ok {
+			out = append(out, st)
+		}
+	}
+	return out, nil
+}
+
+// Diff returns the diff addressed by req (ADR-0020), including per-file
+// sections and an optional per-file/staged selector.
+func (s *GitService) Diff(ctx context.Context, repoID domain.RepositoryId, req domain.DiffRequest) (*domain.Diff, error) {
+	if s.gitPort == nil {
+		return nil, domain.AppError{Code: domain.ErrCodeDiffFailed, Message: "git not configured"}
+	}
+	return s.gitPort.Diff(ctx, repoID, req)
 }
 
 // BranchList returns branches.
@@ -143,6 +264,164 @@ func (s *GitService) StashPush(ctx context.Context, repoID domain.RepositoryId, 
 	}
 	s.notifyChange(repoID)
 	return st, nil
+}
+
+// BranchCreate creates a local branch from startPoint (empty means HEAD) and
+// optionally switches to it (ADR-028).
+func (s *GitService) BranchCreate(ctx context.Context, repoID domain.RepositoryId, name, startPoint string, checkout bool) (*domain.Branch, error) {
+	if s.gitPort == nil {
+		return nil, domain.AppError{Code: domain.ErrCodeBranchNotFound, Message: "git not configured"}
+	}
+	if strings.TrimSpace(name) == "" {
+		return nil, domain.AppError{Code: domain.ErrCodeBranchNotFound, Message: "branch name is required"}
+	}
+	b, err := s.gitPort.BranchCreate(ctx, repoID, name, startPoint, checkout)
+	if err != nil {
+		return nil, err
+	}
+	s.afterMutation(repoID)
+	return b, nil
+}
+
+// BranchRename renames a local branch (ADR-028).
+func (s *GitService) BranchRename(ctx context.Context, repoID domain.RepositoryId, oldName, newName string) (*domain.Branch, error) {
+	if s.gitPort == nil {
+		return nil, domain.AppError{Code: domain.ErrCodeBranchNotFound, Message: "git not configured"}
+	}
+	if strings.TrimSpace(oldName) == "" || strings.TrimSpace(newName) == "" {
+		return nil, domain.AppError{Code: domain.ErrCodeBranchNotFound, Message: "branch name is required"}
+	}
+	b, err := s.gitPort.BranchRename(ctx, repoID, oldName, newName)
+	if err != nil {
+		return nil, err
+	}
+	s.afterMutation(repoID)
+	return b, nil
+}
+
+// BranchDelete deletes a local branch; force maps to `git branch -D` (ADR-028).
+func (s *GitService) BranchDelete(ctx context.Context, repoID domain.RepositoryId, ref domain.RefName, force bool) error {
+	if s.gitPort == nil {
+		return nil
+	}
+	name := strings.TrimSpace(ref.Raw)
+	name = strings.TrimPrefix(name, "refs/heads/")
+	if name == "" {
+		return domain.AppError{Code: domain.ErrCodeBranchNotFound, Message: "branch name is required"}
+	}
+	if err := s.gitPort.BranchDelete(ctx, repoID, domain.RefName{Raw: name}, force); err != nil {
+		return err
+	}
+	s.afterMutation(repoID)
+	return nil
+}
+
+// Merge integrates ref into the current branch with the named strategy
+// (ADR-028). MERGE_STRATEGY_UNSPECIFIED is rejected. A conflict is returned
+// with a non-nil MergeResult (HasConflict true) and a typed MERGE_CONFLICT
+// error; the tree is left conflicted and derived state is refreshed so
+// GetStatus surfaces is_conflicted.
+func (s *GitService) Merge(ctx context.Context, repoID domain.RepositoryId, ref string, strategy domain.MergeStrategy, noCommit bool, message string) (*domain.MergeResult, error) {
+	if s.gitPort == nil {
+		return nil, domain.AppError{Code: domain.ErrCodeMergeFailed, Message: "git not configured"}
+	}
+	if strings.TrimSpace(ref) == "" {
+		return nil, domain.AppError{Code: domain.ErrCodeMergeFailed, Message: "merge ref is required"}
+	}
+	if strategy == domain.MergeStrategyUnspecified {
+		return nil, domain.AppError{Code: domain.ErrCodeMergeFailed, Message: "merge strategy is required"}
+	}
+	result, err := s.gitPort.Merge(ctx, repoID, ref, strategy, noCommit, message)
+	if err != nil {
+		var appErr domain.AppError
+		// A conflict still mutated the working tree, so refresh even though an
+		// error is returned; other failures leave the tree untouched.
+		if errors.As(err, &appErr) && appErr.Code == domain.ErrCodeMergeConflict {
+			s.afterMutation(repoID)
+		}
+		return result, err
+	}
+	s.afterMutation(repoID)
+	return result, nil
+}
+
+// TagCreate creates a tag (annotated or lightweight, ADR-028). An empty target
+// means HEAD; force maps to `git tag -f`.
+func (s *GitService) TagCreate(ctx context.Context, repoID domain.RepositoryId, name, target string, annotated bool, message string, force bool) (*domain.Tag, error) {
+	if s.gitPort == nil {
+		return nil, domain.AppError{Code: domain.ErrCodeTagNotFound, Message: "git not configured"}
+	}
+	if strings.TrimSpace(name) == "" {
+		return nil, domain.AppError{Code: domain.ErrCodeTagNotFound, Message: "tag name is required"}
+	}
+	t, err := s.gitPort.TagCreate(ctx, repoID, name, target, annotated, message, force)
+	if err != nil {
+		return nil, err
+	}
+	s.afterMutation(repoID)
+	return t, nil
+}
+
+// TagDelete deletes a tag (ADR-028).
+func (s *GitService) TagDelete(ctx context.Context, repoID domain.RepositoryId, ref domain.RefName) error {
+	if s.gitPort == nil {
+		return nil
+	}
+	name := strings.TrimSpace(ref.Raw)
+	name = strings.TrimPrefix(name, "refs/tags/")
+	if name == "" {
+		return domain.AppError{Code: domain.ErrCodeTagNotFound, Message: "tag name is required"}
+	}
+	if err := s.gitPort.TagDelete(ctx, repoID, domain.RefName{Raw: name}); err != nil {
+		return err
+	}
+	s.afterMutation(repoID)
+	return nil
+}
+
+// StashList returns the stash entries (un-stubbed GetStashes, ADR-028).
+func (s *GitService) StashList(ctx context.Context, repoID domain.RepositoryId) ([]domain.Stash, error) {
+	if s.gitPort == nil {
+		return nil, nil
+	}
+	return s.gitPort.StashList(ctx, repoID)
+}
+
+// StashApply applies stash entry index, retaining it; restoreIndex maps to
+// `git stash apply --index` (ADR-028).
+func (s *GitService) StashApply(ctx context.Context, repoID domain.RepositoryId, index int, restoreIndex bool) error {
+	if s.gitPort == nil {
+		return nil
+	}
+	if err := s.gitPort.StashApply(ctx, repoID, index, restoreIndex); err != nil {
+		return err
+	}
+	s.afterMutation(repoID)
+	return nil
+}
+
+// StashPop applies and drops stash entry index (ADR-028).
+func (s *GitService) StashPop(ctx context.Context, repoID domain.RepositoryId, index int) error {
+	if s.gitPort == nil {
+		return nil
+	}
+	if err := s.gitPort.StashPop(ctx, repoID, index); err != nil {
+		return err
+	}
+	s.afterMutation(repoID)
+	return nil
+}
+
+// StashDrop removes stash entry index (ADR-028).
+func (s *GitService) StashDrop(ctx context.Context, repoID domain.RepositoryId, index int) error {
+	if s.gitPort == nil {
+		return nil
+	}
+	if err := s.gitPort.StashDrop(ctx, repoID, index); err != nil {
+		return err
+	}
+	s.afterMutation(repoID)
+	return nil
 }
 
 // Fetch streams progress for a fetch from remote, followed by an optional

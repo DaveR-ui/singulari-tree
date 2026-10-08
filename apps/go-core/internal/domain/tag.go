@@ -15,6 +15,9 @@ type Tag struct {
 // TagPort is the Git port for tags.
 type TagPort interface {
 	List(ctx context.Context, repoID RepositoryId) ([]Tag, error)
-	Create(ctx context.Context, repoID RepositoryId, name string, target Oid, annotated bool) (*Tag, error)
+	// Create maps to `git tag [-a -m <message>] [-f] <name> [<target>]`. An
+	// empty target means HEAD; annotated tags carry the message.
+	Create(ctx context.Context, repoID RepositoryId, name, target string, annotated bool, message string, force bool) (*Tag, error)
+	// Delete maps to `git tag -d <name>`.
 	Delete(ctx context.Context, repoID RepositoryId, ref RefName) error
 }

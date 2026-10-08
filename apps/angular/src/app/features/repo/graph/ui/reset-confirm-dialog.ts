@@ -1,0 +1,81 @@
+import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { ModalComponent } from '@shared/ui/modal/modal';
+
+/**
+ * Destructive-confirmation gate for `git reset --hard` (ADR-0021).
+ *
+ * Core stays headless and executes exactly what it is told, so the renderer must
+ * confirm before a hard reset discards the working tree. Dumb: it only renders
+ * the warning and emits `confirmed` / `cancelled`; the store performs the RPC.
+ */
+@Component({
+  selector: 'st-reset-confirm-dialog',
+  standalone: true,
+  imports: [ModalComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <st-modal
+      [open]="open()"
+      title="Reset hard — discard changes?"
+      [closeOnBackdrop]="!busy()"
+      (closed)="cancelled.emit()"
+    >
+      <p class="st-reset-confirm__warning" data-testid="reset-confirm-warning">
+        A hard reset moves HEAD and resets the index, and
+        <strong>discards every working-tree change</strong>. This cannot be undone.
+      </p>
+      <p class="st-reset-confirm__target" data-testid="reset-confirm-oid">
+        Target commit: <code>{{ oid() }}</code>
+      </p>
+      <button
+        st-modal-footer
+        type="button"
+        data-testid="reset-confirm-cancel"
+        [disabled]="busy()"
+        (click)="cancelled.emit()"
+      >
+        Cancel
+      </button>
+      <button
+        st-modal-footer
+        type="button"
+        class="st-reset-confirm__danger"
+        data-testid="reset-confirm-confirm"
+        [disabled]="busy()"
+        (click)="confirmed.emit()"
+      >
+        Reset hard
+      </button>
+    </st-modal>
+  `,
+  styles: `
+    .st-reset-confirm__warning {
+      margin: 0 0 10px;
+      line-height: 1.5;
+    }
+
+    .st-reset-confirm__target {
+      margin: 0;
+      opacity: 0.7;
+    }
+
+    .st-reset-confirm__target code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      word-break: break-all;
+    }
+
+    .st-reset-confirm__danger {
+      background: #ff453a;
+      border-color: #ff453a;
+      color: #fff;
+    }
+  `,
+})
+export class ResetConfirmDialog {
+  readonly open = input(false);
+  readonly oid = input<string | null>(null);
+  readonly busy = input(false);
+
+  readonly confirmed = output<void>();
+  readonly cancelled = output<void>();
+}

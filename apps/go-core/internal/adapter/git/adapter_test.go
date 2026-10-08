@@ -310,10 +310,10 @@ func TestListEmptyRepoDegrades(t *testing.T) {
 
 func TestUnimplementedReturnsTypedError(t *testing.T) {
 	a := NewAdapter(&fakeRepoPort{fsPath: t.TempDir()})
-	err := a.Stage(context.Background(), domain.RepositoryId("x"), []string{"a"})
+	_, err := a.WorktreeList(context.Background(), domain.RepositoryId("x"))
 	var appErr domain.AppError
 	if !errors.As(err, &appErr) || appErr.Code != domain.ErrCodeNotImplemented {
-		t.Fatalf("Stage err = %v, want NOT_IMPLEMENTED", err)
+		t.Fatalf("WorktreeList err = %v, want NOT_IMPLEMENTED", err)
 	}
 }
 

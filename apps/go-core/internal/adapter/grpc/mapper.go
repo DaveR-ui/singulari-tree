@@ -174,6 +174,197 @@ func fileStatusToProto(f domain.FileStatus) *singularitreev1.FileStatus {
 	}
 }
 
+// diffLineToProto maps a single diff line to its wire form. Kind is preserved
+// verbatim ("added" | "removed" | "context").
+func diffLineToProto(l domain.DiffLine) *singularitreev1.DiffLine {
+	return &singularitreev1.DiffLine{
+		Kind:      l.Kind,
+		Text:      l.Text,
+		NoNewline: l.NoNewline,
+	}
+}
+
+// hunkToProto maps a diff hunk to its wire form. Lines is always non-nil so an
+// empty hunk serializes as an empty repeated field.
+func hunkToProto(h domain.Hunk) *singularitreev1.Hunk {
+	lines := make([]*singularitreev1.DiffLine, 0, len(h.Lines))
+	for i := range h.Lines {
+		lines = append(lines, diffLineToProto(h.Lines[i]))
+	}
+	return &singularitreev1.Hunk{
+		FromStart: int32(h.FromStart),
+		FromLines: int32(h.FromLines),
+		ToStart:   int32(h.ToStart),
+		ToLines:   int32(h.ToLines),
+		Lines:     lines,
+	}
+}
+
+// fileDiffToProto maps a per-file diff section to its wire form (ADR-0020).
+func fileDiffToProto(f domain.FileDiff) *singularitreev1.FileDiff {
+	hunks := make([]*singularitreev1.Hunk, 0, len(f.Hunks))
+	for i := range f.Hunks {
+		hunks = append(hunks, hunkToProto(f.Hunks[i]))
+	}
+	return &singularitreev1.FileDiff{
+		Path:               f.Path,
+		OldPath:            f.OldPath,
+		Status:             f.Status,
+		Hunks:              hunks,
+		Additions:          int32(f.Additions),
+		Deletions:          int32(f.Deletions),
+		IsBinary:           f.IsBinary,
+		HasConflictMarkers: f.HasConflictMarkers,
+	}
+}
+
+// commitStatsToProto maps a domain CommitStats to its wire form (ADR-0023).
+func commitStatsToProto(s domain.CommitStats) *singularitreev1.CommitStats {
+	return &singularitreev1.CommitStats{
+		Oid:          s.Oid,
+		Additions:    int32(s.Additions),
+		Deletions:    int32(s.Deletions),
+		FilesChanged: int32(s.FilesChanged),
+	}
+}
+
+// commitSearchHitToProto maps a cross-repo search hit to its wire form
+// (ADR-026). committed_at is converted from the stored time to unix seconds.
+func commitSearchHitToProto(h domain.CommitSearchHit) *singularitreev1.CommitSearchHit {
+	return &singularitreev1.CommitSearchHit{
+		RepoId:      string(h.RepoID),
+		Oid:         h.Oid,
+		Message:     h.Message,
+		AuthorName:  h.AuthorName,
+		AuthorEmail: h.AuthorEmail,
+		CommittedAt: h.CommittedAt.Unix(),
+	}
+}
+
+// gitFlowConfigToProto maps a domain git-flow config to its wire form (ADR-027).
+func gitFlowConfigToProto(c domain.GitFlowConfig) *singularitreev1.GitFlowConfig {
+	return &singularitreev1.GitFlowConfig{
+		MainBranch:       c.MainBranch,
+		DevelopBranch:    c.DevelopBranch,
+		FeaturePrefix:    c.FeaturePrefix,
+		ReleasePrefix:    c.ReleasePrefix,
+		HotfixPrefix:     c.HotfixPrefix,
+		VersionTagPrefix: c.VersionTagPrefix,
+	}
+}
+
+// gitFlowConfigToDomain maps a wire git-flow config to its domain form; a nil
+// message yields the zero config so the service applies defaults.
+func gitFlowConfigToDomain(c *singularitreev1.GitFlowConfig) domain.GitFlowConfig {
+	if c == nil {
+		return domain.GitFlowConfig{}
+	}
+	return domain.GitFlowConfig{
+		MainBranch:       c.GetMainBranch(),
+		DevelopBranch:    c.GetDevelopBranch(),
+		FeaturePrefix:    c.GetFeaturePrefix(),
+		ReleasePrefix:    c.GetReleasePrefix(),
+		HotfixPrefix:     c.GetHotfixPrefix(),
+		VersionTagPrefix: c.GetVersionTagPrefix(),
+	}
+}
+
+// gitFlowKindToDomain maps the wire git-flow kind to its domain value. The zero
+// (unspecified) value is preserved and rejected by the service.
+func gitFlowKindToDomain(k singularitreev1.GitFlowKind) domain.GitFlowKind {
+	switch k {
+	case singularitreev1.GitFlowKind_FEATURE:
+		return domain.GitFlowKindFeature
+	case singularitreev1.GitFlowKind_RELEASE:
+		return domain.GitFlowKindRelease
+	case singularitreev1.GitFlowKind_HOTFIX:
+		return domain.GitFlowKindHotfix
+	default:
+		return domain.GitFlowKindUnspecified
+	}
+}
+
+// gitFlowResultToProto maps a domain git-flow result to its wire form (ADR-027).
+// Steps is always non-nil so an empty sequence serializes as an empty repeated
+// field.
+func gitFlowResultToProto(r *domain.GitFlowResult) *singularitreev1.GitFlowResult {
+	if r == nil {
+		return nil
+	}
+	steps := make([]string, 0, len(r.Steps))
+	steps = append(steps, r.Steps...)
+	return &singularitreev1.GitFlowResult{
+		Branch:      r.Branch,
+		Steps:       steps,
+		HasConflict: r.HasConflict,
+	}
+}
+
+// resetModeToDomain maps the wire reset mode to its domain value. The zero
+// (unspecified) value is rejected (ADR-0021).
+func resetModeToDomain(m singularitreev1.ResetMode) (domain.ResetMode, bool) {
+	switch m {
+	case singularitreev1.ResetMode_SOFT:
+		return domain.ResetModeSoft, true
+	case singularitreev1.ResetMode_MIXED:
+		return domain.ResetModeMixed, true
+	case singularitreev1.ResetMode_HARD:
+		return domain.ResetModeHard, true
+	default:
+		return domain.ResetModeUnspecified, false
+	}
+}
+
+// mergeStrategyToDomain maps the wire merge strategy to its domain value. The
+// zero (unspecified) value is rejected (ADR-028).
+func mergeStrategyToDomain(s singularitreev1.MergeStrategy) (domain.MergeStrategy, bool) {
+	switch s {
+	case singularitreev1.MergeStrategy_MERGE:
+		return domain.MergeStrategyMerge, true
+	case singularitreev1.MergeStrategy_NO_FF:
+		return domain.MergeStrategyNoFF, true
+	case singularitreev1.MergeStrategy_FF_ONLY:
+		return domain.MergeStrategyFFOnly, true
+	case singularitreev1.MergeStrategy_SQUASH:
+		return domain.MergeStrategySquash, true
+	default:
+		return domain.MergeStrategyUnspecified, false
+	}
+}
+
+// diffToProto maps a domain diff to its wire form. Candidate oids are omitted
+// when absent (zero Oid) so the optional Oid fields stay unset for a diff whose
+// side is the working tree; metadata counts and flags are carried through. The
+// per-file sections and the truncated flag are included alongside the
+// deprecated flat hunks (ADR-0020).
+func diffToProto(d *domain.Diff) *singularitreev1.Diff {
+	if d == nil {
+		return nil
+	}
+	out := &singularitreev1.Diff{
+		Hunks:              make([]*singularitreev1.Hunk, 0, len(d.Hunks)),
+		Additions:          int32(d.Additions),
+		Deletions:          int32(d.Deletions),
+		IsBinary:           d.IsBinary,
+		HasConflictMarkers: d.HasConflictMarkers,
+		Files:              make([]*singularitreev1.FileDiff, 0, len(d.Files)),
+		Truncated:          d.Truncated,
+	}
+	if d.From.Hex != "" {
+		out.From = oidToProto(d.From)
+	}
+	if d.To.Hex != "" {
+		out.To = oidToProto(d.To)
+	}
+	for i := range d.Hunks {
+		out.Hunks = append(out.Hunks, hunkToProto(d.Hunks[i]))
+	}
+	for i := range d.Files {
+		out.Files = append(out.Files, fileDiffToProto(d.Files[i]))
+	}
+	return out
+}
+
 func authSourceToProto(s domain.AuthSource) singularitreev1.AuthSource {
 	switch s {
 	case domain.AuthSourceNone:
@@ -281,10 +472,21 @@ func grpcCodeFor(appCode string) codes.Code {
 	case domain.ErrCodeNotAGitRepo, domain.ErrCodeInvalidOid,
 		domain.ErrCodeDetachedHead, domain.ErrCodeStageFailed,
 		domain.ErrCodeCommitFailed, domain.ErrCodeCheckoutFailed,
-		domain.ErrCodeStashFailed, domain.ErrCodeDiffFailed:
+		domain.ErrCodeStashFailed, domain.ErrCodeDiffFailed,
+		domain.ErrCodeResetFailed, domain.ErrCodeDiscardFailed:
 		return codes.InvalidArgument
 	case domain.ErrCodeBranchExists:
 		return codes.AlreadyExists
+	case domain.ErrCodeMergeConflict:
+		return codes.FailedPrecondition
+	case domain.ErrCodeMergeFailed:
+		return codes.Aborted
+	case domain.ErrCodeTagExists:
+		return codes.FailedPrecondition
+	case domain.ErrCodeTagNotFound:
+		return codes.NotFound
+	case domain.ErrCodeGitFlowFailed:
+		return codes.InvalidArgument
 	case domain.ErrCodeUnauthenticated:
 		return codes.Unauthenticated
 	case domain.ErrCodeGHCLINotFound:

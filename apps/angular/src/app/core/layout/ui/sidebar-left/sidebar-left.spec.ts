@@ -1,6 +1,7 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { Stash } from '@contracts/domain';
 import type { AppError } from '@core/services/ipc-bridge.service';
 import { SidebarLeft } from './sidebar-left';
 
@@ -11,9 +12,17 @@ interface SetupOptions {
   remoteBranches?: string[];
   tags?: string[];
   remotes?: string[];
+  stashes?: Stash[];
+  stashesLoading?: boolean;
+  stashesError?: AppError | null;
+  stashOpRunning?: boolean;
   loading?: boolean;
   offline?: boolean;
   error?: AppError | null;
+}
+
+function stash(index: number, message = `WIP ${index}`, branchName = 'main'): Stash {
+  return { index, oid: undefined, message, branchName };
 }
 
 async function setup(opts: SetupOptions = {}): Promise<ComponentFixture<SidebarLeft>> {
@@ -29,6 +38,10 @@ async function setup(opts: SetupOptions = {}): Promise<ComponentFixture<SidebarL
   ref.setInput('remoteBranches', opts.remoteBranches ?? []);
   ref.setInput('tags', opts.tags ?? []);
   ref.setInput('remotes', opts.remotes ?? []);
+  ref.setInput('stashes', opts.stashes ?? []);
+  ref.setInput('stashesLoading', opts.stashesLoading ?? false);
+  ref.setInput('stashesError', opts.stashesError ?? null);
+  ref.setInput('stashOpRunning', opts.stashOpRunning ?? false);
   ref.setInput('loading', opts.loading ?? false);
   ref.setInput('offline', opts.offline ?? false);
   ref.setInput('error', opts.error ?? null);
@@ -46,6 +59,15 @@ function expandTags(fixture: ComponentFixture<SidebarLeft>): void {
   const el = fixture.nativeElement as HTMLElement;
   const head = Array.from(el.querySelectorAll<HTMLButtonElement>('.st-left__head')).find((b) =>
     b.textContent?.includes('TAGS'),
+  );
+  head!.click();
+  fixture.detectChanges();
+}
+
+function expandStashes(fixture: ComponentFixture<SidebarLeft>): void {
+  const el = fixture.nativeElement as HTMLElement;
+  const head = Array.from(el.querySelectorAll<HTMLButtonElement>('.st-left__head')).find((b) =>
+    b.textContent?.includes('STASHES'),
   );
   head!.click();
   fixture.detectChanges();
@@ -264,5 +286,214 @@ describe('SidebarLeft', () => {
 
     expect(localEmitted).toEqual([]);
     expect(remoteEmitted).toEqual([]);
+  });
+
+  it('emits newBranchRequested and newTagRequested from the header "+" buttons', async () => {
+    const fixture = await setup({ branches: ['main'], tags: ['v1'] });
+    let newBranch = 0;
+    let newTag = 0;
+    fixture.componentInstance.newBranchRequested.subscribe(() => (newBranch += 1));
+    fixture.componentInstance.newTagRequested.subscribe(() => (newTag += 1));
+
+    (all(fixture, 'st-sidebar-add-branch')[0] as HTMLElement).click();
+    (all(fixture, 'st-sidebar-add-tag')[0] as HTMLElement).click();
+
+    expect(newBranch).toBe(1);
+    expect(newTag).toBe(1);
+  });
+
+  it('opens a branch row menu and emits the chosen action', async () => {
+    const fixture = await setup({ branches: ['main', 'feature/x'] });
+    const el = fixture.nativeElement as HTMLElement;
+    const checkout: string[] = [];
+    const rename: string[] = [];
+    const merge: string[] = [];
+    const del: string[] = [];
+    fixture.componentInstance.branchSelected.subscribe((v) => checkout.push(v));
+    fixture.componentInstance.branchRenameRequested.subscribe((v) => rename.push(v));
+    fixture.componentInstance.branchMergeRequested.subscribe((v) => merge.push(v));
+    fixture.componentInstance.branchDeleteRequested.subscribe((v) => del.push(v));
+
+    expect(el.querySelector('[data-testid="st-sidebar-row-menu"]')).toBeNull();
+
+    const rows = all(fixture, 'st-sidebar-branch') as HTMLElement[];
+    rows[1].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+
+    expect(el.querySelector('[data-testid="st-sidebar-row-menu"]')).not.toBeNull();
+
+    (el.querySelector('[data-testid="st-sidebar-menu-checkout"]') as HTMLElement).click();
+    fixture.detectChanges();
+    expect(checkout).toEqual(['feature/x']);
+    expect(el.querySelector('[data-testid="st-sidebar-row-menu"]')).toBeNull();
+
+    rows[1].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+    (el.querySelector('[data-testid="st-sidebar-menu-rename"]') as HTMLElement).click();
+    expect(rename).toEqual(['feature/x']);
+
+    rows[1].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+    (el.querySelector('[data-testid="st-sidebar-menu-merge"]') as HTMLElement).click();
+    expect(merge).toEqual(['feature/x']);
+
+    rows[1].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+    (el.querySelector('[data-testid="st-sidebar-menu-delete"]') as HTMLElement).click();
+    expect(del).toEqual(['feature/x']);
+  });
+
+  it('opens a tag row menu that only offers deletion', async () => {
+    const fixture = await setup({ tags: ['v1.0.0'] });
+    const el = fixture.nativeElement as HTMLElement;
+    const del: string[] = [];
+    fixture.componentInstance.tagDeleteRequested.subscribe((v) => del.push(v));
+    expandTags(fixture);
+
+    const tag = all(fixture, 'st-sidebar-tag')[0] as HTMLElement;
+    tag.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+
+    expect(el.querySelector('[data-testid="st-sidebar-menu-checkout"]')).toBeNull();
+    expect(el.querySelector('[data-testid="st-sidebar-menu-rename"]')).toBeNull();
+    expect(el.querySelector('[data-testid="st-sidebar-menu-delete"]')).not.toBeNull();
+
+    (el.querySelector('[data-testid="st-sidebar-menu-delete"]') as HTMLElement).click();
+
+    expect(del).toEqual(['v1.0.0']);
+  });
+
+  it('closes the row menu on a backdrop click', async () => {
+    const fixture = await setup({ branches: ['main'] });
+    const el = fixture.nativeElement as HTMLElement;
+    const row = all(fixture, 'st-sidebar-branch')[0] as HTMLElement;
+
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+    expect(el.querySelector('[data-testid="st-sidebar-row-menu"]')).not.toBeNull();
+
+    (el.querySelector('[data-testid="st-sidebar-menu-backdrop"]') as HTMLElement).click();
+    fixture.detectChanges();
+
+    expect(el.querySelector('[data-testid="st-sidebar-row-menu"]')).toBeNull();
+  });
+
+  it('closes the row menu on a backdrop context-menu gesture', async () => {
+    const fixture = await setup({ branches: ['main'] });
+    const el = fixture.nativeElement as HTMLElement;
+    const row = all(fixture, 'st-sidebar-branch')[0] as HTMLElement;
+
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+
+    const backdrop = el.querySelector('[data-testid="st-sidebar-menu-backdrop"]') as HTMLElement;
+    const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+    backdrop.dispatchEvent(event);
+    fixture.detectChanges();
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(el.querySelector('[data-testid="st-sidebar-row-menu"]')).toBeNull();
+  });
+
+  // -- stashes (ADR-028) ---------------------------------------------------
+
+  it('renders populated stash rows with label, branch and actions', async () => {
+    const fixture = await setup({
+      stashes: [stash(0, 'WIP on main', 'main'), stash(1, '', 'feature/x')],
+    });
+    expandStashes(fixture);
+    const el = fixture.nativeElement as HTMLElement;
+
+    const rows = all(fixture, 'st-sidebar-stash');
+    expect(rows).toHaveLength(2);
+    expect(rows[0].textContent).toContain('WIP on main');
+    expect(rows[0].textContent).toContain('main');
+    // Empty message falls back to the Git-style stash label.
+    expect(rows[1].textContent).toContain('stash@{1}');
+    expect(rows[1].textContent).toContain('feature/x');
+
+    expect(el.querySelectorAll('[data-testid="st-sidebar-stash-apply"]')).toHaveLength(2);
+    expect(el.querySelectorAll('[data-testid="st-sidebar-stash-pop"]')).toHaveLength(2);
+    expect(el.querySelectorAll('[data-testid="st-sidebar-stash-drop"]')).toHaveLength(2);
+  });
+
+  it('renders the stash empty state', async () => {
+    const fixture = await setup();
+    expandStashes(fixture);
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="st-sidebar-stashes-empty"]')?.textContent,
+    ).toContain('No stashes');
+  });
+
+  it('renders the stash loading state', async () => {
+    const fixture = await setup({ stashesLoading: true });
+    expandStashes(fixture);
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="st-sidebar-stashes-loading"]'),
+    ).not.toBeNull();
+  });
+
+  it('renders the stash offline state', async () => {
+    const fixture = await setup({ offline: true });
+    expandStashes(fixture);
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="st-sidebar-stashes-offline"]'),
+    ).not.toBeNull();
+  });
+
+  it('renders the stash error state', async () => {
+    const fixture = await setup({ stashesError: { code: 'GIT_FAILED', message: 'boom' } });
+    expandStashes(fixture);
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="st-sidebar-stashes-error"]')?.textContent,
+    ).toContain('boom');
+  });
+
+  it('emits stashPushRequested from the STASHES header "+"', async () => {
+    const fixture = await setup();
+    let push = 0;
+    fixture.componentInstance.stashPushRequested.subscribe(() => (push += 1));
+
+    (all(fixture, 'st-sidebar-stash-push')[0] as HTMLElement).click();
+
+    expect(push).toBe(1);
+  });
+
+  it('emits the stash entry for apply, pop and drop', async () => {
+    const fixture = await setup({ stashes: [stash(0, 'one'), stash(1, 'two')] });
+    const applied: Stash[] = [];
+    const popped: Stash[] = [];
+    const dropped: Stash[] = [];
+    fixture.componentInstance.stashApplyRequested.subscribe((v) => applied.push(v));
+    fixture.componentInstance.stashPopRequested.subscribe((v) => popped.push(v));
+    fixture.componentInstance.stashDropRequested.subscribe((v) => dropped.push(v));
+    expandStashes(fixture);
+
+    (all(fixture, 'st-sidebar-stash-apply')[1] as HTMLElement).click();
+    (all(fixture, 'st-sidebar-stash-pop')[0] as HTMLElement).click();
+    (all(fixture, 'st-sidebar-stash-drop')[1] as HTMLElement).click();
+
+    expect(applied.map((s) => s.index)).toEqual([1]);
+    expect(popped.map((s) => s.index)).toEqual([0]);
+    expect(dropped.map((s) => s.index)).toEqual([1]);
+  });
+
+  it('disables the stash actions while a stash op is running', async () => {
+    const fixture = await setup({ stashes: [stash(0)], stashOpRunning: true });
+    expandStashes(fixture);
+
+    for (const testId of ['st-sidebar-stash-apply', 'st-sidebar-stash-pop', 'st-sidebar-stash-drop']) {
+      expect((all(fixture, testId)[0] as HTMLButtonElement).disabled).toBe(true);
+    }
+  });
+
+  it('emits gitFlowRequested from the GIT FLOW header', async () => {
+    const fixture = await setup();
+    let requested = 0;
+    fixture.componentInstance.gitFlowRequested.subscribe(() => (requested += 1));
+
+    (all(fixture, 'st-sidebar-git-flow')[0] as HTMLElement).click();
+
+    expect(requested).toBe(1);
   });
 });

@@ -994,22 +994,135 @@ func (x *Hunk) GetLines() []*DiffLine {
 	return nil
 }
 
-type Diff struct {
+// Per-file diff section (ADR-0020). One FileDiff per changed path; it is the
+// addressing substrate for hunk/line staging and discard. `status` is a
+// porcelain-v2 code (M, A, D, R, C, T, U, ...); `old_path` is set only for
+// renames/copies and empty otherwise.
+type FileDiff struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
-	From               *Oid                   `protobuf:"bytes,1,opt,name=from,proto3" json:"from,omitempty"`
-	To                 *Oid                   `protobuf:"bytes,2,opt,name=to,proto3" json:"to,omitempty"`
-	Hunks              []*Hunk                `protobuf:"bytes,3,rep,name=hunks,proto3" json:"hunks,omitempty"`
-	Additions          int32                  `protobuf:"varint,4,opt,name=additions,proto3" json:"additions,omitempty"`
-	Deletions          int32                  `protobuf:"varint,5,opt,name=deletions,proto3" json:"deletions,omitempty"`
-	IsBinary           bool                   `protobuf:"varint,6,opt,name=is_binary,json=isBinary,proto3" json:"is_binary,omitempty"`
-	HasConflictMarkers bool                   `protobuf:"varint,7,opt,name=has_conflict_markers,json=hasConflictMarkers,proto3" json:"has_conflict_markers,omitempty"`
+	Path               string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	OldPath            string                 `protobuf:"bytes,2,opt,name=old_path,json=oldPath,proto3" json:"old_path,omitempty"` // optional (renames/copies)
+	Status             string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`                  // porcelain v2 code
+	Hunks              []*Hunk                `protobuf:"bytes,4,rep,name=hunks,proto3" json:"hunks,omitempty"`
+	Additions          int32                  `protobuf:"varint,5,opt,name=additions,proto3" json:"additions,omitempty"`
+	Deletions          int32                  `protobuf:"varint,6,opt,name=deletions,proto3" json:"deletions,omitempty"`
+	IsBinary           bool                   `protobuf:"varint,7,opt,name=is_binary,json=isBinary,proto3" json:"is_binary,omitempty"`
+	HasConflictMarkers bool                   `protobuf:"varint,8,opt,name=has_conflict_markers,json=hasConflictMarkers,proto3" json:"has_conflict_markers,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
 
+func (x *FileDiff) Reset() {
+	*x = FileDiff{}
+	mi := &file_domain_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FileDiff) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FileDiff) ProtoMessage() {}
+
+func (x *FileDiff) ProtoReflect() protoreflect.Message {
+	mi := &file_domain_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FileDiff.ProtoReflect.Descriptor instead.
+func (*FileDiff) Descriptor() ([]byte, []int) {
+	return file_domain_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *FileDiff) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *FileDiff) GetOldPath() string {
+	if x != nil {
+		return x.OldPath
+	}
+	return ""
+}
+
+func (x *FileDiff) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *FileDiff) GetHunks() []*Hunk {
+	if x != nil {
+		return x.Hunks
+	}
+	return nil
+}
+
+func (x *FileDiff) GetAdditions() int32 {
+	if x != nil {
+		return x.Additions
+	}
+	return 0
+}
+
+func (x *FileDiff) GetDeletions() int32 {
+	if x != nil {
+		return x.Deletions
+	}
+	return 0
+}
+
+func (x *FileDiff) GetIsBinary() bool {
+	if x != nil {
+		return x.IsBinary
+	}
+	return false
+}
+
+func (x *FileDiff) GetHasConflictMarkers() bool {
+	if x != nil {
+		return x.HasConflictMarkers
+	}
+	return false
+}
+
+type Diff struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	From  *Oid                   `protobuf:"bytes,1,opt,name=from,proto3" json:"from,omitempty"`
+	To    *Oid                   `protobuf:"bytes,2,opt,name=to,proto3" json:"to,omitempty"`
+	// DEPRECATED in favor of `files`; flattened for back-compat (every file's
+	// hunks concatenated in git order). Kept so the legacy Monaco viewer and the
+	// e2e suite keep working; never renumber or remove it.
+	Hunks              []*Hunk `protobuf:"bytes,3,rep,name=hunks,proto3" json:"hunks,omitempty"`
+	Additions          int32   `protobuf:"varint,4,opt,name=additions,proto3" json:"additions,omitempty"`
+	Deletions          int32   `protobuf:"varint,5,opt,name=deletions,proto3" json:"deletions,omitempty"`
+	IsBinary           bool    `protobuf:"varint,6,opt,name=is_binary,json=isBinary,proto3" json:"is_binary,omitempty"`
+	HasConflictMarkers bool    `protobuf:"varint,7,opt,name=has_conflict_markers,json=hasConflictMarkers,proto3" json:"has_conflict_markers,omitempty"`
+	// Per-file sections (ADR-0020). Populated alongside the deprecated flat
+	// `hunks`; group by these when addressing a file, hunk or line.
+	Files []*FileDiff `protobuf:"bytes,8,rep,name=files,proto3" json:"files,omitempty"`
+	// True when the payload was capped by the core (MaxDiffHunks/MaxDiffLines),
+	// instead of returning an unbounded diff (ADR-0020 (c)).
+	Truncated     bool `protobuf:"varint,9,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
 func (x *Diff) Reset() {
 	*x = Diff{}
-	mi := &file_domain_proto_msgTypes[14]
+	mi := &file_domain_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1021,7 +1134,7 @@ func (x *Diff) String() string {
 func (*Diff) ProtoMessage() {}
 
 func (x *Diff) ProtoReflect() protoreflect.Message {
-	mi := &file_domain_proto_msgTypes[14]
+	mi := &file_domain_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1034,7 +1147,7 @@ func (x *Diff) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Diff.ProtoReflect.Descriptor instead.
 func (*Diff) Descriptor() ([]byte, []int) {
-	return file_domain_proto_rawDescGZIP(), []int{14}
+	return file_domain_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *Diff) GetFrom() *Oid {
@@ -1086,6 +1199,90 @@ func (x *Diff) GetHasConflictMarkers() bool {
 	return false
 }
 
+func (x *Diff) GetFiles() []*FileDiff {
+	if x != nil {
+		return x.Files
+	}
+	return nil
+}
+
+func (x *Diff) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
+}
+
+// Per-commit change-size counts (ADR-0023). Counts only — this entity is cached
+// in SQLite and NEVER carries Git objects/blobs.
+type CommitStats struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Oid           string                 `protobuf:"bytes,1,opt,name=oid,proto3" json:"oid,omitempty"`
+	Additions     int32                  `protobuf:"varint,2,opt,name=additions,proto3" json:"additions,omitempty"`
+	Deletions     int32                  `protobuf:"varint,3,opt,name=deletions,proto3" json:"deletions,omitempty"`
+	FilesChanged  int32                  `protobuf:"varint,4,opt,name=files_changed,json=filesChanged,proto3" json:"files_changed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CommitStats) Reset() {
+	*x = CommitStats{}
+	mi := &file_domain_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CommitStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CommitStats) ProtoMessage() {}
+
+func (x *CommitStats) ProtoReflect() protoreflect.Message {
+	mi := &file_domain_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CommitStats.ProtoReflect.Descriptor instead.
+func (*CommitStats) Descriptor() ([]byte, []int) {
+	return file_domain_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *CommitStats) GetOid() string {
+	if x != nil {
+		return x.Oid
+	}
+	return ""
+}
+
+func (x *CommitStats) GetAdditions() int32 {
+	if x != nil {
+		return x.Additions
+	}
+	return 0
+}
+
+func (x *CommitStats) GetDeletions() int32 {
+	if x != nil {
+		return x.Deletions
+	}
+	return 0
+}
+
+func (x *CommitStats) GetFilesChanged() int32 {
+	if x != nil {
+		return x.FilesChanged
+	}
+	return 0
+}
+
 // File status (porcelain v2)
 type FileStatus struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1100,7 +1297,7 @@ type FileStatus struct {
 
 func (x *FileStatus) Reset() {
 	*x = FileStatus{}
-	mi := &file_domain_proto_msgTypes[15]
+	mi := &file_domain_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1112,7 +1309,7 @@ func (x *FileStatus) String() string {
 func (*FileStatus) ProtoMessage() {}
 
 func (x *FileStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_domain_proto_msgTypes[15]
+	mi := &file_domain_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1125,7 +1322,7 @@ func (x *FileStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileStatus.ProtoReflect.Descriptor instead.
 func (*FileStatus) Descriptor() ([]byte, []int) {
-	return file_domain_proto_rawDescGZIP(), []int{15}
+	return file_domain_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *FileStatus) GetPath() string {
@@ -1247,7 +1444,16 @@ const file_domain_proto_rawDesc = "" +
 	"from_lines\x18\x02 \x01(\x05R\tfromLines\x12\x19\n" +
 	"\bto_start\x18\x03 \x01(\x05R\atoStart\x12\x19\n" +
 	"\bto_lines\x18\x04 \x01(\x05R\atoLines\x120\n" +
-	"\x05lines\x18\x05 \x03(\v2\x1a.singularitree.v1.DiffLineR\x05lines\"\x91\x02\n" +
+	"\x05lines\x18\x05 \x03(\v2\x1a.singularitree.v1.DiffLineR\x05lines\"\x8a\x02\n" +
+	"\bFileDiff\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x19\n" +
+	"\bold_path\x18\x02 \x01(\tR\aoldPath\x12\x16\n" +
+	"\x06status\x18\x03 \x01(\tR\x06status\x12,\n" +
+	"\x05hunks\x18\x04 \x03(\v2\x16.singularitree.v1.HunkR\x05hunks\x12\x1c\n" +
+	"\tadditions\x18\x05 \x01(\x05R\tadditions\x12\x1c\n" +
+	"\tdeletions\x18\x06 \x01(\x05R\tdeletions\x12\x1b\n" +
+	"\tis_binary\x18\a \x01(\bR\bisBinary\x120\n" +
+	"\x14has_conflict_markers\x18\b \x01(\bR\x12hasConflictMarkers\"\xe1\x02\n" +
 	"\x04Diff\x12)\n" +
 	"\x04from\x18\x01 \x01(\v2\x15.singularitree.v1.OidR\x04from\x12%\n" +
 	"\x02to\x18\x02 \x01(\v2\x15.singularitree.v1.OidR\x02to\x12,\n" +
@@ -1255,7 +1461,14 @@ const file_domain_proto_rawDesc = "" +
 	"\tadditions\x18\x04 \x01(\x05R\tadditions\x12\x1c\n" +
 	"\tdeletions\x18\x05 \x01(\x05R\tdeletions\x12\x1b\n" +
 	"\tis_binary\x18\x06 \x01(\bR\bisBinary\x120\n" +
-	"\x14has_conflict_markers\x18\a \x01(\bR\x12hasConflictMarkers\"\x96\x01\n" +
+	"\x14has_conflict_markers\x18\a \x01(\bR\x12hasConflictMarkers\x120\n" +
+	"\x05files\x18\b \x03(\v2\x1a.singularitree.v1.FileDiffR\x05files\x12\x1c\n" +
+	"\ttruncated\x18\t \x01(\bR\ttruncated\"\x80\x01\n" +
+	"\vCommitStats\x12\x10\n" +
+	"\x03oid\x18\x01 \x01(\tR\x03oid\x12\x1c\n" +
+	"\tadditions\x18\x02 \x01(\x05R\tadditions\x12\x1c\n" +
+	"\tdeletions\x18\x03 \x01(\x05R\tdeletions\x12#\n" +
+	"\rfiles_changed\x18\x04 \x01(\x05R\ffilesChanged\"\x96\x01\n" +
 	"\n" +
 	"FileStatus\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x16\n" +
@@ -1276,24 +1489,26 @@ func file_domain_proto_rawDescGZIP() []byte {
 	return file_domain_proto_rawDescData
 }
 
-var file_domain_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_domain_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_domain_proto_goTypes = []any{
-	(*Oid)(nil),        // 0: singularitree.v1.Oid
-	(*Signature)(nil),  // 1: singularitree.v1.Signature
-	(*RefName)(nil),    // 2: singularitree.v1.RefName
-	(*RefLabel)(nil),   // 3: singularitree.v1.RefLabel
-	(*Commit)(nil),     // 4: singularitree.v1.Commit
-	(*Lane)(nil),       // 5: singularitree.v1.Lane
-	(*Branch)(nil),     // 6: singularitree.v1.Branch
-	(*Remote)(nil),     // 7: singularitree.v1.Remote
-	(*Tag)(nil),        // 8: singularitree.v1.Tag
-	(*Stash)(nil),      // 9: singularitree.v1.Stash
-	(*Worktree)(nil),   // 10: singularitree.v1.Worktree
-	(*Repository)(nil), // 11: singularitree.v1.Repository
-	(*DiffLine)(nil),   // 12: singularitree.v1.DiffLine
-	(*Hunk)(nil),       // 13: singularitree.v1.Hunk
-	(*Diff)(nil),       // 14: singularitree.v1.Diff
-	(*FileStatus)(nil), // 15: singularitree.v1.FileStatus
+	(*Oid)(nil),         // 0: singularitree.v1.Oid
+	(*Signature)(nil),   // 1: singularitree.v1.Signature
+	(*RefName)(nil),     // 2: singularitree.v1.RefName
+	(*RefLabel)(nil),    // 3: singularitree.v1.RefLabel
+	(*Commit)(nil),      // 4: singularitree.v1.Commit
+	(*Lane)(nil),        // 5: singularitree.v1.Lane
+	(*Branch)(nil),      // 6: singularitree.v1.Branch
+	(*Remote)(nil),      // 7: singularitree.v1.Remote
+	(*Tag)(nil),         // 8: singularitree.v1.Tag
+	(*Stash)(nil),       // 9: singularitree.v1.Stash
+	(*Worktree)(nil),    // 10: singularitree.v1.Worktree
+	(*Repository)(nil),  // 11: singularitree.v1.Repository
+	(*DiffLine)(nil),    // 12: singularitree.v1.DiffLine
+	(*Hunk)(nil),        // 13: singularitree.v1.Hunk
+	(*FileDiff)(nil),    // 14: singularitree.v1.FileDiff
+	(*Diff)(nil),        // 15: singularitree.v1.Diff
+	(*CommitStats)(nil), // 16: singularitree.v1.CommitStats
+	(*FileStatus)(nil),  // 17: singularitree.v1.FileStatus
 }
 var file_domain_proto_depIdxs = []int32{
 	0,  // 0: singularitree.v1.Commit.oid:type_name -> singularitree.v1.Oid
@@ -1308,14 +1523,16 @@ var file_domain_proto_depIdxs = []int32{
 	0,  // 9: singularitree.v1.Stash.oid:type_name -> singularitree.v1.Oid
 	0,  // 10: singularitree.v1.Worktree.head:type_name -> singularitree.v1.Oid
 	12, // 11: singularitree.v1.Hunk.lines:type_name -> singularitree.v1.DiffLine
-	0,  // 12: singularitree.v1.Diff.from:type_name -> singularitree.v1.Oid
-	0,  // 13: singularitree.v1.Diff.to:type_name -> singularitree.v1.Oid
-	13, // 14: singularitree.v1.Diff.hunks:type_name -> singularitree.v1.Hunk
-	15, // [15:15] is the sub-list for method output_type
-	15, // [15:15] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	13, // 12: singularitree.v1.FileDiff.hunks:type_name -> singularitree.v1.Hunk
+	0,  // 13: singularitree.v1.Diff.from:type_name -> singularitree.v1.Oid
+	0,  // 14: singularitree.v1.Diff.to:type_name -> singularitree.v1.Oid
+	13, // 15: singularitree.v1.Diff.hunks:type_name -> singularitree.v1.Hunk
+	14, // 16: singularitree.v1.Diff.files:type_name -> singularitree.v1.FileDiff
+	17, // [17:17] is the sub-list for method output_type
+	17, // [17:17] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_domain_proto_init() }
@@ -1329,7 +1546,7 @@ func file_domain_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_domain_proto_rawDesc), len(file_domain_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

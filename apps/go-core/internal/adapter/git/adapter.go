@@ -3,9 +3,11 @@
 // the repository path via `-C` and never build a shell string, so paths are not
 // subject to shell interpolation.
 //
-// Phase 0 implements the read path only (Resolve / List / Get). Mutating and
-// auxiliary operations return domain.ErrCodeNotImplemented explicitly rather
-// than faking success.
+// Phase 0 implemented the read path (Resolve / List / Get). M1 adds the
+// working-tree operations Status / Stage / Unstage / Commit / Diff. M3 (ADR-028)
+// adds branch CRUD, merge, tag CRUD and stash list/apply/pop/drop. The
+// remaining auxiliary operations (WorktreeList) return
+// domain.ErrCodeNotImplemented explicitly rather than faking success.
 package git
 
 import (
@@ -294,6 +296,23 @@ func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 	return stdout.String(), nil
 }
 
+// runGitStdin executes `git -C <dir> <args...>` with stdin fed from the given
+// bytes and returns trimmed stdout. It mirrors runGit's error envelope
+// (`git <args>: <err>: <stderr>`) so callers get identical diagnostics whether
+// or not a git command needs stdin. Like runGit it never builds a shell string.
+func runGitStdin(ctx context.Context, dir string, stdin []byte, args ...string) (string, error) {
+	full := append([]string{"-C", dir}, args...)
+	cmd := exec.CommandContext(ctx, "git", full...)
+	cmd.Stdin = bytes.NewReader(stdin)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+	}
+	return stdout.String(), nil
+}
+
 // runGitAllowExit is like runGit but also reports the process exit code so
 // callers can treat specific non-zero exits (e.g. `git config --get-regexp` with
 // no matches, exit 1) as an empty result rather than an error. stdout is
@@ -384,33 +403,6 @@ func notImplemented(op string) domain.AppError {
 		Code:    domain.ErrCodeNotImplemented,
 		Message: op + " is not implemented in Phase 0 (read path only)",
 	}
-}
-
-// --- Unimplemented Phase 1/2 operations (explicit typed errors) ---
-
-// Status returns working-tree status. Phase 3.
-func (a *Adapter) Status(context.Context, domain.RepositoryId) ([]domain.FileStatus, error) {
-	return nil, notImplemented("Status")
-}
-
-// Stage stages paths. Phase 3.
-func (a *Adapter) Stage(context.Context, domain.RepositoryId, []string) error {
-	return notImplemented("Stage")
-}
-
-// Unstage unstages paths. Phase 3.
-func (a *Adapter) Unstage(context.Context, domain.RepositoryId, []string) error {
-	return notImplemented("Unstage")
-}
-
-// Commit creates a commit. Phase 3.
-func (a *Adapter) Commit(context.Context, domain.RepositoryId, string, *domain.Signature) (*domain.Commit, error) {
-	return nil, notImplemented("Commit")
-}
-
-// Diff returns a diff between two oids. Phase 4.
-func (a *Adapter) Diff(context.Context, domain.RepositoryId, domain.Oid, domain.Oid) (*domain.Diff, error) {
-	return nil, notImplemented("Diff")
 }
 
 // BranchList lists local branches (refs/heads) and remote-tracking branches
@@ -522,16 +514,6 @@ func parseBranches(out, current string) []domain.Branch {
 		branches = append(branches, b)
 	}
 	return branches
-}
-
-// BranchCreate creates a branch. Phase 5.
-func (a *Adapter) BranchCreate(context.Context, domain.RepositoryId, string, domain.Oid) (*domain.Branch, error) {
-	return nil, notImplemented("BranchCreate")
-}
-
-// BranchDelete deletes a branch. Phase 5.
-func (a *Adapter) BranchDelete(context.Context, domain.RepositoryId, domain.RefName) error {
-	return notImplemented("BranchDelete")
 }
 
 // maxCheckoutErrLen bounds the short CHECKOUT_FAILED message (validation
@@ -1072,11 +1054,6 @@ func parseTags(out string) []domain.Tag {
 		tags = append(tags, tag)
 	}
 	return tags
-}
-
-// StashList lists stashes. Phase 5.
-func (a *Adapter) StashList(context.Context, domain.RepositoryId) ([]domain.Stash, error) {
-	return nil, notImplemented("StashList")
 }
 
 // WorktreeList lists worktrees. Phase 5.

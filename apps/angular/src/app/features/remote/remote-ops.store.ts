@@ -5,6 +5,7 @@ import { IpcBridge, toAppError, type AppError } from '@core/services/ipc-bridge.
 import { RepoState } from '@core/services/repo-state.service';
 import {
   parseRemoteTracking,
+  type FetchAllProgress,
   type FetchIntent,
   type PullIntent,
   type PushIntent,
@@ -13,7 +14,12 @@ import {
   type RemoteDialogKind,
   type RemoteOpProgress,
   type RemoteOption,
+  type RepoFetchEntry,
+  type RepoFetchState,
 } from './remote-models';
+
+/** Maximum concurrent per-repo fetch calls during a "fetch all" fan-out. */
+export const FETCH_ALL_CONCURRENCY = 3;
 
 function isIpcUnavailable(err: unknown): boolean {
   return (
@@ -22,6 +28,18 @@ function isIpcUnavailable(err: unknown): boolean {
     'code' in err &&
     (err as { code?: unknown }).code === 'IPC_UNAVAILABLE'
   );
+}
+
+/** Deduplicate fan-out targets by repo id, preserving first-seen order. */
+function dedupeByRepoId(repos: readonly RepoFetchEntry[]): RepoFetchEntry[] {
+  const seen = new Set<string>();
+  const out: RepoFetchEntry[] = [];
+  for (const repo of repos) {
+    if (seen.has(repo.repoId)) continue;
+    seen.add(repo.repoId);
+    out.push(repo);
+  }
+  return out;
 }
 
 /**
@@ -75,6 +93,16 @@ export class RemoteOpsStore {
   readonly running = signal(false);
   readonly progress = signal<RemoteOpProgress | null>(null);
   readonly opError = signal<AppError | null>(null);
+
+  // -- multi-repo fetch (ADR-024, renderer-orchestrated) -------------------
+  /** True while a "fetch all" fan-out is in flight (re-entrancy guard). */
+  readonly fetchAllRunning = signal(false);
+  /** Per-repository status of the last/current fan-out, keyed by repo id. */
+  readonly fetchAllStatus = signal<Readonly<Record<string, RepoFetchState>>>({});
+  /** Aggregate progress of the fan-out, or null when idle/cleared. */
+  readonly fetchAllProgress = signal<FetchAllProgress | null>(null);
+  /** Last fan-out failure (the per-repo statuses stay independent). */
+  readonly fetchAllError = signal<AppError | null>(null);
 
   // -- derived -------------------------------------------------------------
   readonly remoteOptions = computed<RemoteOption[]>(() =>
@@ -319,6 +347,80 @@ export class RemoteOpsStore {
       this.running.set(false);
       this.progress.set(null);
     }
+  }
+
+  // -- multi-repo fetch (ADR-024) ------------------------------------------
+
+  /**
+   * Fetch every open repository (ADR-024): a renderer-orchestrated fan-out of
+   * the existing per-repo streaming `fetch`, bounded to a small worker pool. No
+   * core "fetch all" RPC exists — the renderer iterates the tabs. One repo's
+   * failure never aborts the others; each repo's status is tracked independently
+   * and the last failure is surfaced. Re-entrant calls are ignored while a
+   * fan-out is already running.
+   */
+  async runFetchAll(repos: readonly RepoFetchEntry[]): Promise<void> {
+    if (this.fetchAllRunning()) return;
+    const targets = dedupeByRepoId(repos);
+    if (targets.length === 0) return;
+
+    this.fetchAllRunning.set(true);
+    this.fetchAllError.set(null);
+    const initial: Record<string, RepoFetchState> = {};
+    for (const target of targets) initial[target.repoId] = 'pending';
+    this.fetchAllStatus.set(initial);
+    this.fetchAllProgress.set({ done: 0, total: targets.length });
+
+    let failed = 0;
+    let cursor = 0;
+    const worker = async (): Promise<void> => {
+      while (cursor < targets.length) {
+        const target = targets[cursor++];
+        try {
+          await this.bridge.invoke('fetch', {
+            repoId: target.repoId,
+            // Empty remote => `git fetch` for the repository's configured default
+            // (all its remotes are covered by the repo's own refspecs).
+            remote: '',
+            prune: false,
+            tags: false,
+            force: false,
+          } satisfies FetchRequest);
+          this.setFetchStatus(target.repoId, 'success');
+        } catch (err) {
+          failed++;
+          this.setFetchStatus(target.repoId, 'failed');
+          if (isIpcUnavailable(err)) {
+            this.offline.set(true);
+          } else if (this.fetchAllError() === null) {
+            // Keep the first failure (most likely the root cause) rather than
+            // letting a later one overwrite it; the per-repo statuses already
+            // count every failure.
+            this.fetchAllError.set(toAppError(err));
+          }
+        } finally {
+          this.fetchAllProgress.update((p) => (p ? { done: p.done + 1, total: p.total } : p));
+        }
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(FETCH_ALL_CONCURRENCY, targets.length) }, () => worker()),
+    );
+    this.fetchAllRunning.set(false);
+    // Refresh the active repository's refs/badges when at least one fetch worked.
+    if (failed < targets.length) await this.repoState.loadRefs();
+  }
+
+  /** Dismiss the fan-out status panel and drop its transient state. */
+  clearFetchAll(): void {
+    this.fetchAllStatus.set({});
+    this.fetchAllProgress.set(null);
+    this.fetchAllError.set(null);
+  }
+
+  private setFetchStatus(repoId: string, state: RepoFetchState): void {
+    this.fetchAllStatus.update((prev) => ({ ...prev, [repoId]: state }));
   }
 
   private handleRunError(err: unknown): void {

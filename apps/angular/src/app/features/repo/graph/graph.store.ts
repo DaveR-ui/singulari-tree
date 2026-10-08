@@ -1,9 +1,15 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import type { Commit, Lane, Repository } from '@contracts/domain';
-import type { GetCommitsRequest, GetCommitsResponse } from '@contracts/gitcore';
+import type { Commit, CommitStats, Diff, Lane, Repository } from '@contracts/domain';
+import type {
+  GetCommitsRequest,
+  GetCommitsResponse,
+  GetDiffRequest,
+  ResetRequest,
+} from '@contracts/gitcore';
 import { IpcBridge, toAppError, type AppError } from '@core/services/ipc-bridge.service';
 import type { CommitRow } from '../repo-models';
 import { filterRows, joinRows, mapPageLanes, maxLaneIndex } from '../repo-mappers';
+import type { ResetModeName } from './graph-menu.models';
 
 /** Pseudo-oid for the synthetic working-tree (uncommitted) node. UI-only: no IPC. */
 export const WIP_OID = 'worktree';
@@ -14,6 +20,8 @@ export const GRAPH_WINDOW_SIZE = 200;
 export const GRAPH_PREFETCH = 100;
 /** Trigger prefetch when the rendered range is within this many rows of the end. */
 export const GRAPH_PREFETCH_THRESHOLD = 20;
+/** Max extra windows loaded to reveal a commit requested from cross-repo search. */
+export const COMMIT_FOCUS_MAX_LOADS = 10;
 
 function isIpcUnavailable(err: unknown): boolean {
   return (
@@ -63,6 +71,25 @@ export class GraphStore {
   /** True when the renderer runs without the Electron preload bridge. */
   readonly offline = signal(false);
 
+  // -- commit change-size gauge (ADR-0023) ---------------------------------
+  /** Counts per oid, lazily fetched for the visited window and cached. */
+  readonly commitStats = signal<ReadonlyMap<string, CommitStats>>(new Map());
+  /** Last non-IPC failure while loading the gauge, or null. */
+  readonly statsError = signal<AppError | null>(null);
+
+  // -- reset (ADR-0021) ----------------------------------------------------
+  /** True while a `reset` call is in flight. */
+  readonly resetRunning = signal(false);
+  /** Last reset failure, or null when idle/successful. */
+  readonly resetError = signal<AppError | null>(null);
+
+  // -- compare (ADR-0022) --------------------------------------------------
+  /** The commit pair currently being compared, or null when closed. */
+  readonly compare = signal<{ from: string; to: string } | null>(null);
+  readonly compareDiff = signal<Diff | null>(null);
+  readonly compareLoading = signal(false);
+  readonly compareError = signal<AppError | null>(null);
+
   // -- derived -------------------------------------------------------------
   readonly rows = computed<CommitRow[]>(() => joinRows(this.commits(), this.lanes()));
   readonly filteredRows = computed<CommitRow[]>(() => filterRows(this.rows(), this.filter()));
@@ -85,6 +112,15 @@ export class GraphStore {
     if (!oid || oid === WIP_OID) return -1;
     return this.filteredRows().findIndex((row) => row.commit.oid?.hex === oid);
   });
+
+  /**
+   * Cached gauge for one oid, or null when it has not been measured yet. A
+   * missing entry is rendered as "no gauge" (never a zeroed placeholder).
+   */
+  statsFor(oid: string | undefined): CommitStats | null {
+    if (!oid) return null;
+    return this.commitStats().get(oid) ?? null;
+  }
 
   // -- actions -------------------------------------------------------------
 
@@ -175,8 +211,136 @@ export class GraphStore {
     void this.loadWindow(0);
   }
 
+  /**
+   * Lazily measure the change-size gauge for a batch of oids (ADR-0023).
+   *
+   * Only oids absent from the cache are requested, in one `getCommitStats`
+   * call, so a re-render or a repeated window never re-measures. Failures are
+   * silent for the gauge: `IPC_UNAVAILABLE` degrades to `offline`, any other
+   * error is recorded on `statsError` — a missing gauge must not break the graph.
+   */
+  async loadStats(oids: readonly string[]): Promise<void> {
+    const id = this.repoId();
+    if (!id) return;
+
+    const cached = this.commitStats();
+    const missing = [...new Set(oids)].filter((oid) => !!oid && !cached.has(oid));
+    if (missing.length === 0) return;
+
+    try {
+      const resp = await this.bridge.invoke('getCommitStats', { repoId: id, oids: missing });
+      this.offline.set(false);
+      this.statsError.set(null);
+      const next = new Map(cached);
+      for (const stat of resp.stats ?? []) next.set(stat.oid, stat);
+      this.commitStats.set(next);
+    } catch (err) {
+      if (isIpcUnavailable(err)) {
+        this.offline.set(true);
+      } else {
+        this.statsError.set(toAppError(err));
+      }
+    }
+  }
+
+  /**
+   * Run `git reset --<mode> <to>` (ADR-0021) and reload the graph on success.
+   *
+   * No-ops without a repository, while another reset is in flight, or when the
+   * mode is unspecified. `HARD` is gated by a renderer confirmation *before*
+   * this method is reached; the store never downgrades or defaults a mode.
+   */
+  async reset(to: string, mode: ResetModeName): Promise<boolean> {
+    const id = this.repoId();
+    if (!id || this.resetRunning() || !to) return false;
+    if (mode !== 'SOFT' && mode !== 'MIXED' && mode !== 'HARD') return false;
+
+    this.resetRunning.set(true);
+    this.resetError.set(null);
+    try {
+      // `mode` is the enum value name: proto-loader decodes with `enums: String`.
+      await this.bridge.invoke('reset', { repoId: id, to, mode } as unknown as ResetRequest);
+      this.offline.set(false);
+      // A reset moves HEAD: refresh the graph through the normal flow.
+      this.reload();
+      return true;
+    } catch (err) {
+      if (isIpcUnavailable(err)) {
+        this.offline.set(true);
+      } else {
+        this.resetError.set(toAppError(err));
+      }
+      return false;
+    } finally {
+      this.resetRunning.set(false);
+    }
+  }
+
+  /**
+   * Diff two commits (`getDiff` with `from`/`to`, ADR-0022) and publish the
+   * result for the shared `DiffViewer`. No new RPC: Compare reuses `GetDiff`.
+   */
+  async compareCommits(from: string, to: string): Promise<void> {
+    const id = this.repoId();
+    if (!id || !from || !to) return;
+
+    this.compare.set({ from, to });
+    this.compareLoading.set(true);
+    this.compareError.set(null);
+    this.compareDiff.set(null);
+
+    const req: GetDiffRequest = { repoId: id, from, to, path: '', staged: false };
+    try {
+      const diff = await this.bridge.invoke('getDiff', req);
+      this.offline.set(false);
+      this.compareDiff.set(diff);
+    } catch (err) {
+      if (isIpcUnavailable(err)) {
+        this.offline.set(true);
+        this.compareDiff.set(null);
+      } else {
+        this.compareError.set(toAppError(err));
+      }
+    } finally {
+      this.compareLoading.set(false);
+    }
+  }
+
+  /** Close the compare view and drop its transient diff state. */
+  clearCompare(): void {
+    this.compare.set(null);
+    this.compareDiff.set(null);
+    this.compareError.set(null);
+  }
+
   select(oid: string | null): void {
     this.selectedOid.set(oid);
+  }
+
+  /**
+   * Select `oid` and, when it is not yet in the loaded window, page forward
+   * (bounded by {@link COMMIT_FOCUS_MAX_LOADS}) until it appears or the history
+   * ends. Used by the cross-repo search hand-off (ADR-026) to reveal a hit that
+   * lives beyond the first window; the selection is always applied, even when
+   * the commit is not reached.
+   */
+  async focusCommit(oid: string): Promise<void> {
+    if (!oid) return;
+    this.select(oid);
+
+    const contains = (): boolean =>
+      this.rows().some((row) => row.commit.oid?.hex === oid);
+    if (contains()) return;
+
+    let loads = 0;
+    while (loads < COMMIT_FOCUS_MAX_LOADS && this.hasMore() && !contains()) {
+      const before = this.commits().length;
+      await this.loadWindow(before);
+      loads++;
+      // Stop early when a page made no progress (avoids an infinite loop).
+      if (this.commits().length === before) break;
+    }
+    this.select(oid);
   }
 
   /** Move the selection down one visible row, clamping at the last row. */
@@ -227,5 +391,12 @@ export class GraphStore {
     }
 
     this.total.set(resp.total ?? 0);
+
+    // Measure the gauge for the rows just loaded (ADR-0023): lazily, for the
+    // visited window only, never the whole history. Fire-and-forget so the
+    // window renders immediately and the gauge fills in when it arrives.
+    void this.loadStats(
+      page.map((commit) => commit.oid?.hex).filter((oid): oid is string => !!oid),
+    );
   }
 }

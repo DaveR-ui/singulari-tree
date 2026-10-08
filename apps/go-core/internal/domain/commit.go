@@ -92,3 +92,25 @@ var (
 	ErrCommitNotFound = AppError{Code: ErrCodeCommitNotFound, Message: "commit not found"}
 	ErrInvalidOid     = AppError{Code: ErrCodeInvalidOid, Message: "invalid oid"}
 )
+
+// CommitSearchHit is one cross-repo commit-search result read from the SQLite
+// metadata cache (ADR-026). It carries commit metadata only — never blobs,
+// trees or diffs.
+type CommitSearchHit struct {
+	RepoID      RepositoryId
+	Oid         string
+	Message     string
+	AuthorName  string
+	AuthorEmail string
+	CommittedAt time.Time
+}
+
+// CommitSearchPort reads the metadata cache for cross-repo commit search
+// (ADR-026). The backing implementation queries the `commit_cache` table only;
+// it never touches Git objects.
+type CommitSearchPort interface {
+	// SearchCommits returns up to limit hits across the given repos whose
+	// message, author name/email or oid matches query (case-insensitive).
+	// An empty repoIDs list matches no repositories.
+	SearchCommits(ctx context.Context, repoIDs []string, query string, limit int) ([]CommitSearchHit, error)
+}

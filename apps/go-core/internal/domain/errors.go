@@ -43,6 +43,13 @@ const (
 	ErrCodeCommitFailed      = "COMMIT_FAILED"
 	ErrCodeCheckoutFailed    = "CHECKOUT_FAILED"
 	ErrCodeStashFailed       = "STASH_FAILED"
+	ErrCodeResetFailed       = "RESET_FAILED"
+	ErrCodeDiscardFailed     = "DISCARD_FAILED"
+	ErrCodeMergeConflict     = "MERGE_CONFLICT"
+	ErrCodeMergeFailed       = "MERGE_FAILED"
+	ErrCodeTagExists         = "TAG_EXISTS"
+	ErrCodeTagNotFound       = "TAG_NOT_FOUND"
+	ErrCodeGitFlowFailed     = "GIT_FLOW_FAILED"
 	ErrCodeFetchFailed       = "FETCH_FAILED"
 	ErrCodePushFailed        = "PUSH_FAILED"
 	ErrCodePullFailed        = "PULL_FAILED"
@@ -66,4 +73,13 @@ const (
 	ErrCodeGitHubRateLimited    = "GITHUB_RATE_LIMITED"
 	ErrCodeGitHubAPIError       = "GITHUB_API_ERROR"
 	ErrCodeGitHubTokenInvalid   = "GITHUB_TOKEN_INVALID"
+)
+
+// Advanced-git mutation errors (ADR-028). These mirror the branch error style
+// (branch.go): a named AppError var carrying the canonical code.
+var (
+	ErrMergeConflict = AppError{Code: ErrCodeMergeConflict, Message: "merge conflict"}
+	ErrMergeFailed   = AppError{Code: ErrCodeMergeFailed, Message: "merge failed"}
+	ErrTagExists     = AppError{Code: ErrCodeTagExists, Message: "tag already exists"}
+	ErrTagNotFound   = AppError{Code: ErrCodeTagNotFound, Message: "tag not found"}
 )

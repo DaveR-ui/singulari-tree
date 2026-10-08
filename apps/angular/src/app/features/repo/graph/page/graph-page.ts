@@ -5,14 +5,27 @@ import {
   computed,
   effect,
   inject,
+  signal,
   viewChild,
 } from '@angular/core';
 import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
-import { GRAPH_ROW_HEIGHT, GraphRow } from '@singularitree/ui-kit';
+import { DiffViewer, GRAPH_ROW_HEIGHT, GraphRow } from '@singularitree/ui-kit';
+import { ModalComponent } from '@shared/ui/modal/modal';
+import { BranchCreateDialog } from '@shared/ui/ref-dialogs/branch-create-dialog';
+import type { BranchCreateValue, TagCreateValue } from '@shared/ui/ref-dialogs/ref-dialog.models';
+import { TagCreateDialog } from '@shared/ui/ref-dialogs/tag-create-dialog';
 import { KeyboardShortcutService } from '@core/services/keyboard-shortcut.service';
+import { RepoState } from '@core/services/repo-state.service';
 import type { CommitRow } from '../../repo-models';
 import { GRAPH_PREFETCH_THRESHOLD, GraphStore, WIP_OID } from '../graph.store';
+import type {
+  CheckoutTarget,
+  GraphContextMenuTarget,
+  ResetModeName,
+} from '../graph-menu.models';
 import { CommitDetailsPanel } from '../ui/commit-details-panel';
+import { GraphContextMenu } from '../ui/graph-context-menu';
+import { ResetConfirmDialog } from '../ui/reset-confirm-dialog';
 import { WipRow } from '../ui/wip-row';
 
 /**
@@ -23,7 +36,18 @@ import { WipRow } from '../ui/wip-row';
 @Component({
   selector: 'st-graph-page',
   standalone: true,
-  imports: [ScrollingModule, GraphRow, WipRow, CommitDetailsPanel],
+  imports: [
+    ScrollingModule,
+    GraphRow,
+    WipRow,
+    CommitDetailsPanel,
+    GraphContextMenu,
+    ResetConfirmDialog,
+    ModalComponent,
+    DiffViewer,
+    BranchCreateDialog,
+    TagCreateDialog,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="st-graph-page">
@@ -68,7 +92,9 @@ import { WipRow } from '../ui/wip-row';
               [lane]="row.lane"
               [maxLane]="maxLane()"
               [selected]="store.selectedOid() === row.commit.oid?.hex"
+              [stats]="store.statsFor(row.commit.oid?.hex)"
               (picked)="store.select(row.commit.oid?.hex ?? null)"
+              (contextmenu)="onRowContextMenu($event, row)"
             />
           </cdk-virtual-scroll-viewport>
 
@@ -86,6 +112,76 @@ import { WipRow } from '../ui/wip-row';
           />
         </aside>
       </div>
+
+      <!-- Right-click action shell (ADR-0022): dumb, emits; the page owns the RPC. -->
+      <st-graph-context-menu
+        [open]="contextMenu() !== null"
+        [x]="contextMenu()?.x ?? 0"
+        [y]="contextMenu()?.y ?? 0"
+        [target]="contextMenuTarget()"
+        [canCompare]="canCompare()"
+        [busy]="store.resetRunning()"
+        (checkout)="onCheckout($event)"
+        (compare)="onCompare()"
+        (copySha)="onCopySha($event)"
+        (createBranchHere)="onCreateBranchHere($event)"
+        (tagCommit)="onTagCommit($event)"
+        (reset)="onReset($event)"
+        (closed)="closeContextMenu()"
+      />
+
+      <!-- Destructive gate for a hard reset (ADR-0021). -->
+      <st-reset-confirm-dialog
+        [open]="resetConfirm() !== null"
+        [oid]="resetConfirm()?.oid ?? null"
+        [busy]="store.resetRunning()"
+        (confirmed)="onResetConfirmed()"
+        (cancelled)="onResetCancelled()"
+      />
+
+      <!-- Create branch/tag at the menu commit (ADR-028). -->
+      <st-branch-create-dialog
+        [open]="branchDialog() !== null"
+        [defaultStartPoint]="branchDialog()?.startPoint ?? 'HEAD'"
+        [running]="refOpRunning()"
+        [error]="refOpError()"
+        (submitted)="onBranchCreateSubmitted($event)"
+        (cancelled)="onBranchCreateCancelled()"
+      />
+      <st-tag-create-dialog
+        [open]="tagDialog() !== null"
+        [defaultTarget]="tagDialog()?.target ?? 'HEAD'"
+        [running]="refOpRunning()"
+        [error]="refOpError()"
+        (submitted)="onTagCreateSubmitted($event)"
+        (cancelled)="onTagCreateCancelled()"
+      />
+
+      <!-- Compare reuses the shared diff display path (GetDiff + DiffViewer). -->
+      <st-modal
+        [open]="store.compare() !== null"
+        title="Compare commits"
+        (closed)="store.clearCompare()"
+      >
+        <p class="st-graph-page__compare-range" data-testid="compare-range">
+          {{ store.compare()?.from }} → {{ store.compare()?.to }}
+        </p>
+        <div class="st-graph-page__compare-diff">
+          <st-diff-viewer
+            [diff]="store.compareDiff()"
+            [loading]="store.compareLoading()"
+            [errorMsg]="store.compareError()?.message ?? null"
+          />
+        </div>
+        <button
+          st-modal-footer
+          type="button"
+          data-testid="compare-close"
+          (click)="store.clearCompare()"
+        >
+          Close
+        </button>
+      </st-modal>
     </section>
   `,
   styles: `
@@ -167,6 +263,22 @@ import { WipRow } from '../ui/wip-row';
       border-left: 1px solid var(--st-color-border, #2f2f44);
       overflow: hidden;
     }
+
+    .st-graph-page__compare-range {
+      margin: 0 0 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      word-break: break-all;
+      opacity: 0.75;
+    }
+
+    .st-graph-page__compare-diff {
+      height: 360px;
+      min-height: 0;
+      border: 1px solid var(--st-color-border, #2f2f44);
+      border-radius: 6px;
+      overflow: hidden;
+    }
   `,
 })
 export class GraphPage {
@@ -174,10 +286,48 @@ export class GraphPage {
 
   private readonly shortcuts = inject(KeyboardShortcutService);
   private readonly destroyRef = inject(DestroyRef);
+  /**
+   * Checkout is owned by `RepoState` (the branch-switch confirmation flow and
+   * its error banner live in the shell); the graph delegates to it rather than
+   * duplicating the flow (ADR-0022 item 1).
+   */
+  private readonly repoState = inject(RepoState);
 
   /** Must match `GRAPH_ROW_HEIGHT` so CDK virtualization delegates row height. */
   readonly rowHeight = GRAPH_ROW_HEIGHT;
   readonly maxLane = computed(() => this.store.maxLane());
+
+  // -- context menu / reset confirmation state -----------------------------
+  /** Open context menu anchored at viewport coordinates, or null when closed. */
+  readonly contextMenu = signal<{ x: number; y: number; row: CommitRow } | null>(null);
+  /** Pending hard-reset target awaiting explicit confirmation, or null. */
+  readonly resetConfirm = signal<{ oid: string } | null>(null);
+  /** Create-branch dialog state (default start point = menu commit oid), or null. */
+  readonly branchDialog = signal<{ startPoint: string } | null>(null);
+  /** Create-tag dialog state (default target = menu commit oid), or null. */
+  readonly tagDialog = signal<{ target: string } | null>(null);
+
+  /** Ref-mutation busy/error mirrored from the root store for the dialogs. */
+  readonly refOpRunning = computed(() => this.repoState.refOpRunning());
+  readonly refOpError = computed(() => this.repoState.refOpError());
+
+  /** The commit the open menu points at (null when the row has no oid). */
+  readonly contextMenuTarget = computed<GraphContextMenuTarget | null>(() => {
+    const menu = this.contextMenu();
+    const oid = menu?.row.commit.oid?.hex;
+    if (!menu || !oid) return null;
+    return { oid, refs: menu.row.commit.refs ?? [] };
+  });
+
+  /**
+   * Compare needs a distinct, real base: the currently selected commit. It is
+   * disabled for the WIP node and for the very commit the menu was opened on.
+   */
+  readonly canCompare = computed(() => {
+    const target = this.contextMenuTarget();
+    const selected = this.store.selectedOid();
+    return !!target && !!selected && selected !== WIP_OID && selected !== target.oid;
+  });
 
   /**
    * Stable CDK identity for row DOM reuse on window shifts: the commit oid hex,
@@ -221,6 +371,138 @@ export class GraphPage {
   onScrolledIndexChange(index: number): void {
     if (index >= this.store.filteredRows().length - GRAPH_PREFETCH_THRESHOLD) {
       this.store.loadMore();
+    }
+  }
+
+  // -- context menu actions ------------------------------------------------
+
+  /** Open the menu for a commit row at the pointer, clamped into the viewport. */
+  onRowContextMenu(event: MouseEvent, row: CommitRow): void {
+    if (!row.commit.oid?.hex) return;
+    event.preventDefault();
+    const x = Math.max(0, Math.min(event.clientX, window.innerWidth - 220));
+    const y = Math.max(0, Math.min(event.clientY, window.innerHeight - 260));
+    this.contextMenu.set({ x, y, row });
+  }
+
+  closeContextMenu(): void {
+    this.contextMenu.set(null);
+  }
+
+  /** Checkout delegates to the existing branch-switch flow (RepoState). */
+  onCheckout(target: CheckoutTarget): void {
+    this.closeContextMenu();
+    void this.repoState.checkoutBranch(target.refName, target.isRemote);
+  }
+
+  /** Compare the selected commit (base) with the menu commit (target). */
+  onCompare(): void {
+    const target = this.contextMenuTarget();
+    const base = this.store.selectedOid();
+    this.closeContextMenu();
+    if (!target || !base || base === WIP_OID || base === target.oid) return;
+    void this.store.compareCommits(base, target.oid);
+  }
+
+  /** Copy SHA is renderer-only: no IPC round-trip (ADR-0022 item 2). */
+  onCopySha(oid: string): void {
+    this.closeContextMenu();
+    void this.copyToClipboard(oid);
+  }
+
+  /**
+   * Reset entries: soft/mixed run immediately; hard opens the confirmation gate
+   * first (ADR-0021 item 3) and only runs once the user confirms.
+   */
+  onReset(mode: ResetModeName): void {
+    const target = this.contextMenuTarget();
+    this.closeContextMenu();
+    if (!target) return;
+    if (mode === 'HARD') {
+      this.resetConfirm.set({ oid: target.oid });
+      return;
+    }
+    void this.store.reset(target.oid, mode);
+  }
+
+  onResetConfirmed(): void {
+    const confirm = this.resetConfirm();
+    this.resetConfirm.set(null);
+    if (confirm) void this.store.reset(confirm.oid, 'HARD');
+  }
+
+  onResetCancelled(): void {
+    this.resetConfirm.set(null);
+  }
+
+  // -- create branch / tag at a commit (ADR-028) ---------------------------
+
+  /** "Create branch here…" opens the dialog prefilled with the commit oid. */
+  onCreateBranchHere(oid: string): void {
+    this.closeContextMenu();
+    this.repoState.clearRefOpError();
+    this.branchDialog.set({ startPoint: oid });
+  }
+
+  onBranchCreateSubmitted(value: BranchCreateValue): void {
+    void this.repoState.createBranch(value.name, value.startPoint, value.checkout).then((ok) => {
+      if (ok) this.branchDialog.set(null);
+    });
+  }
+
+  onBranchCreateCancelled(): void {
+    this.branchDialog.set(null);
+    this.repoState.clearRefOpError();
+  }
+
+  /** "Tag this commit…" opens the dialog prefilled with the commit oid. */
+  onTagCommit(oid: string): void {
+    this.closeContextMenu();
+    this.repoState.clearRefOpError();
+    this.tagDialog.set({ target: oid });
+  }
+
+  onTagCreateSubmitted(value: TagCreateValue): void {
+    void this.repoState
+      .createTag(value.name, value.target, value.annotated, value.message, value.force)
+      .then((ok) => {
+        if (ok) this.tagDialog.set(null);
+      });
+  }
+
+  onTagCreateCancelled(): void {
+    this.tagDialog.set(null);
+    this.repoState.clearRefOpError();
+  }
+
+  /**
+   * Copy `text` to the clipboard, preferring the async Clipboard API and
+   * falling back to a hidden textarea + `execCommand` when it is unavailable
+   * (jsdom, insecure contexts). Never throws; returns whether it succeeded.
+   */
+  async copyToClipboard(text: string): Promise<boolean> {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return this.copyFallback(text);
+    }
+  }
+
+  private copyFallback(text: string): boolean {
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return ok;
+    } catch {
+      return false;
     }
   }
 }

@@ -14,7 +14,10 @@
     "module": "preserve",
     "moduleResolution": "bundler",
     "useDefineForClassFields": false,
-    "lib": ["ES2022", "dom"]
+    "lib": ["ES2022", "dom"],
+    "paths": {
+      "@contracts/*": ["../contracts/gen/ts/*"]
+    }
   },
   "angularCompilerOptions": {
     "enableI18nLegacyMessageIdFormat": false,

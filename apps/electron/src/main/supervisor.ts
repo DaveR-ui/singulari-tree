@@ -8,8 +8,12 @@ import {
   isStreamingRpc,
   type ChannelName,
 } from '../ipc/channels';
-import type { ProgressPayload } from '../ipc/events';
-import { GoCoreClient } from './go-core-client';
+import type { FsChangedPayload, ProgressPayload } from '../ipc/events';
+import {
+  GoCoreClient,
+  type FsChangedEvent,
+  type StreamHandle,
+} from './go-core-client';
 
 /**
  * Supervisor — spawns go-core, awaits GO_CORE_READY, heartbeats Ping 5s,
@@ -44,6 +48,15 @@ export interface SupervisorOptions {
    * (which emits on the `git:progress` channel). Tests inject a spy instead.
    */
   onProgress?: (payload: ProgressPayload) => void;
+  /**
+   * Filesystem-change sink for the background `Watch` stream.
+   *
+   * Same shape as `onProgress`: the supervisor stays window- and Electron-free;
+   * `main.ts` injects a callback that forwards each `FsChangedPayload` to the
+   * single main window via `events.sendFsChanged` (channel `fs:changed`).
+   * Tests inject a spy instead.
+   */
+  onFsChanged?: (payload: FsChangedPayload) => void;
 }
 
 interface PendingRequest {
@@ -75,6 +88,14 @@ export class Supervisor {
   private client: GoCoreClient | null = null;
   /** Second client bound to `singularitree.v1.Auth` (same addr/token). */
   private authClient: GoCoreClient | null = null;
+  /** Live background `Watch` stream; null when no repo is being watched. */
+  private watchCall: StreamHandle | null = null;
+  /**
+   * Last repo whose `Watch` stream was requested. Survives child loss so the
+   * watch can be re-established automatically after a go-core restart (W1);
+   * cleared only by `stop()`.
+   */
+  private watchedRepoId: string | null = null;
   private readonly protoDir?: string;
   private readonly tokenOverride?: string;
 
@@ -115,6 +136,9 @@ export class Supervisor {
       this.restartTimer = null;
     }
     this.ready = false;
+    this.stopWatch();
+    // Explicit shutdown: forget the watched repo so no reconnect re-opens it (W1).
+    this.watchedRepoId = null;
     this.client?.close();
     this.client = null;
     this.authClient?.close();
@@ -185,6 +209,7 @@ export class Supervisor {
   /** Shared child-loss path: tear down client state and queue exactly one restart. */
   private handleChildLoss(reason: string): void {
     this.ready = false;
+    this.stopWatch();
     this.client?.close();
     this.client = null;
     this.authClient?.close();
@@ -222,6 +247,9 @@ export class Supervisor {
           this.connectClient();
           this.ready = true;
           this.restarts = 0;
+          // W1: if a repo was being watched before this (re)connect, re-open its
+          // Watch stream now that the client is connected again.
+          this.reestablishWatch();
           finish(() => {
             this.drainQueue();
             resolve({ addr: this.grpcAddr, http: this.httpAddr, token: this.token });
@@ -341,8 +369,22 @@ export class Supervisor {
       console.log(`[supervisor:mock] forward ${channel}`, payload);
       return { ok: true, channel, payload, mock: true };
     }
-    // Fetch/Pull/Push are server-streaming: drive the real gRPC stream so
-    // progress reaches the renderer and the promise settles at EOF/error.
+    // Watch is a background (never-ending) server-stream: start it and resolve
+    // the ack immediately instead of awaiting the stream like Fetch/Pull/Push.
+    // Queue-while-not-ready already applied above, so the ack settles once the
+    // stream is actually running.
+    if (rpc === 'Watch') {
+      const repoId =
+        typeof payload === 'object' && payload !== null
+          ? (payload as { repoId?: unknown }).repoId
+          : undefined;
+      // `startWatch` validates repoId (W2): a missing/non-string/empty value is
+      // rejected with INVALID_ARGUMENT rather than acked optimistically.
+      return this.startWatch(repoId);
+    }
+    // Fetch/Pull/Push are short-lived server-streaming RPCs: drive the real
+    // gRPC stream so progress reaches the renderer and the promise settles at
+    // EOF/error.
     if (isStreamingRpc(rpc)) {
       return this.forwardStream(rpc, payload);
     }
@@ -370,5 +412,86 @@ export class Supervisor {
     await target.invokeStream(rpc, payload, (p) => {
       this.opts.onProgress?.({ op, percent: p.percent, message: p.message });
     });
+  }
+
+  /**
+   * Start the background `Watch` stream for `repoId` and forward every
+   * `FsChangedEvent` to the injected `onFsChanged` sink.
+   *
+   * Replace-any-existing semantics: a new `git:watch` cancels the previous
+   * stream (a repo switch watches one repo at a time). The returned promise is
+   * the IPC ack — it resolves as soon as the stream is running and never awaits
+   * the never-ending stream, so the renderer's fire-and-forget invoke settles
+   * promptly. A stream error that fires before the ack settles rejects it;
+   * after that it only logs (the renderer is not waiting).
+   */
+  async startWatch(repoId: unknown): Promise<unknown> {
+    // W2: reject a missing/non-string/empty repoId instead of opening a stream
+    // with an empty repo and acking `{ok:true, watching:''}`.
+    if (typeof repoId !== 'string' || repoId.length === 0) {
+      throw {
+        code: 'INVALID_ARGUMENT',
+        message: 'git:watch requires a non-empty string repoId',
+        details: {},
+      };
+    }
+    this.stopWatch();
+    const target = this.client;
+    if (!target) {
+      throw {
+        code: 'GO_CORE_UNAVAILABLE',
+        message: 'Go core gRPC client not connected',
+        details: {},
+      };
+    }
+    return new Promise<unknown>((resolve, reject) => {
+      let pending = true;
+      // `openStream` throws synchronously when not connected / unknown RPC; the
+      // Promise executor turns that throw into a rejection automatically.
+      const handle = target.openStream<FsChangedEvent>(
+        'Watch',
+        { repoId },
+        (ev) => {
+          // The core echoes repoId; fall back to the requested one defensively.
+          this.opts.onFsChanged?.({
+            repoId: ev.repoId || repoId,
+            paths: ev.paths ?? [],
+          });
+        },
+        (err) => {
+          if (this.watchCall === handle) this.watchCall = null;
+          if (pending) {
+            pending = false;
+            reject(err);
+          } else {
+            console.warn('[supervisor] Watch stream ended with error', err);
+          }
+        },
+      );
+      this.watchCall = handle;
+      // Remember the repo so a go-core restart can re-open this stream (W1).
+      this.watchedRepoId = repoId;
+      pending = false;
+      resolve({ ok: true, watching: repoId });
+    });
+  }
+
+  /**
+   * Re-open the last watched `Watch` stream after a (re)connect (W1). Called
+   * from `awaitReady()` right after `connectClient()`; a no-op when nothing was
+   * being watched. Failures are logged — the reconnect itself already succeeded.
+   */
+  private reestablishWatch(): void {
+    const repoId = this.watchedRepoId;
+    if (repoId === null) return;
+    void this.startWatch(repoId).catch((err) => {
+      console.warn('[supervisor] failed to re-establish watch after reconnect', err);
+    });
+  }
+
+  /** Cancel the live `Watch` stream, if any. Also invoked by `stop()`/child loss. */
+  stopWatch(): void {
+    this.watchCall?.cancel();
+    this.watchCall = null;
   }
 }

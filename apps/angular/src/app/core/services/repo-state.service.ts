@@ -1,5 +1,15 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import type { Repository } from '@contracts/domain';
+import type { Repository, Stash } from '@contracts/domain';
+import type {
+  FinishGitFlowRequest,
+  GitFlowConfig,
+  GitFlowResult,
+  MergeRequest,
+  MergeResponse,
+  StartGitFlowRequest,
+} from '@contracts/gitcore';
+import type { GitFlowKindName } from '@shared/ui/git-flow-dialog/git-flow.models';
+import type { MergeStrategyName } from '@shared/ui/ref-dialogs/ref-dialog.models';
 import { IpcBridge, toAppError, type AppError } from './ipc-bridge.service';
 
 type RepositoryId = string;
@@ -44,6 +54,10 @@ export class RepoState {
   readonly reposOffline = signal(false);
   /** Id of the repository currently being removed, or null when idle. */
   readonly removingId = signal<RepositoryId | null>(null);
+  /** True once the first `loadRepositories` attempt has settled. */
+  readonly reposLoaded = signal(false);
+  /** In-flight/last `loadRepositories` promise, for callers that must await it. */
+  private reposLoadPromise: Promise<void> | null = null;
 
   // -- ref lists for the active repository ---------------------------------
   /** Local branch display names (remote-tracking branches are excluded). */
@@ -75,6 +89,56 @@ export class RepoState {
   /** Last checkout failure, or null when idle/successful. */
   readonly checkoutError = signal<AppError | null>(null);
 
+  // -- ref mutations (ADR-028: branch/tag CRUD + merge) --------------------
+  /** True while any branch/tag/merge mutation is in flight. */
+  readonly refOpRunning = signal(false);
+  /** Last ref-mutation failure, or null when idle/successful. */
+  readonly refOpError = signal<AppError | null>(null);
+  /**
+   * Result of the last merge that produced conflicts, or null. Non-null drives
+   * the shell conflict notice; the tree stays conflicted (no 3-way editor in M3).
+   */
+  readonly mergeConflict = signal<MergeResponse | null>(null);
+
+  // -- stashes (ADR-028) ---------------------------------------------------
+  /** Stash entries for the active repository, newest first (as the core lists). */
+  readonly stashes = signal<Stash[]>([]);
+  readonly stashesLoading = signal(false);
+  readonly stashesError = signal<AppError | null>(null);
+  /** True while a `stashApply`/`stashPop`/`stashDrop` mutation is in flight. */
+  readonly stashOpRunning = signal(false);
+  /** Last stash-mutation failure, or null when idle/successful. */
+  readonly stashOpError = signal<AppError | null>(null);
+  /**
+   * Monotonic token for `loadStashes`. Incremented on every call so a late
+   * response for a previous repository can never overwrite a newer one.
+   */
+  private stashesGeneration = 0;
+
+  // -- git-flow presets (ADR-027) ------------------------------------------
+  /** Active repository's git-flow configuration, or null until loaded. */
+  readonly gitFlowConfig = signal<GitFlowConfig | null>(null);
+  readonly gitFlowConfigLoading = signal(false);
+  readonly gitFlowConfigError = signal<AppError | null>(null);
+  /** True while a start/finish/config mutation is in flight. */
+  readonly gitFlowRunning = signal(false);
+  /** Last git-flow failure, or null when idle/successful. */
+  readonly gitFlowError = signal<AppError | null>(null);
+  /**
+   * Result of the last git-flow start/finish (branch, ordered `steps` and the
+   * `hasConflict` flag), or null. On a finish conflict the sequence stops, the
+   * tree is left conflicted and `hasConflict` is true.
+   */
+  readonly gitFlowResult = signal<GitFlowResult | null>(null);
+
+  /**
+   * Monotonic token bumped whenever a ref mutation may have changed the working
+   * tree or HEAD (a checkout-on-create or a merge). Route-scoped consumers
+   * (`StatusWorkspace`) observe it to refresh status/diffs.
+   */
+  private readonly statusRefreshState = signal(0);
+  readonly statusRefreshRequested = this.statusRefreshState.asReadonly();
+
   // -- ref name maps (display name -> full ref) ----------------------------
   private readonly localRefState = signal<ReadonlyMap<string, string>>(new Map());
   private readonly remoteRefState = signal<ReadonlyMap<string, string>>(new Map());
@@ -95,9 +159,33 @@ export class RepoState {
    * Mirrors the refs pattern: records `reposOffline` when the bridge is absent,
    * any other failure on `reposError`, and always clears `reposLoading`. The
    * currently loaded list is kept on failure so a transient error never blanks
-   * the drawer.
+   * the drawer. The in-flight promise is retained so `whenRepositoriesLoaded`
+   * can await it.
    */
-  async loadRepositories(): Promise<void> {
+  loadRepositories(): Promise<void> {
+    const promise = this.doLoadRepositories();
+    this.reposLoadPromise = promise;
+    return promise;
+  }
+
+  /**
+   * Resolve once the repository list has been loaded at least once.
+   *
+   * Deep-link routing awaits this so a `<repo>` token is never resolved against
+   * an empty list while the first `loadRepositories` is still in flight (a link
+   * can arrive right after the renderer acknowledges readiness, before
+   * `ngOnInit`'s load has settled).
+   */
+  async whenRepositoriesLoaded(): Promise<void> {
+    if (this.reposLoaded()) return;
+    if (this.reposLoadPromise) {
+      await this.reposLoadPromise;
+      return;
+    }
+    await this.loadRepositories();
+  }
+
+  private async doLoadRepositories(): Promise<void> {
     this.reposLoading.set(true);
     this.reposError.set(null);
     try {
@@ -112,6 +200,35 @@ export class RepoState {
       }
     } finally {
       this.reposLoading.set(false);
+      this.reposLoaded.set(true);
+    }
+  }
+
+  /**
+   * Open (register) a repository by absolute filesystem path (`openRepository`)
+   * and make it active. Used by deep-link routing (ADR-025): the shell never
+   * runs Git, so the renderer resolves the path through the core here.
+   *
+   * Returns the opened repository on success, or null on failure. A missing
+   * bridge records `reposOffline`; any other failure records `reposError`.
+   */
+  async openRepositoryPath(fsPath: string): Promise<Repository | null> {
+    const trimmed = fsPath.trim();
+    if (!trimmed) return null;
+
+    this.reposError.set(null);
+    try {
+      const repo = await this.bridge.invoke('openRepository', { fsPath: trimmed });
+      this.reposOffline.set(false);
+      this.setActive(repo);
+      return repo;
+    } catch (err) {
+      if (isIpcUnavailable(err)) {
+        this.reposOffline.set(true);
+      } else {
+        this.reposError.set(toAppError(err));
+      }
+      return null;
     }
   }
 
@@ -133,6 +250,7 @@ export class RepoState {
       if (this.activeId() === id) {
         this.activeId.set(null);
         void this.loadRefs();
+        void this.loadStashes();
       }
       return true;
     } catch (err) {
@@ -158,6 +276,20 @@ export class RepoState {
     });
     this.activeId.set(repo.id);
     void this.loadRefs();
+    void this.loadStashes();
+  }
+
+  /**
+   * Clear the active repository selection and its derived lists (refs, stashes).
+   *
+   * Used when the last workspace tab closes: without this the sidebar/toolbar
+   * would keep showing refs for a repository that no longer has an open tab.
+   * Mirrors `removeRepository`'s clear-on-active-removal path.
+   */
+  clearActive(): void {
+    this.activeId.set(null);
+    void this.loadRefs();
+    void this.loadStashes();
   }
 
   /**
@@ -302,6 +434,8 @@ export class RepoState {
     try {
       await this.bridge.invoke('stashPush', { repoId, message });
       await this.loadRefs();
+      await this.loadStashes();
+      this.requestStatusRefresh();
       return true;
     } catch (err) {
       if (isIpcUnavailable(err)) {
@@ -318,5 +452,465 @@ export class RepoState {
   /** Clear a displayed checkout failure (e.g. the shell banner was dismissed). */
   dismissCheckoutError(): void {
     this.checkoutError.set(null);
+  }
+
+  // -- ref mutations (ADR-028) ---------------------------------------------
+
+  /**
+   * Create a local branch (`createBranch`) at `startPoint`, optionally checking
+   * it out. No-ops without an active repo, while another ref op runs, or with a
+   * blank name. On success the ref lists reload and, when `checkout` is true, the
+   * working tree consumers are asked to refresh (HEAD moved).
+   */
+  async createBranch(name: string, startPoint: string, checkout: boolean): Promise<boolean> {
+    const repoId = this.activeId();
+    if (!repoId || this.refOpRunning() || !name.trim()) return false;
+
+    this.refOpRunning.set(true);
+    this.refOpError.set(null);
+    try {
+      await this.bridge.invoke('createBranch', { repoId, name, startPoint, checkout });
+      await this.loadRefs();
+      if (checkout) this.requestStatusRefresh();
+      return true;
+    } catch (err) {
+      this.handleRefOpError(err);
+      return false;
+    } finally {
+      this.refOpRunning.set(false);
+    }
+  }
+
+  /**
+   * Rename a local branch (`renameBranch`). No-ops without an active repo, while
+   * another ref op runs, or with a blank new name. Reloads the ref lists on
+   * success.
+   */
+  async renameBranch(oldName: string, newName: string): Promise<boolean> {
+    const repoId = this.activeId();
+    if (!repoId || this.refOpRunning() || !newName.trim()) return false;
+
+    this.refOpRunning.set(true);
+    this.refOpError.set(null);
+    try {
+      await this.bridge.invoke('renameBranch', { repoId, oldName, newName });
+      await this.loadRefs();
+      return true;
+    } catch (err) {
+      this.handleRefOpError(err);
+      return false;
+    } finally {
+      this.refOpRunning.set(false);
+    }
+  }
+
+  /**
+   * Delete a local branch (`deleteBranch`). `force` maps to `git branch -D`
+   * (discard unmerged commits); the dialog warns first. Reloads the ref lists on
+   * success.
+   */
+  async deleteBranch(name: string, force: boolean): Promise<boolean> {
+    const repoId = this.activeId();
+    if (!repoId || this.refOpRunning()) return false;
+
+    this.refOpRunning.set(true);
+    this.refOpError.set(null);
+    try {
+      await this.bridge.invoke('deleteBranch', { repoId, name, force });
+      await this.loadRefs();
+      return true;
+    } catch (err) {
+      this.handleRefOpError(err);
+      return false;
+    } finally {
+      this.refOpRunning.set(false);
+    }
+  }
+
+  /**
+   * Create a tag (`createTag`) at `target`. An annotated tag requires a message;
+   * the dialog enforces it and this guard defends the store. `force` moves an
+   * existing tag. Reloads the ref lists on success.
+   */
+  async createTag(
+    name: string,
+    target: string,
+    annotated: boolean,
+    message: string,
+    force: boolean,
+  ): Promise<boolean> {
+    const repoId = this.activeId();
+    if (!repoId || this.refOpRunning() || !name.trim()) return false;
+    if (annotated && !message.trim()) return false;
+
+    this.refOpRunning.set(true);
+    this.refOpError.set(null);
+    try {
+      await this.bridge.invoke('createTag', { repoId, name, target, annotated, message, force });
+      await this.loadRefs();
+      return true;
+    } catch (err) {
+      this.handleRefOpError(err);
+      return false;
+    } finally {
+      this.refOpRunning.set(false);
+    }
+  }
+
+  /** Delete a tag (`deleteTag`). Reloads the ref lists on success. */
+  async deleteTag(name: string): Promise<boolean> {
+    const repoId = this.activeId();
+    if (!repoId || this.refOpRunning()) return false;
+
+    this.refOpRunning.set(true);
+    this.refOpError.set(null);
+    try {
+      await this.bridge.invoke('deleteTag', { repoId, name });
+      await this.loadRefs();
+      return true;
+    } catch (err) {
+      this.handleRefOpError(err);
+      return false;
+    } finally {
+      this.refOpRunning.set(false);
+    }
+  }
+
+  /**
+   * Merge `ref` into the current branch (`merge`) with the chosen strategy.
+   *
+   * M3 surfaces conflicts instead of resolving them: a response with
+   * `hasConflict` (or a `MERGE_CONFLICT` rejection) publishes `mergeConflict`,
+   * refreshes the ref lists and asks the working-tree consumers to refresh so
+   * the conflicted files appear. The tree stays conflicted — there is no 3-way
+   * editor in M3.
+   */
+  async merge(
+    ref: string,
+    strategy: MergeStrategyName,
+    noCommit: boolean,
+    message: string,
+  ): Promise<boolean> {
+    const repoId = this.activeId();
+    if (!repoId || this.refOpRunning() || !ref) return false;
+
+    this.refOpRunning.set(true);
+    this.refOpError.set(null);
+    try {
+      const req = { repoId, ref, strategy, noCommit, message } as unknown as MergeRequest;
+      const res = await this.bridge.invoke('merge', req);
+      await this.loadRefs();
+      this.requestStatusRefresh();
+      this.mergeConflict.set(res.hasConflict ? res : null);
+      return true;
+    } catch (err) {
+      const appError = toAppError(err);
+      if (appError.code === 'MERGE_CONFLICT') {
+        // The core reports conflicts as an error envelope; treat it as the same
+        // surfaced state (tree stays conflicted) rather than a hard failure.
+        this.refsOffline.set(false);
+        await this.loadRefs();
+        this.requestStatusRefresh();
+        this.mergeConflict.set({ hasConflict: true, oid: '' });
+        return true;
+      }
+      this.handleRefOpError(appError);
+      return false;
+    } finally {
+      this.refOpRunning.set(false);
+    }
+  }
+
+  /** Clear a displayed ref-mutation failure (e.g. a dialog was dismissed). */
+  clearRefOpError(): void {
+    this.refOpError.set(null);
+  }
+
+  /** Dismiss the merge conflict notice (the conflict itself is untouched). */
+  dismissMergeConflict(): void {
+    this.mergeConflict.set(null);
+  }
+
+  // -- stashes (ADR-028) ---------------------------------------------------
+
+  /**
+   * Load the active repository's stash stack (`getStashes`). Clears the list
+   * without an active repo; records `stashesError` on failure and `refsOffline`
+   * when the bridge is absent. A monotonic token discards late responses from a
+   * repository that is no longer active.
+   */
+  async loadStashes(): Promise<void> {
+    const id = this.activeId();
+    const generation = ++this.stashesGeneration;
+    this.stashesError.set(null);
+
+    if (!id) {
+      this.stashes.set([]);
+      this.stashesLoading.set(false);
+      return;
+    }
+
+    this.stashesLoading.set(true);
+    try {
+      const res = await this.bridge.invoke('getStashes', { repoId: id });
+      if (generation !== this.stashesGeneration) return;
+      this.stashes.set(res.stashes ?? []);
+    } catch (err) {
+      if (generation !== this.stashesGeneration) return;
+      if (isIpcUnavailable(err)) {
+        this.refsOffline.set(true);
+      } else {
+        this.stashesError.set(toAppError(err));
+      }
+      this.stashes.set([]);
+    } finally {
+      if (generation === this.stashesGeneration) this.stashesLoading.set(false);
+    }
+  }
+
+  /**
+   * Apply a stash entry (`stashApply`), optionally restoring it to the stack
+   * (`restoreIndex`). No-ops without an active repo or while another stash op
+   * runs. On success the stash list reloads and the working-tree consumers are
+   * asked to refresh; on failure `IPC_UNAVAILABLE` maps to `refsOffline` and any
+   * other error to `stashOpError`.
+   */
+  async stashApply(index: number, restoreIndex = false): Promise<boolean> {
+    const repoId = this.activeId();
+    if (!repoId || this.stashOpRunning()) return false;
+
+    this.stashOpRunning.set(true);
+    this.stashOpError.set(null);
+    try {
+      await this.bridge.invoke('stashApply', { repoId, index, restoreIndex });
+      await this.loadStashes();
+      this.requestStatusRefresh();
+      return true;
+    } catch (err) {
+      this.handleStashOpError(err);
+      return false;
+    } finally {
+      this.stashOpRunning.set(false);
+    }
+  }
+
+  /**
+   * Pop a stash entry (`stashPop`): apply it and drop it from the stack. No-ops
+   * without an active repo or while another stash op runs. Reloads the stash
+   * list and refreshes the working tree on success.
+   */
+  async stashPop(index: number): Promise<boolean> {
+    const repoId = this.activeId();
+    if (!repoId || this.stashOpRunning()) return false;
+
+    this.stashOpRunning.set(true);
+    this.stashOpError.set(null);
+    try {
+      await this.bridge.invoke('stashPop', { repoId, index });
+      await this.loadStashes();
+      this.requestStatusRefresh();
+      return true;
+    } catch (err) {
+      this.handleStashOpError(err);
+      return false;
+    } finally {
+      this.stashOpRunning.set(false);
+    }
+  }
+
+  /**
+   * Drop a stash entry (`stashDrop`) without applying it. No-ops without an
+   * active repo or while another stash op runs. Reloads the stash list on
+   * success (the working tree is untouched, so no status refresh).
+   */
+  async stashDrop(index: number): Promise<boolean> {
+    const repoId = this.activeId();
+    if (!repoId || this.stashOpRunning()) return false;
+
+    this.stashOpRunning.set(true);
+    this.stashOpError.set(null);
+    try {
+      await this.bridge.invoke('stashDrop', { repoId, index });
+      await this.loadStashes();
+      return true;
+    } catch (err) {
+      this.handleStashOpError(err);
+      return false;
+    } finally {
+      this.stashOpRunning.set(false);
+    }
+  }
+
+  /** Clear a displayed stash-mutation failure (e.g. a dialog was dismissed). */
+  clearStashOpError(): void {
+    this.stashOpError.set(null);
+  }
+
+  private handleStashOpError(err: unknown): void {
+    if (isIpcUnavailable(err)) {
+      this.refsOffline.set(true);
+    } else {
+      this.stashOpError.set(toAppError(err));
+    }
+  }
+
+  // -- git-flow presets (ADR-027) ------------------------------------------
+
+  /**
+   * Load the active repository's git-flow configuration (`getGitFlowConfig`).
+   * The core returns conventional defaults for an unset repository. Clears the
+   * config without an active repo; `IPC_UNAVAILABLE` maps to `refsOffline` and
+   * any other failure to `gitFlowConfigError`.
+   */
+  async loadGitFlowConfig(): Promise<void> {
+    const repoId = this.activeId();
+    this.gitFlowConfigError.set(null);
+    if (!repoId) {
+      this.gitFlowConfig.set(null);
+      this.gitFlowConfigLoading.set(false);
+      return;
+    }
+
+    this.gitFlowConfigLoading.set(true);
+    try {
+      const config = await this.bridge.invoke('getGitFlowConfig', { repoId });
+      this.gitFlowConfig.set(config);
+    } catch (err) {
+      if (isIpcUnavailable(err)) {
+        this.refsOffline.set(true);
+      } else {
+        this.gitFlowConfigError.set(toAppError(err));
+      }
+    } finally {
+      this.gitFlowConfigLoading.set(false);
+    }
+  }
+
+  /**
+   * Persist the git-flow configuration (`setGitFlowConfig`). No-ops without an
+   * active repo or while a git-flow op runs. Stores the core-normalized config
+   * returned by the call on success.
+   */
+  async saveGitFlowConfig(config: GitFlowConfig): Promise<boolean> {
+    const repoId = this.activeId();
+    if (!repoId || this.gitFlowRunning()) return false;
+
+    this.gitFlowRunning.set(true);
+    this.gitFlowError.set(null);
+    try {
+      const saved = await this.bridge.invoke('setGitFlowConfig', { repoId, config });
+      this.gitFlowConfig.set(saved);
+      return true;
+    } catch (err) {
+      this.handleGitFlowError(err);
+      return false;
+    } finally {
+      this.gitFlowRunning.set(false);
+    }
+  }
+
+  /**
+   * Start a git-flow workflow (`startGitFlow`): the core checks out the base and
+   * creates/checks out the workflow branch. No-ops without an active repo, while
+   * another git-flow op runs, or with a blank name. On success the refs, stashes
+   * and working-tree consumers are refreshed and the result (steps) is published.
+   */
+  async startGitFlow(kind: GitFlowKindName, name: string, base: string): Promise<boolean> {
+    const repoId = this.activeId();
+    if (!repoId || this.gitFlowRunning() || !name.trim()) return false;
+
+    this.gitFlowRunning.set(true);
+    this.gitFlowError.set(null);
+    try {
+      const req = { repoId, kind, name, base } as unknown as StartGitFlowRequest;
+      const res = await this.bridge.invoke('startGitFlow', req);
+      await this.loadRefs();
+      await this.loadStashes();
+      this.requestStatusRefresh();
+      this.gitFlowResult.set(res);
+      return true;
+    } catch (err) {
+      this.handleGitFlowError(err);
+      return false;
+    } finally {
+      this.gitFlowRunning.set(false);
+    }
+  }
+
+  /**
+   * Finish a git-flow workflow (`finishGitFlow`): the core merges the workflow
+   * branch per its kind, tags releases/hotfixes and optionally deletes the
+   * branch. M3 surfaces conflicts instead of resolving them: a result with
+   * `hasConflict` (or a `MERGE_CONFLICT` rejection) publishes `mergeConflict`,
+   * refreshes refs/stashes/status and returns `true`; the tree stays conflicted.
+   */
+  async finishGitFlow(
+    kind: GitFlowKindName,
+    name: string,
+    deleteBranch: boolean,
+  ): Promise<boolean> {
+    const repoId = this.activeId();
+    if (!repoId || this.gitFlowRunning() || !name.trim()) return false;
+
+    this.gitFlowRunning.set(true);
+    this.gitFlowError.set(null);
+    try {
+      const req = { repoId, kind, name, deleteBranch } as unknown as FinishGitFlowRequest;
+      const res = await this.bridge.invoke('finishGitFlow', req);
+      await this.loadRefs();
+      await this.loadStashes();
+      this.requestStatusRefresh();
+      this.gitFlowResult.set(res);
+      this.mergeConflict.set(res.hasConflict ? { hasConflict: true, oid: '' } : null);
+      return true;
+    } catch (err) {
+      const appError = toAppError(err);
+      if (appError.code === 'MERGE_CONFLICT') {
+        // The core reports conflicts as an error envelope; treat it as the same
+        // surfaced state (tree stays conflicted) rather than a hard failure.
+        this.refsOffline.set(false);
+        await this.loadRefs();
+        await this.loadStashes();
+        this.requestStatusRefresh();
+        this.gitFlowResult.set({ branch: '', steps: [], hasConflict: true });
+        this.mergeConflict.set({ hasConflict: true, oid: '' });
+        return true;
+      }
+      this.handleGitFlowError(appError);
+      return false;
+    } finally {
+      this.gitFlowRunning.set(false);
+    }
+  }
+
+  /** Clear a displayed git-flow failure (e.g. a dialog was dismissed). */
+  clearGitFlowError(): void {
+    this.gitFlowError.set(null);
+  }
+
+  /** Dismiss the last git-flow result (the workflow state is untouched). */
+  dismissGitFlowResult(): void {
+    this.gitFlowResult.set(null);
+  }
+
+  private handleGitFlowError(err: unknown): void {
+    if (isIpcUnavailable(err)) {
+      this.refsOffline.set(true);
+    } else {
+      this.gitFlowError.set(toAppError(err));
+    }
+  }
+
+  /** Bump the working-tree refresh token observed by route-scoped consumers. */
+  private requestStatusRefresh(): void {
+    this.statusRefreshState.update((value) => value + 1);
+  }
+
+  private handleRefOpError(err: unknown): void {
+    if (isIpcUnavailable(err)) {
+      this.refsOffline.set(true);
+    } else {
+      this.refOpError.set(toAppError(err));
+    }
   }
 }

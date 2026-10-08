@@ -148,10 +148,158 @@ func (c *CommitCache) GetCommits(ctx context.Context, repoID domain.RepositoryId
 	return out, total, true
 }
 
-// Invalidate deletes all cached commits for a repo.
+// SearchCommits returns up to limit hits across repoIDs whose message, author
+// name/email or oid matches query case-insensitively (ADR-026). It reads the
+// `commit_cache` metadata table only — never Git objects. LIKE wildcards in the
+// user query are escaped so `%` and `_` match literally. An empty repoIDs list
+// matches no repositories.
+func (c *CommitCache) SearchCommits(ctx context.Context, repoIDs []string, query string, limit int) ([]domain.CommitSearchHit, error) {
+	if len(repoIDs) == 0 || limit <= 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, 0, len(repoIDs))
+	args := make([]any, 0, len(repoIDs)+5)
+	for _, id := range repoIDs {
+		if id == "" {
+			continue
+		}
+		placeholders = append(placeholders, "?")
+		args = append(args, id)
+	}
+	if len(placeholders) == 0 {
+		return nil, nil
+	}
+
+	pattern := "%" + escapeLikePattern(query) + "%"
+	q := `SELECT repo_id, oid, author_name, author_email, message, committed_at
+	      FROM commit_cache
+	      WHERE repo_id IN (` + strings.Join(placeholders, ",") + `)
+	        AND (message LIKE ? ESCAPE '\'
+	          OR author_name LIKE ? ESCAPE '\'
+	          OR author_email LIKE ? ESCAPE '\'
+	          OR oid LIKE ? ESCAPE '\')
+	      ORDER BY committed_at DESC, oid DESC
+	      LIMIT ?`
+	args = append(args, pattern, pattern, pattern, pattern, limit)
+
+	rows, err := c.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]domain.CommitSearchHit, 0, limit)
+	for rows.Next() {
+		var (
+			repoID, oid, authorName, authorEmail, message, committedAt string
+		)
+		if err := rows.Scan(&repoID, &oid, &authorName, &authorEmail, &message, &committedAt); err != nil {
+			return nil, err
+		}
+		t, err := time.Parse(time.RFC3339Nano, committedAt)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, domain.CommitSearchHit{
+			RepoID:      domain.RepositoryId(repoID),
+			Oid:         oid,
+			Message:     message,
+			AuthorName:  authorName,
+			AuthorEmail: authorEmail,
+			CommittedAt: t,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// escapeLikePattern escapes SQL LIKE metacharacters (\, %, _) so user text is
+// matched literally under `ESCAPE '\'`. The backslash is escaped first.
+func escapeLikePattern(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(s)
+}
+
+// GetCommitStats reads cached change-size counts for the requested oids from
+// the `commit_stats` table (ADR-0023). Only oids present in the cache are
+// returned; found is true when at least one row was found. An empty oid list
+// yields no rows and found=false.
+func (c *CommitCache) GetCommitStats(ctx context.Context, repoID domain.RepositoryId, oids []string) ([]domain.CommitStats, bool) {
+	if len(oids) == 0 {
+		return nil, false
+	}
+	// Build a parameterised IN (...) over the requested oids.
+	placeholders := make([]string, 0, len(oids))
+	args := make([]any, 0, len(oids)+1)
+	args = append(args, string(repoID))
+	for _, oid := range oids {
+		placeholders = append(placeholders, "?")
+		args = append(args, oid)
+	}
+	q := `SELECT oid, additions, deletions, files_changed
+	      FROM commit_stats
+	      WHERE repo_id = ? AND oid IN (` + strings.Join(placeholders, ",") + `)`
+	rows, err := c.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, false
+	}
+	defer rows.Close()
+
+	out := make([]domain.CommitStats, 0, len(oids))
+	for rows.Next() {
+		var st domain.CommitStats
+		if err := rows.Scan(&st.Oid, &st.Additions, &st.Deletions, &st.FilesChanged); err != nil {
+			return nil, false
+		}
+		out = append(out, st)
+	}
+	if err := rows.Err(); err != nil || len(out) == 0 {
+		return nil, false
+	}
+	return out, true
+}
+
+// PutCommitStats upserts change-size counts (counts only; never Git objects).
+func (c *CommitCache) PutCommitStats(ctx context.Context, repoID domain.RepositoryId, stats []domain.CommitStats) error {
+	if len(stats) == 0 {
+		return nil
+	}
+	tx, err := c.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	const q = `INSERT INTO commit_stats (repo_id, oid, additions, deletions, files_changed)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(repo_id, oid) DO UPDATE SET
+			additions     = excluded.additions,
+			deletions     = excluded.deletions,
+			files_changed = excluded.files_changed`
+	stmt, err := tx.PrepareContext(ctx, q)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = stmt.Close() }()
+
+	for i := range stats {
+		st := &stats[i]
+		if _, err := stmt.ExecContext(ctx, string(repoID), st.Oid, st.Additions, st.Deletions, st.FilesChanged); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// Invalidate deletes all cached commits and commit stats for a repo (a watcher
+// event or HEAD move invalidates both together, ADR-0023).
 func (c *CommitCache) Invalidate(repoID domain.RepositoryId) {
 	_, _ = c.db.ExecContext(context.Background(),
 		`DELETE FROM commit_cache WHERE repo_id = ?`, string(repoID))
+	_, _ = c.db.ExecContext(context.Background(),
+		`DELETE FROM commit_stats WHERE repo_id = ?`, string(repoID))
 }
 
 // joinParents serializes parent oids as space-separated hex ("" when none).

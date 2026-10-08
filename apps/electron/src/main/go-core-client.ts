@@ -42,13 +42,33 @@ export const GIT_CORE_RPC_METHODS = [
   'GetDiff',
   'Stage',
   'Unstage',
+  'StageHunk',
+  'UnstageHunk',
+  'DiscardHunk',
+  'Discard',
+  'Reset',
+  'GetCommitStats',
   'Commit',
   'Checkout',
   'StashPush',
+  'CreateBranch',
+  'RenameBranch',
+  'DeleteBranch',
+  'Merge',
+  'CreateTag',
+  'DeleteTag',
+  'StashApply',
+  'StashPop',
+  'StashDrop',
   'Fetch',
   'Push',
   'Pull',
   'Watch',
+  'SearchCommits',
+  'GetGitFlowConfig',
+  'SetGitFlowConfig',
+  'StartGitFlow',
+  'FinishGitFlow',
 ] as const;
 
 export type RpcName = (typeof GIT_CORE_RPC_METHODS)[number];
@@ -166,6 +186,20 @@ export interface Hunk {
   lines: DiffLine[];
 }
 
+/** Per-file diff section (ADR-0020) — the addressing substrate for hunk ops. */
+export interface FileDiff {
+  path: string;
+  /** optional (renames/copies) */
+  oldPath: string;
+  /** porcelain v2 code */
+  status: string;
+  hunks: Hunk[];
+  additions: number;
+  deletions: number;
+  isBinary: boolean;
+  hasConflictMarkers: boolean;
+}
+
 export interface Diff {
   from: Oid | undefined;
   to: Oid | undefined;
@@ -174,6 +208,18 @@ export interface Diff {
   deletions: number;
   isBinary: boolean;
   hasConflictMarkers: boolean;
+  /** Per-file sections (ADR-0020), populated alongside the deprecated flat `hunks`. */
+  files: FileDiff[];
+  /** True when the core capped the payload (MaxDiffHunks/MaxDiffLines). */
+  truncated: boolean;
+}
+
+/** Per-commit change-size counts (ADR-0023); counts only, never Git objects. */
+export interface CommitStats {
+  oid: string;
+  additions: number;
+  deletions: number;
+  filesChanged: number;
 }
 
 export interface FileStatus {
@@ -288,6 +334,10 @@ export interface GetDiffRequest {
   repoId: string;
   from: string;
   to: string;
+  /** Per-file selector (ADR-0020); empty means "all changed files". */
+  path: string;
+  /** HEAD->index instead of HEAD->worktree (maps to `git diff --cached`). */
+  staged: boolean;
 }
 
 export interface StageRequest {
@@ -306,6 +356,86 @@ export interface UnstageRequest {
 
 export interface UnstageResponse {
   // empty
+}
+
+/**
+ * Hunk/line staging and discard (ADR-0020). Addressing model: the renderer
+ * sends indices only; the core re-derives the diff and builds the patch.
+ * `hunkIndex` is 0-based into the addressed file's hunks; `lineIndices` selects
+ * changed lines by 0-based index into the hunk's line list (empty = whole hunk).
+ */
+export interface StageHunkRequest {
+  repoId: string;
+  path: string;
+  hunkIndex: number;
+  lineIndices: number[];
+}
+
+export interface StageHunkResponse {
+  // empty
+}
+
+export interface UnstageHunkRequest {
+  repoId: string;
+  path: string;
+  hunkIndex: number;
+  lineIndices: number[];
+}
+
+export interface UnstageHunkResponse {
+  // empty
+}
+
+export interface DiscardHunkRequest {
+  repoId: string;
+  path: string;
+  hunkIndex: number;
+  lineIndices: number[];
+}
+
+export interface DiscardHunkResponse {
+  // empty
+}
+
+/** File-level discard (ADR-0020); the only discard that accepts untracked paths. */
+export interface DiscardRequest {
+  repoId: string;
+  paths: string[];
+}
+
+export interface DiscardResponse {
+  // empty
+}
+
+/**
+ * Reset soft/mixed/hard (ADR-0021). proto-loader decodes the enum with
+ * `enums: String`, so `mode` arrives as the enum value name on the wire.
+ */
+export type ResetMode =
+  | 'RESET_MODE_UNSPECIFIED'
+  | 'SOFT'
+  | 'MIXED'
+  | 'HARD'
+  | 'UNRECOGNIZED';
+
+export interface ResetRequest {
+  repoId: string;
+  /** oid hex or ref */
+  to: string;
+  mode: ResetMode;
+}
+
+export interface ResetResponse {
+  // empty
+}
+
+export interface GetCommitStatsRequest {
+  repoId: string;
+  oids: string[];
+}
+
+export interface GetCommitStatsResponse {
+  stats: CommitStats[];
 }
 
 export interface CommitRequest {
@@ -335,6 +465,102 @@ export interface StashPushRequest {
 
 export interface StashPushResponse {
   stash: Stash | undefined;
+}
+
+// --- Advanced-git mutations (ADR-028) --------------------------------------
+
+/**
+ * Merge strategy (ADR-028). proto-loader decodes the enum with `enums: String`,
+ * so `strategy` arrives as the enum value name on the wire.
+ */
+export type MergeStrategy =
+  | 'MERGE_STRATEGY_UNSPECIFIED'
+  | 'MERGE'
+  | 'NO_FF'
+  | 'FF_ONLY'
+  | 'SQUASH'
+  | 'UNRECOGNIZED';
+
+export interface CreateBranchRequest {
+  repoId: string;
+  name: string;
+  startPoint: string;
+  checkout: boolean;
+}
+
+export interface RenameBranchRequest {
+  repoId: string;
+  oldName: string;
+  newName: string;
+}
+
+export interface DeleteBranchRequest {
+  repoId: string;
+  name: string;
+  force: boolean;
+}
+
+export interface DeleteBranchResponse {
+  // empty
+}
+
+export interface MergeRequest {
+  repoId: string;
+  ref: string;
+  strategy: MergeStrategy;
+  noCommit: boolean;
+  message: string;
+}
+
+export interface MergeResponse {
+  hasConflict: boolean;
+  oid: string;
+}
+
+export interface CreateTagRequest {
+  repoId: string;
+  name: string;
+  target: string;
+  annotated: boolean;
+  message: string;
+  force: boolean;
+}
+
+export interface DeleteTagRequest {
+  repoId: string;
+  name: string;
+}
+
+export interface DeleteTagResponse {
+  // empty
+}
+
+export interface StashApplyRequest {
+  repoId: string;
+  index: number;
+  restoreIndex: boolean;
+}
+
+export interface StashApplyResponse {
+  // empty
+}
+
+export interface StashPopRequest {
+  repoId: string;
+  index: number;
+}
+
+export interface StashPopResponse {
+  // empty
+}
+
+export interface StashDropRequest {
+  repoId: string;
+  index: number;
+}
+
+export interface StashDropResponse {
+  // empty
 }
 
 export interface FetchRequest {
@@ -392,6 +618,90 @@ export interface FsChangedEvent {
   paths: string[];
 }
 
+// --- Commit search (ADR-026) + git-flow presets (ADR-027) ------------------
+
+/** One cross-repo commit search hit; metadata only (never Git objects/blobs). */
+export interface CommitSearchHit {
+  repoId: string;
+  oid: string;
+  message: string;
+  authorName: string;
+  authorEmail: string;
+  /** unix seconds (converted from the stored RFC3339) */
+  committedAt: number;
+}
+
+export interface SearchCommitsRequest {
+  query: string;
+  repoIds: string[];
+  limit: number;
+}
+
+export interface SearchCommitsResponse {
+  hits: CommitSearchHit[];
+}
+
+/**
+ * git-flow workflow kind (ADR-027). proto-loader decodes the enum with
+ * `enums: String`, so `kind` arrives as the enum value name on the wire.
+ */
+export type GitFlowKind =
+  | 'GIT_FLOW_KIND_UNSPECIFIED'
+  | 'FEATURE'
+  | 'RELEASE'
+  | 'HOTFIX'
+  | 'UNRECOGNIZED';
+
+export interface GitFlowConfig {
+  /** default "main" */
+  mainBranch: string;
+  /** default "develop" */
+  developBranch: string;
+  /** default "feature/" */
+  featurePrefix: string;
+  /** default "release/" */
+  releasePrefix: string;
+  /** default "hotfix/" */
+  hotfixPrefix: string;
+  /** default "v" */
+  versionTagPrefix: string;
+}
+
+export interface GetGitFlowConfigRequest {
+  repoId: string;
+}
+
+export interface SetGitFlowConfigRequest {
+  repoId: string;
+  config: GitFlowConfig | undefined;
+}
+
+export interface StartGitFlowRequest {
+  repoId: string;
+  kind: GitFlowKind;
+  name: string;
+  /** Optional start-point override; empty uses the kind's base branch. */
+  base: string;
+}
+
+export interface FinishGitFlowRequest {
+  repoId: string;
+  kind: GitFlowKind;
+  name: string;
+  deleteBranch: boolean;
+}
+
+/**
+ * Result of a git-flow start/finish. `branch` is the workflow branch that was
+ * created/finished, `steps` the operations performed in order; `hasConflict`
+ * is true when a merge stopped on conflict (tree left conflicted).
+ */
+export interface GitFlowResult {
+  branch: string;
+  steps: string[];
+  hasConflict: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
@@ -437,6 +747,15 @@ const DEFAULT_CALL_TIMEOUT_MS = 10_000;
  * override per client with `streamTimeoutMs`, or pass `0` to disable.
  */
 export const DEFAULT_STREAM_TIMEOUT_MS = 1_800_000;
+
+/**
+ * Handle for a long-lived (background) server-streaming call opened with
+ * {@link GoCoreClient.openStream}. Cancelling is idempotent and suppresses the
+ * expected CANCELLED error that grpc-js emits on teardown.
+ */
+export interface StreamHandle {
+  cancel(): void;
+}
 
 function notConnectedError(): AppError {
   return {
@@ -636,6 +955,30 @@ export class GoCoreClient {
     return this.unary<UnstageResponse>('Unstage', req);
   }
 
+  stageHunk(req: StageHunkRequest): Promise<StageHunkResponse> {
+    return this.unary<StageHunkResponse>('StageHunk', req);
+  }
+
+  unstageHunk(req: UnstageHunkRequest): Promise<UnstageHunkResponse> {
+    return this.unary<UnstageHunkResponse>('UnstageHunk', req);
+  }
+
+  discardHunk(req: DiscardHunkRequest): Promise<DiscardHunkResponse> {
+    return this.unary<DiscardHunkResponse>('DiscardHunk', req);
+  }
+
+  discard(req: DiscardRequest): Promise<DiscardResponse> {
+    return this.unary<DiscardResponse>('Discard', req);
+  }
+
+  reset(req: ResetRequest): Promise<ResetResponse> {
+    return this.unary<ResetResponse>('Reset', req);
+  }
+
+  getCommitStats(req: GetCommitStatsRequest): Promise<GetCommitStatsResponse> {
+    return this.unary<GetCommitStatsResponse>('GetCommitStats', req);
+  }
+
   commit(req: CommitRequest): Promise<Commit> {
     return this.unary<Commit>('Commit', req);
   }
@@ -646,6 +989,62 @@ export class GoCoreClient {
 
   stashPush(req: StashPushRequest): Promise<StashPushResponse> {
     return this.unary<StashPushResponse>('StashPush', req);
+  }
+
+  createBranch(req: CreateBranchRequest): Promise<Branch> {
+    return this.unary<Branch>('CreateBranch', req);
+  }
+
+  renameBranch(req: RenameBranchRequest): Promise<Branch> {
+    return this.unary<Branch>('RenameBranch', req);
+  }
+
+  deleteBranch(req: DeleteBranchRequest): Promise<DeleteBranchResponse> {
+    return this.unary<DeleteBranchResponse>('DeleteBranch', req);
+  }
+
+  merge(req: MergeRequest): Promise<MergeResponse> {
+    return this.unary<MergeResponse>('Merge', req);
+  }
+
+  createTag(req: CreateTagRequest): Promise<Tag> {
+    return this.unary<Tag>('CreateTag', req);
+  }
+
+  deleteTag(req: DeleteTagRequest): Promise<DeleteTagResponse> {
+    return this.unary<DeleteTagResponse>('DeleteTag', req);
+  }
+
+  stashApply(req: StashApplyRequest): Promise<StashApplyResponse> {
+    return this.unary<StashApplyResponse>('StashApply', req);
+  }
+
+  stashPop(req: StashPopRequest): Promise<StashPopResponse> {
+    return this.unary<StashPopResponse>('StashPop', req);
+  }
+
+  stashDrop(req: StashDropRequest): Promise<StashDropResponse> {
+    return this.unary<StashDropResponse>('StashDrop', req);
+  }
+
+  searchCommits(req: SearchCommitsRequest): Promise<SearchCommitsResponse> {
+    return this.unary<SearchCommitsResponse>('SearchCommits', req);
+  }
+
+  getGitFlowConfig(req: GetGitFlowConfigRequest): Promise<GitFlowConfig> {
+    return this.unary<GitFlowConfig>('GetGitFlowConfig', req);
+  }
+
+  setGitFlowConfig(req: SetGitFlowConfigRequest): Promise<GitFlowConfig> {
+    return this.unary<GitFlowConfig>('SetGitFlowConfig', req);
+  }
+
+  startGitFlow(req: StartGitFlowRequest): Promise<GitFlowResult> {
+    return this.unary<GitFlowResult>('StartGitFlow', req);
+  }
+
+  finishGitFlow(req: FinishGitFlowRequest): Promise<GitFlowResult> {
+    return this.unary<GitFlowResult>('FinishGitFlow', req);
   }
 
   /**
@@ -708,13 +1107,79 @@ export class GoCoreClient {
   }
 
   /**
+   * Open a long-lived server-streaming call and hand each decoded message to
+   * `onData`; the returned {@link StreamHandle} cancels the call.
+   *
+   * Unlike {@link invokeStream}, this owns no promise: the caller owns the
+   * stream lifecycle. It is used by the supervisor for `Watch`, which runs for
+   * the lifetime of the repository and must therefore NOT get the bounded
+   * `streamTimeoutMs` deadline (a watch that expires would silently stop
+   * delivering changes). `onError` receives a normalized `AppError`; errors
+   * after `cancel()` are deliberately suppressed because grpc-js reports
+   * CANCELLED on every teardown.
+   *
+   * Throws synchronously when not connected or when `rpcName` is not a method
+   * on the bound service.
+   */
+  openStream<T>(
+    rpcName: RpcName | string,
+    payload: unknown,
+    onData: (msg: T) => void,
+    onError?: (err: AppError) => void,
+  ): StreamHandle {
+    const client = this.client;
+    const metadata = this.newMetadata();
+    if (!client || !metadata) {
+      throw notConnectedError();
+    }
+    const method = (client as unknown as Record<string, unknown>)[rpcName];
+    if (typeof method !== 'function') {
+      throw {
+        code: 'UNKNOWN_RPC',
+        message: `Unknown gRPC method: ${rpcName}`,
+        details: {},
+      } as AppError;
+    }
+    // No deadline: a background watch is long-lived. An empty options object
+    // still routes through the server-streaming signature (request, md, options).
+    const call = (method as (
+      request: unknown,
+      md: grpc.Metadata,
+      options: grpc.CallOptions,
+    ) => grpc.ClientReadableStream<T>).call(client, payload ?? {}, metadata, {});
+
+    let cancelled = false;
+    call.on('data', (msg: T) => {
+      if (!cancelled) onData(msg);
+    });
+    call.on('error', (err: grpc.ServiceError) => {
+      if (cancelled) return;
+      onError?.(normalizeGrpcError(err));
+    });
+    return {
+      cancel: () => {
+        if (cancelled) return;
+        cancelled = true;
+        try {
+          call.cancel();
+        } catch {
+          // Already closed — nothing to do.
+        }
+      },
+    };
+  }
+
+  /**
    * Generic unary dispatch used by the supervisor for the channel→RPC map.
    *
-   * `StreamCommits` / `Watch` remain unimplemented over IPC and reject promptly
-   * with `NOT_IMPLEMENTED` (an honest error beats a promise that hangs). The
+   * `StreamCommits` remains unimplemented over IPC and rejects promptly with
+   * `NOT_IMPLEMENTED` (an honest error beats a promise that hangs). The
    * `Fetch` / `Push` / `Pull` streams are real now: they route through
    * `invokeStream` here with a no-op sink. The supervisor calls `invokeStream`
-   * directly so it can forward progress to the renderer.
+   * directly so it can forward progress to the renderer. `Watch` is a
+   * background stream the supervisor opens via {@link openStream}
+   * (`Supervisor.startWatch`); the generic path below would await its
+   * never-ending stream and is intentionally never used for it.
    */
   invoke(rpcName: RpcName | string, payload: unknown): Promise<unknown> {
     if (isUnimplementedStreamingRpc(rpcName)) {

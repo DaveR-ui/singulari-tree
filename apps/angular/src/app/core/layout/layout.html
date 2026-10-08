@@ -1,12 +1,32 @@
 <div class="st-shell">
-  <st-shell-header [tabs]="[]" />
+  <st-shell-header
+    [tabs]="headerTabs()"
+    [activeTab]="workspaces.activeTabId()"
+    (tabSelected)="onTabSelected($event)"
+    (tabClosed)="onTabClosed($event)"
+    (addRequested)="onTabAdd()"
+  />
 
   <st-shell-toolbar
     [hasActiveRepo]="repoState.activeId() !== null"
+    [canFetchAll]="workspaces.tabs().length > 0"
     [pullPending]="repoState.currentBranchBehind()"
     (pullRequested)="remoteOps.openDialog('pull')"
     (pushRequested)="remoteOps.openDialog('push')"
     (fetchRequested)="remoteOps.openDialog('fetch')"
+    (fetchAllRequested)="onFetchAll()"
+    (cloneFromClipboardRequested)="onCloneFromClipboard()"
+    (copyRepoUrlRequested)="onCopyRepoUrl()"
+  />
+
+  <!-- Renderer-orchestrated multi-repo fetch fan-out (ADR-024). -->
+  <st-fetch-all-status
+    [open]="fetchAllOpen()"
+    [progress]="remoteOps.fetchAllProgress()"
+    [status]="remoteOps.fetchAllStatus()"
+    [repos]="fetchAllRepos()"
+    [error]="remoteOps.fetchAllError()"
+    (dismissed)="remoteOps.clearFetchAll()"
   />
 
   <!-- Prominent, dismissible checkout-failure banner for the active repo.
@@ -14,6 +34,12 @@
   <st-checkout-error-banner
     [error]="checkoutPrompt() ? null : repoState.checkoutError()"
     (dismiss)="repoState.dismissCheckoutError()"
+  />
+
+  <!-- Merge conflicts are surfaced, not resolved, in M3 (ADR-028). -->
+  <st-merge-conflict-banner
+    [conflict]="repoState.mergeConflict()"
+    (dismiss)="repoState.dismissMergeConflict()"
   />
 
   <!-- BODY: left | center | right -->
@@ -27,6 +53,10 @@
       [remoteBranches]="repoState.remoteBranches()"
       [tags]="repoState.tags()"
       [remotes]="repoState.remotes()"
+      [stashes]="repoState.stashes()"
+      [stashesLoading]="repoState.stashesLoading()"
+      [stashesError]="repoState.stashesError()"
+      [stashOpRunning]="repoState.stashOpRunning()"
       [loading]="repoState.refsLoading()"
       [offline]="repoState.refsOffline()"
       [error]="repoState.refsError()"
@@ -34,13 +64,30 @@
       (workspaceSelected)="activeWorkspace.set($event)"
       (branchSelected)="onBranchSelected($event)"
       (remoteBranchSelected)="onRemoteBranchSelected($event)"
+      (newBranchRequested)="onNewBranchRequested()"
+      (newTagRequested)="onNewTagRequested()"
+      (branchRenameRequested)="onBranchRenameRequested($event)"
+      (branchDeleteRequested)="onBranchDeleteRequested($event)"
+      (branchMergeRequested)="onBranchMergeRequested($event)"
+      (tagDeleteRequested)="onTagDeleteRequested($event)"
+      (stashPushRequested)="onStashPushRequested()"
+      (stashApplyRequested)="onStashApplyRequested($event)"
+      (stashPopRequested)="onStashPopRequested($event)"
+      (stashDropRequested)="onStashDropRequested($event)"
+      (gitFlowRequested)="onGitFlowRequested()"
     />
 
-    <!-- CENTER: always route-driven -->
+    <!-- CENTER: route-driven, except the cross-repo search workspace (ADR-026) -->
     <div class="st-center">
-      <div class="st-router-host">
-        <router-outlet />
-      </div>
+      @if (activeWorkspace() === 'search') {
+        <div class="st-router-host">
+          <st-search-workspace (hitSelected)="onSearchHitSelected($event)" />
+        </div>
+      } @else {
+        <div class="st-router-host">
+          <router-outlet />
+        </div>
+      }
     </div>
 
     <!-- RIGHT DRAWER -->
@@ -128,5 +175,93 @@
     (forceCheckout)="onForceCheckout()"
     (saveChanges)="onSaveChanges()"
     (cancel)="onCancelCheckoutPrompt()"
+  />
+
+  <!-- Ref mutations (ADR-028): branch CRUD, tag CRUD and merge. -->
+  <st-branch-create-dialog
+    [open]="branchDialog() !== null"
+    [defaultStartPoint]="branchDialog()?.startPoint ?? 'HEAD'"
+    [running]="repoState.refOpRunning()"
+    [error]="repoState.refOpError()"
+    (submitted)="onCreateBranchSubmitted($event)"
+    (cancelled)="onBranchDialogCancelled()"
+  />
+  <st-ref-rename-dialog
+    [open]="renameDialog() !== null"
+    [currentName]="renameDialog() ?? ''"
+    [running]="repoState.refOpRunning()"
+    [error]="repoState.refOpError()"
+    (submitted)="onRenameSubmitted($event)"
+    (cancelled)="onRenameCancelled()"
+  />
+  <st-ref-delete-confirm-dialog
+    [open]="deleteDialog() !== null"
+    [kind]="deleteDialog()?.kind ?? 'branch'"
+    [name]="deleteDialog()?.name ?? ''"
+    [showForce]="deleteDialog()?.kind === 'branch'"
+    [running]="repoState.refOpRunning()"
+    [error]="repoState.refOpError()"
+    (confirmed)="onDeleteConfirmed($event)"
+    (cancelled)="onDeleteCancelled()"
+  />
+  <st-tag-create-dialog
+    [open]="tagDialog() !== null"
+    [defaultTarget]="tagDialog()?.target ?? 'HEAD'"
+    [running]="repoState.refOpRunning()"
+    [error]="repoState.refOpError()"
+    (submitted)="onTagCreateSubmitted($event)"
+    (cancelled)="onTagDialogCancelled()"
+  />
+  <st-merge-dialog
+    [open]="mergeDialog() !== null"
+    [branches]="repoState.branches()"
+    [currentBranch]="repoState.currentBranch()"
+    [defaultRef]="mergeDialog() ?? ''"
+    [running]="repoState.refOpRunning()"
+    [error]="repoState.refOpError()"
+    [conflict]="repoState.mergeConflict()"
+    (submitted)="onMergeSubmitted($event)"
+    (cancelled)="onMergeCancelled()"
+  />
+
+  <!-- Stash apply/pop/drop + stash current changes (ADR-028). -->
+  <st-stash-push-dialog
+    [open]="stashPushDialog()"
+    [running]="repoState.stashRunning()"
+    [error]="repoState.stashOpError()"
+    (submitted)="onStashPushSubmitted($event)"
+    (cancelled)="onStashPushCancelled()"
+  />
+  <st-stash-drop-confirm-dialog
+    [open]="stashDropDialog() !== null"
+    [index]="stashDropDialog()?.index ?? 0"
+    [message]="stashDropDialog()?.message ?? ''"
+    [running]="repoState.stashOpRunning()"
+    [error]="repoState.stashOpError()"
+    (confirmed)="onStashDropConfirmed()"
+    (cancelled)="onStashDropCancelled()"
+  />
+
+  <!-- git-flow presets: start/finish + config (ADR-027). -->
+  <st-git-flow-dialog
+    [open]="gitFlowDialog() !== null"
+    [initialMode]="gitFlowDialog() ?? 'start'"
+    [config]="repoState.gitFlowConfig()"
+    [defaultBase]="repoState.currentBranch()"
+    [running]="repoState.gitFlowRunning()"
+    [error]="repoState.gitFlowError() ?? repoState.gitFlowConfigError()"
+    [result]="repoState.gitFlowResult()"
+    (startSubmitted)="onGitFlowStartSubmitted($event)"
+    (finishSubmitted)="onGitFlowFinishSubmitted($event)"
+    (configSubmitted)="onGitFlowConfigSubmitted($event)"
+    (cancelled)="onGitFlowCancelled()"
+  />
+
+  <!-- Clone dialog stub: prefill only, cloning is V1.4 (ADR-025). -->
+  <st-clone-dialog
+    [open]="cloneDialog() !== null"
+    [url]="cloneDialog()?.url ?? ''"
+    [error]="cloneDialog()?.error ?? null"
+    (cancelled)="onCloneCancelled()"
   />
 </div>

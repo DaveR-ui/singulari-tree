@@ -83,6 +83,24 @@ describe('ShellToolbar', () => {
     expect(pull).toBe(1);
   });
 
+  it('emits fetchAllRequested when enabled', async () => {
+    const fixture = await setup(true);
+    fixture.componentRef.setInput('canFetchAll', true);
+    fixture.detectChanges();
+    let count = 0;
+    fixture.componentInstance.fetchAllRequested.subscribe(() => count++);
+
+    button(fixture, 'toolbar-fetch-all').click();
+
+    expect(count).toBe(1);
+  });
+
+  it('disables "Fetch all" when no repository tab is open', async () => {
+    const fixture = await setup(true);
+
+    expect(button(fixture, 'toolbar-fetch-all').disabled).toBe(true);
+  });
+
   it('routes the settings entry to /settings', async () => {
     const fixture = await setup(true);
     const router = TestBed.inject(Router);
@@ -99,5 +117,24 @@ describe('ShellToolbar', () => {
 
     expect(navigate).toHaveBeenCalled();
     expect(navigate.mock.calls[0]?.[0]?.toString()).toBe('/settings');
+  });
+
+  it('emits cloneFromClipboardRequested and copyRepoUrlRequested on click', async () => {
+    const fixture = await setup(true);
+    const emitted: string[] = [];
+    fixture.componentInstance.cloneFromClipboardRequested.subscribe(() => emitted.push('clone'));
+    fixture.componentInstance.copyRepoUrlRequested.subscribe(() => emitted.push('copy'));
+
+    button(fixture, 'toolbar-clone-clipboard').click();
+    button(fixture, 'toolbar-copy-repo-url').click();
+
+    expect(emitted).toEqual(['clone', 'copy']);
+  });
+
+  it('disables Copy repo URL but keeps Clone from clipboard enabled without an active repo', async () => {
+    const fixture = await setup(false);
+
+    expect(button(fixture, 'toolbar-copy-repo-url').disabled).toBe(true);
+    expect(button(fixture, 'toolbar-clone-clipboard').disabled).toBe(false);
   });
 });

@@ -1,7 +1,7 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { Commit, Lane } from '@contracts/domain';
+import type { Commit, CommitStats, Lane } from '@contracts/domain';
 import { GRAPH_ROW_HEIGHT, GraphRow, laneColor } from '@singularitree/ui-kit';
 
 // Exercises the ui-kit `<st-graph-row>` through the renderer test runner (the
@@ -25,12 +25,13 @@ function makeLane(overrides: Partial<Lane> = {}): Lane {
   return { index: 0, color: 0, continues: false, ...overrides };
 }
 
-function render(commit: Commit, lane: Lane, selected = false) {
+function render(commit: Commit, lane: Lane, selected = false, stats: CommitStats | null = null) {
   const fixture = TestBed.createComponent(GraphRow);
   fixture.componentRef.setInput('commit', commit);
   fixture.componentRef.setInput('lane', lane);
   fixture.componentRef.setInput('selected', selected);
   fixture.componentRef.setInput('maxLane', 2);
+  fixture.componentRef.setInput('stats', stats);
   fixture.detectChanges();
   return fixture;
 }
@@ -117,5 +118,27 @@ describe('GraphRow (ui-kit)', () => {
     expect(
       (fixture.nativeElement as HTMLElement).querySelectorAll('[data-testid="graph-row-ref"]'),
     ).toHaveLength(0);
+  });
+
+  it('renders the change-size gauge when stats are available', () => {
+    const stats: CommitStats = { oid: 'abcdef1', additions: 12, deletions: 3, filesChanged: 4 };
+    const fixture = render(makeCommit(), makeLane(), false, stats);
+    const el = fixture.nativeElement as HTMLElement;
+
+    expect(el.querySelector('[data-testid="graph-row-stats"]')).not.toBeNull();
+    expect(el.querySelector('[data-testid="graph-row-additions"]')?.textContent?.trim()).toBe('+12');
+    expect(el.querySelector('[data-testid="graph-row-deletions"]')?.textContent?.trim()).toBe('−3');
+    expect(el.querySelector('[data-testid="graph-row-files"]')?.textContent?.trim()).toBe('4f');
+    expect(el.querySelector('[data-testid="graph-row-stats"]')?.getAttribute('title')).toBe(
+      '12 additions, 3 deletions, 4 files changed',
+    );
+  });
+
+  it('omits the gauge when stats have not been measured', () => {
+    const fixture = render(makeCommit(), makeLane(), false, null);
+    const el = fixture.nativeElement as HTMLElement;
+
+    expect(el.querySelector('[data-testid="graph-row-stats"]')).toBeNull();
+    expect(el.querySelector('[data-testid="graph-row-additions"]')).toBeNull();
   });
 });

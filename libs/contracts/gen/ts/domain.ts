@@ -150,14 +150,61 @@ export interface Hunk {
   lines: DiffLine[];
 }
 
-export interface Diff {
-  from: Oid | undefined;
-  to: Oid | undefined;
+/**
+ * Per-file diff section (ADR-0020). One FileDiff per changed path; it is the
+ * addressing substrate for hunk/line staging and discard. `status` is a
+ * porcelain-v2 code (M, A, D, R, C, T, U, ...); `old_path` is set only for
+ * renames/copies and empty otherwise.
+ */
+export interface FileDiff {
+  path: string;
+  /** optional (renames/copies) */
+  oldPath: string;
+  /** porcelain v2 code */
+  status: string;
   hunks: Hunk[];
   additions: number;
   deletions: number;
   isBinary: boolean;
   hasConflictMarkers: boolean;
+}
+
+export interface Diff {
+  from: Oid | undefined;
+  to:
+    | Oid
+    | undefined;
+  /**
+   * DEPRECATED in favor of `files`; flattened for back-compat (every file's
+   * hunks concatenated in git order). Kept so the legacy Monaco viewer and the
+   * e2e suite keep working; never renumber or remove it.
+   */
+  hunks: Hunk[];
+  additions: number;
+  deletions: number;
+  isBinary: boolean;
+  hasConflictMarkers: boolean;
+  /**
+   * Per-file sections (ADR-0020). Populated alongside the deprecated flat
+   * `hunks`; group by these when addressing a file, hunk or line.
+   */
+  files: FileDiff[];
+  /**
+   * True when the payload was capped by the core (MaxDiffHunks/MaxDiffLines),
+   * instead of returning an unbounded diff (ADR-0020 (c)).
+   */
+  truncated: boolean;
+}
+
+/**
+ * Per-commit change-size counts (ADR-0023). Counts only — this entity is cached
+ * in SQLite and NEVER carries Git objects/blobs.
+ */
+export interface CommitStats {
+  oid: string;
+  additions: number;
+  deletions: number;
+  filesChanged: number;
 }
 
 /** File status (porcelain v2) */

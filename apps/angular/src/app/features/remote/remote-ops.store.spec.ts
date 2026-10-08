@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IpcBridge } from '@core/services/ipc-bridge.service';
 import type { RepoState } from '@core/services/repo-state.service';
 import { parseRemoteTracking } from './remote-models';
-import { RemoteOpsStore } from './remote-ops.store';
+import { FETCH_ALL_CONCURRENCY, RemoteOpsStore } from './remote-ops.store';
 
 // -- fixtures ---------------------------------------------------------------
 
@@ -642,5 +642,149 @@ describe('RemoteOpsStore', () => {
 
     expect(invoke).not.toHaveBeenCalled();
     expect(store.running()).toBe(false);
+  });
+});
+
+describe('RemoteOpsStore.runFetchAll (ADR-024)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const entries = [
+    { repoId: 'repo-a', name: 'A' },
+    { repoId: 'repo-b', name: 'B' },
+    { repoId: 'repo-c', name: 'C' },
+  ];
+
+  it('fetches every repo, tracks per-repo status and never aborts on failure', async () => {
+    const { bridge, invoke } = makeBridge({
+      fetch: (req) => {
+        const repoId = (req as { repoId: string }).repoId;
+        return repoId === 'repo-b'
+          ? Promise.reject({ code: 'FETCH_FAILED', message: 'network down' })
+          : Promise.resolve();
+      },
+    });
+    const repoState = makeRepoState();
+    const store = makeStore(bridge, repoState);
+
+    await store.runFetchAll(entries);
+
+    expect(callsTo(invoke, 'fetch')).toHaveLength(3);
+    for (const call of callsTo(invoke, 'fetch')) {
+      expect(call[1]).toEqual({
+        repoId: expect.any(String),
+        remote: '',
+        prune: false,
+        tags: false,
+        force: false,
+      });
+    }
+    expect(store.fetchAllStatus()).toEqual({
+      'repo-a': 'success',
+      'repo-b': 'failed',
+      'repo-c': 'success',
+    });
+    expect(store.fetchAllProgress()).toEqual({ done: 3, total: 3 });
+    expect(store.fetchAllError()?.code).toBe('FETCH_FAILED');
+    expect(store.fetchAllRunning()).toBe(false);
+    expect(repoState.loadRefs).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not refresh refs when every repo fails', async () => {
+    const { bridge } = makeBridge({
+      fetch: () => Promise.reject({ code: 'FETCH_FAILED', message: 'down' }),
+    });
+    const repoState = makeRepoState();
+    const store = makeStore(bridge, repoState);
+
+    await store.runFetchAll(entries);
+
+    expect(repoState.loadRefs).not.toHaveBeenCalled();
+    expect(store.fetchAllStatus()).toEqual({
+      'repo-a': 'failed',
+      'repo-b': 'failed',
+      'repo-c': 'failed',
+    });
+  });
+
+  it('deduplicates targets and ignores an empty list', async () => {
+    const { bridge, invoke } = makeBridge();
+    const store = makeStore(bridge);
+
+    await store.runFetchAll([]);
+    expect(invoke).not.toHaveBeenCalled();
+    expect(store.fetchAllProgress()).toBeNull();
+
+    await store.runFetchAll([entries[0], entries[0], entries[1]]);
+    expect(callsTo(invoke, 'fetch')).toHaveLength(2);
+    expect(store.fetchAllProgress()).toEqual({ done: 2, total: 2 });
+  });
+
+  it('bounds concurrency to FETCH_ALL_CONCURRENCY', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const { bridge } = makeBridge({
+      fetch: async () => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        inFlight--;
+      },
+    });
+    const store = makeStore(bridge);
+    const many = Array.from({ length: 6 }, (_, i) => ({ repoId: `repo-${i}`, name: `r${i}` }));
+
+    await store.runFetchAll(many);
+
+    expect(maxInFlight).toBe(FETCH_ALL_CONCURRENCY);
+  });
+
+  it('guards re-entrancy while a fan-out is running', async () => {
+    let resolveFirst: (() => void) | undefined;
+    const { bridge, invoke } = makeBridge({
+      fetch: () =>
+        new Promise<void>((resolve) => {
+          resolveFirst = resolve;
+        }),
+    });
+    const store = makeStore(bridge);
+
+    const first = store.runFetchAll([entries[0]]);
+    await store.runFetchAll([entries[1]]);
+
+    expect(store.fetchAllRunning()).toBe(true);
+    expect(callsTo(invoke, 'fetch')).toHaveLength(1);
+
+    resolveFirst?.();
+    await first;
+
+    expect(store.fetchAllRunning()).toBe(false);
+  });
+
+  it('marks offline when a fan-out fetch finds no bridge', async () => {
+    const { bridge } = makeBridge({
+      fetch: () => {
+        throw { code: 'IPC_UNAVAILABLE', message: 'no bridge' };
+      },
+    });
+    const store = makeStore(bridge);
+
+    await store.runFetchAll([entries[0]]);
+
+    expect(store.offline()).toBe(true);
+    expect(store.fetchAllError()).toBeNull();
+  });
+
+  it('clearFetchAll resets status, progress and error', async () => {
+    const { bridge } = makeBridge();
+    const store = makeStore(bridge);
+    await store.runFetchAll([entries[0]]);
+
+    store.clearFetchAll();
+
+    expect(store.fetchAllStatus()).toEqual({});
+    expect(store.fetchAllProgress()).toBeNull();
+    expect(store.fetchAllError()).toBeNull();
   });
 });

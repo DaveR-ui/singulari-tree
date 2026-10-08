@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"crypto/subtle"
+	"errors"
 	"strings"
 	"time"
 
@@ -27,19 +28,23 @@ type Server struct {
 	graphSvc   *service.GraphService
 	watcherSvc *service.WatcherService
 	cacheSvc   *service.CacheService
+	searchSvc  *service.SearchService
+	gitflowSvc *service.GitFlowService
 	token      string
 	startedAt  time.Time
 }
 
 // NewServer creates the GitCore gRPC adapter. token, when non-empty, is enforced
 // by the auth interceptors returned from UnaryAuthInterceptor/StreamAuthInterceptor.
-func NewServer(repoSvc *service.RepoService, gitSvc *service.GitService, graphSvc *service.GraphService, watcherSvc *service.WatcherService, cacheSvc *service.CacheService, token string) *Server {
+func NewServer(repoSvc *service.RepoService, gitSvc *service.GitService, graphSvc *service.GraphService, watcherSvc *service.WatcherService, cacheSvc *service.CacheService, searchSvc *service.SearchService, gitflowSvc *service.GitFlowService, token string) *Server {
 	return &Server{
 		repoSvc:    repoSvc,
 		gitSvc:     gitSvc,
 		graphSvc:   graphSvc,
 		watcherSvc: watcherSvc,
 		cacheSvc:   cacheSvc,
+		searchSvc:  searchSvc,
+		gitflowSvc: gitflowSvc,
 		token:      token,
 		startedAt:  time.Now(),
 	}
@@ -264,6 +269,37 @@ func (s *Server) Pull(req *singularitreev1.PullRequest, stream googlegrpc.Server
 	return streamProgress(stream, ch)
 }
 
+// Watch streams filesystem change events for a repository (server-streaming
+// RPC). Each domain event is forwarded as a proto FsChangedEvent; the stream
+// ends cleanly when the underlying subscription closes, and returns early on
+// Send failure or context cancellation so the service pump goroutine stops
+// with the stream (R12: no goroutine leak).
+func (s *Server) Watch(req *singularitreev1.WatchRequest, stream googlegrpc.ServerStreamingServer[singularitreev1.FsChangedEvent]) error {
+	if s.watcherSvc == nil {
+		return status.Error(codes.FailedPrecondition, "watcher service not configured")
+	}
+	ch, err := s.watcherSvc.Watch(stream.Context(), domain.RepositoryId(req.GetRepoId()))
+	if err != nil {
+		return appErrorToStatus(stream.Context(), err)
+	}
+	for {
+		select {
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		case ev, ok := <-ch:
+			if !ok {
+				return nil
+			}
+			if err := stream.Send(&singularitreev1.FsChangedEvent{
+				RepoId: string(ev.RepoID),
+				Paths:  ev.Paths,
+			}); err != nil {
+				return err
+			}
+		}
+	}
+}
+
 // Checkout switches the repository's working tree to the requested ref. The
 // renderer sends the clicked ref verbatim; the adapter resolves local branches,
 // remote-tracking branches and detached refs. force discards tracked
@@ -289,6 +325,420 @@ func (s *Server) StashPush(ctx context.Context, req *singularitreev1.StashPushRe
 		return nil, appErrorToStatus(ctx, err)
 	}
 	return &singularitreev1.StashPushResponse{Stash: stashToProto(st)}, nil
+}
+
+// GetStashes returns the repository's stash entries (ADR-028; previously a
+// stub with no handler).
+func (s *Server) GetStashes(ctx context.Context, req *singularitreev1.GetStashesRequest) (*singularitreev1.GetStashesResponse, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	stashes, err := s.gitSvc.StashList(ctx, domain.RepositoryId(req.GetRepoId()))
+	if err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	out := &singularitreev1.GetStashesResponse{
+		Stashes: make([]*singularitreev1.Stash, 0, len(stashes)),
+	}
+	for i := range stashes {
+		out.Stashes = append(out.Stashes, stashToProto(&stashes[i]))
+	}
+	return out, nil
+}
+
+// CreateBranch creates a local branch from start_point (empty means HEAD) and
+// optionally checks it out (ADR-028).
+func (s *Server) CreateBranch(ctx context.Context, req *singularitreev1.CreateBranchRequest) (*singularitreev1.Branch, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	b, err := s.gitSvc.BranchCreate(ctx, domain.RepositoryId(req.GetRepoId()), req.GetName(), req.GetStartPoint(), req.GetCheckout())
+	if err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return branchToProto(*b), nil
+}
+
+// RenameBranch renames a local branch (ADR-028).
+func (s *Server) RenameBranch(ctx context.Context, req *singularitreev1.RenameBranchRequest) (*singularitreev1.Branch, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	b, err := s.gitSvc.BranchRename(ctx, domain.RepositoryId(req.GetRepoId()), req.GetOldName(), req.GetNewName())
+	if err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return branchToProto(*b), nil
+}
+
+// DeleteBranch deletes a local branch; force maps to `git branch -D` (ADR-028).
+func (s *Server) DeleteBranch(ctx context.Context, req *singularitreev1.DeleteBranchRequest) (*singularitreev1.DeleteBranchResponse, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	if err := s.gitSvc.BranchDelete(ctx, domain.RepositoryId(req.GetRepoId()), domain.RefName{Raw: req.GetName()}, req.GetForce()); err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return &singularitreev1.DeleteBranchResponse{}, nil
+}
+
+// Merge integrates the requested ref into the current branch (ADR-028). A
+// conflict is surfaced as data: has_conflict is set on the response and the
+// tree is left conflicted (GetStatus reports is_conflicted); the typed
+// MERGE_CONFLICT code is also attached to the trailer. MERGE_STRATEGY_UNSPECIFIED
+// is rejected.
+func (s *Server) Merge(ctx context.Context, req *singularitreev1.MergeRequest) (*singularitreev1.MergeResponse, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	strategy, ok := mergeStrategyToDomain(req.GetStrategy())
+	if !ok {
+		return nil, appErrorToStatus(ctx, domain.AppError{
+			Code:    domain.ErrCodeMergeFailed,
+			Message: "merge strategy is required",
+		})
+	}
+	result, err := s.gitSvc.Merge(ctx, domain.RepositoryId(req.GetRepoId()), req.GetRef(), strategy, req.GetNoCommit(), req.GetMessage())
+	if err != nil {
+		var appErr domain.AppError
+		if errors.As(err, &appErr) && appErr.Code == domain.ErrCodeMergeConflict && result != nil {
+			_ = googlegrpc.SetTrailer(ctx, metadata.Pairs(appErrorTrailerKey, domain.ErrCodeMergeConflict))
+			return &singularitreev1.MergeResponse{HasConflict: true, Oid: result.Oid.Hex}, nil
+		}
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return &singularitreev1.MergeResponse{HasConflict: result.HasConflict, Oid: result.Oid.Hex}, nil
+}
+
+// CreateTag creates a tag (annotated or lightweight, ADR-028). An empty target
+// means HEAD; force maps to `git tag -f`.
+func (s *Server) CreateTag(ctx context.Context, req *singularitreev1.CreateTagRequest) (*singularitreev1.Tag, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	t, err := s.gitSvc.TagCreate(ctx, domain.RepositoryId(req.GetRepoId()), req.GetName(), req.GetTarget(), req.GetAnnotated(), req.GetMessage(), req.GetForce())
+	if err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return tagToProto(*t), nil
+}
+
+// DeleteTag deletes a tag (ADR-028).
+func (s *Server) DeleteTag(ctx context.Context, req *singularitreev1.DeleteTagRequest) (*singularitreev1.DeleteTagResponse, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	if err := s.gitSvc.TagDelete(ctx, domain.RepositoryId(req.GetRepoId()), domain.RefName{Raw: req.GetName()}); err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return &singularitreev1.DeleteTagResponse{}, nil
+}
+
+// StashApply applies stash entry index, retaining it; restore_index maps to
+// `git stash apply --index` (ADR-028).
+func (s *Server) StashApply(ctx context.Context, req *singularitreev1.StashApplyRequest) (*singularitreev1.StashApplyResponse, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	if err := s.gitSvc.StashApply(ctx, domain.RepositoryId(req.GetRepoId()), int(req.GetIndex()), req.GetRestoreIndex()); err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return &singularitreev1.StashApplyResponse{}, nil
+}
+
+// StashPop applies and drops stash entry index (ADR-028).
+func (s *Server) StashPop(ctx context.Context, req *singularitreev1.StashPopRequest) (*singularitreev1.StashPopResponse, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	if err := s.gitSvc.StashPop(ctx, domain.RepositoryId(req.GetRepoId()), int(req.GetIndex())); err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return &singularitreev1.StashPopResponse{}, nil
+}
+
+// StashDrop removes stash entry index (ADR-028).
+func (s *Server) StashDrop(ctx context.Context, req *singularitreev1.StashDropRequest) (*singularitreev1.StashDropResponse, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	if err := s.gitSvc.StashDrop(ctx, domain.RepositoryId(req.GetRepoId()), int(req.GetIndex())); err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return &singularitreev1.StashDropResponse{}, nil
+}
+
+// SearchCommits searches the SQLite metadata cache across the requested repos
+// (ADR-026). It never reads Git objects; repositories with no cached rows may
+// get a bounded per-repo backfill inside SearchService.
+func (s *Server) SearchCommits(ctx context.Context, req *singularitreev1.SearchCommitsRequest) (*singularitreev1.SearchCommitsResponse, error) {
+	if s.searchSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "search service not configured")
+	}
+	hits, err := s.searchSvc.Search(ctx, req.GetRepoIds(), req.GetQuery(), int(req.GetLimit()))
+	if err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	out := &singularitreev1.SearchCommitsResponse{
+		Hits: make([]*singularitreev1.CommitSearchHit, 0, len(hits)),
+	}
+	for i := range hits {
+		out.Hits = append(out.Hits, commitSearchHitToProto(hits[i]))
+	}
+	return out, nil
+}
+
+// GetGitFlowConfig returns a repository's git-flow preset configuration,
+// defaulting when unset (ADR-027).
+func (s *Server) GetGitFlowConfig(ctx context.Context, req *singularitreev1.GetGitFlowConfigRequest) (*singularitreev1.GitFlowConfig, error) {
+	if s.gitflowSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git-flow service not configured")
+	}
+	cfg, err := s.gitflowSvc.Config(ctx, domain.RepositoryId(req.GetRepoId()))
+	if err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return gitFlowConfigToProto(cfg), nil
+}
+
+// SetGitFlowConfig stores a repository's git-flow preset configuration
+// (ADR-027); empty fields fall back to the conventional defaults.
+func (s *Server) SetGitFlowConfig(ctx context.Context, req *singularitreev1.SetGitFlowConfigRequest) (*singularitreev1.GitFlowConfig, error) {
+	if s.gitflowSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git-flow service not configured")
+	}
+	cfg, err := s.gitflowSvc.SetConfig(ctx, domain.RepositoryId(req.GetRepoId()), gitFlowConfigToDomain(req.GetConfig()))
+	if err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return gitFlowConfigToProto(cfg), nil
+}
+
+// StartGitFlow creates and checks out a feature/release/hotfix branch
+// (ADR-027). GIT_FLOW_KIND_UNSPECIFIED is rejected.
+func (s *Server) StartGitFlow(ctx context.Context, req *singularitreev1.StartGitFlowRequest) (*singularitreev1.GitFlowResult, error) {
+	if s.gitflowSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git-flow service not configured")
+	}
+	res, err := s.gitflowSvc.Start(ctx, domain.RepositoryId(req.GetRepoId()), gitFlowKindToDomain(req.GetKind()), req.GetName(), req.GetBase())
+	return s.gitFlowResult(ctx, res, err)
+}
+
+// FinishGitFlow integrates and cleans up a feature/release/hotfix branch
+// (ADR-027). A merge conflict is surfaced as data: has_conflict is set and the
+// typed MERGE_CONFLICT code travels in the trailer, mirroring the Merge handler.
+func (s *Server) FinishGitFlow(ctx context.Context, req *singularitreev1.FinishGitFlowRequest) (*singularitreev1.GitFlowResult, error) {
+	if s.gitflowSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git-flow service not configured")
+	}
+	res, err := s.gitflowSvc.Finish(ctx, domain.RepositoryId(req.GetRepoId()), gitFlowKindToDomain(req.GetKind()), req.GetName(), req.GetDeleteBranch())
+	return s.gitFlowResult(ctx, res, err)
+}
+
+// gitFlowResult maps a git-flow result/error pair to the wire. A conflict
+// (MERGE_CONFLICT with a non-nil result) returns the result with has_conflict
+// set and attaches the domain code as trailer metadata instead of failing.
+func (s *Server) gitFlowResult(ctx context.Context, res *domain.GitFlowResult, err error) (*singularitreev1.GitFlowResult, error) {
+	if err != nil {
+		var appErr domain.AppError
+		if errors.As(err, &appErr) && appErr.Code == domain.ErrCodeMergeConflict && res != nil {
+			_ = googlegrpc.SetTrailer(ctx, metadata.Pairs(appErrorTrailerKey, domain.ErrCodeMergeConflict))
+			return gitFlowResultToProto(res), nil
+		}
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return gitFlowResultToProto(res), nil
+}
+
+// GetStatus returns the working-tree file status for a repository.
+func (s *Server) GetStatus(ctx context.Context, req *singularitreev1.GetStatusRequest) (*singularitreev1.GetStatusResponse, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	files, err := s.gitSvc.Status(ctx, domain.RepositoryId(req.GetRepoId()))
+	if err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	out := &singularitreev1.GetStatusResponse{
+		Files: make([]*singularitreev1.FileStatus, 0, len(files)),
+	}
+	for _, f := range files {
+		out.Files = append(out.Files, fileStatusToProto(f))
+	}
+	return out, nil
+}
+
+// parseRequestOid validates an optional Oid hex carried by a request. An empty
+// string yields the zero Oid (omitted side / working tree); a non-empty value
+// must be a valid 40/64-hex oid, otherwise it is an AppError INVALID_OID.
+func parseRequestOid(hex string) (domain.Oid, error) {
+	if hex == "" {
+		return domain.Oid{}, nil
+	}
+	return domain.NewOid(hex)
+}
+
+// GetDiff returns the diff between two oids for a repository. Empty from/to
+// mean the zero Oid (omitted side / working tree).
+func (s *Server) GetDiff(ctx context.Context, req *singularitreev1.GetDiffRequest) (*singularitreev1.Diff, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	from, err := parseRequestOid(req.GetFrom())
+	if err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	to, err := parseRequestOid(req.GetTo())
+	if err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	d, err := s.gitSvc.Diff(ctx, domain.RepositoryId(req.GetRepoId()), domain.DiffRequest{
+		From:   from,
+		To:     to,
+		Path:   req.GetPath(),
+		Staged: req.GetStaged(),
+	})
+	if err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return diffToProto(d), nil
+}
+
+// Stage stages the requested paths.
+func (s *Server) Stage(ctx context.Context, req *singularitreev1.StageRequest) (*singularitreev1.StageResponse, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	if err := s.gitSvc.Stage(ctx, domain.RepositoryId(req.GetRepoId()), req.GetPaths()); err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return &singularitreev1.StageResponse{}, nil
+}
+
+// Unstage unstages the requested paths.
+func (s *Server) Unstage(ctx context.Context, req *singularitreev1.UnstageRequest) (*singularitreev1.UnstageResponse, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	if err := s.gitSvc.Unstage(ctx, domain.RepositoryId(req.GetRepoId()), req.GetPaths()); err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return &singularitreev1.UnstageResponse{}, nil
+}
+
+// StageHunk stages one hunk (or selected lines) of a path from the working tree
+// into the index (ADR-0020).
+func (s *Server) StageHunk(ctx context.Context, req *singularitreev1.StageHunkRequest) (*singularitreev1.StageHunkResponse, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	if err := s.gitSvc.StageHunk(ctx, domain.RepositoryId(req.GetRepoId()), req.GetPath(), req.GetHunkIndex(), req.GetLineIndices()); err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return &singularitreev1.StageHunkResponse{}, nil
+}
+
+// UnstageHunk removes one hunk (or selected lines) of a path from the index
+// (ADR-0020).
+func (s *Server) UnstageHunk(ctx context.Context, req *singularitreev1.UnstageHunkRequest) (*singularitreev1.UnstageHunkResponse, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	if err := s.gitSvc.UnstageHunk(ctx, domain.RepositoryId(req.GetRepoId()), req.GetPath(), req.GetHunkIndex(), req.GetLineIndices()); err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return &singularitreev1.UnstageHunkResponse{}, nil
+}
+
+// DiscardHunk reverts one hunk (or selected lines) of a path in the working
+// tree (ADR-0020).
+func (s *Server) DiscardHunk(ctx context.Context, req *singularitreev1.DiscardHunkRequest) (*singularitreev1.DiscardHunkResponse, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	if err := s.gitSvc.DiscardHunk(ctx, domain.RepositoryId(req.GetRepoId()), req.GetPath(), req.GetHunkIndex(), req.GetLineIndices()); err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return &singularitreev1.DiscardHunkResponse{}, nil
+}
+
+// Discard reverts file-level changes: tracked paths from HEAD/index, untracked
+// paths by removal (ADR-0020).
+func (s *Server) Discard(ctx context.Context, req *singularitreev1.DiscardRequest) (*singularitreev1.DiscardResponse, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	if err := s.gitSvc.Discard(ctx, domain.RepositoryId(req.GetRepoId()), req.GetPaths()); err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return &singularitreev1.DiscardResponse{}, nil
+}
+
+// Reset runs `git reset --<mode> <to>` (ADR-0021). MODE_UNSPECIFIED is rejected
+// as InvalidArgument.
+func (s *Server) Reset(ctx context.Context, req *singularitreev1.ResetRequest) (*singularitreev1.ResetResponse, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	mode, ok := resetModeToDomain(req.GetMode())
+	if !ok {
+		return nil, appErrorToStatus(ctx, domain.AppError{
+			Code:    domain.ErrCodeResetFailed,
+			Message: "reset mode is required",
+		})
+	}
+	if err := s.gitSvc.Reset(ctx, domain.RepositoryId(req.GetRepoId()), req.GetTo(), mode); err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return &singularitreev1.ResetResponse{}, nil
+}
+
+// GetCommitStats returns change-size counts for a batch of commits (ADR-0023),
+// cache-through from SQLite.
+func (s *Server) GetCommitStats(ctx context.Context, req *singularitreev1.GetCommitStatsRequest) (*singularitreev1.GetCommitStatsResponse, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	stats, err := s.gitSvc.CommitStats(ctx, domain.RepositoryId(req.GetRepoId()), req.GetOids())
+	if err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	out := &singularitreev1.GetCommitStatsResponse{Stats: make([]*singularitreev1.CommitStats, 0, len(stats))}
+	for i := range stats {
+		out.Stats = append(out.Stats, commitStatsToProto(stats[i]))
+	}
+	return out, nil
+}
+
+// Commit creates a commit and returns it. When the request carries an author
+// override it is passed through; When is parsed as RFC3339 and an unparseable
+// timestamp is rejected as InvalidArgument (COMMIT_FAILED) rather than silently
+// committing with a zero time.
+func (s *Server) Commit(ctx context.Context, req *singularitreev1.CommitRequest) (*singularitreev1.Commit, error) {
+	if s.gitSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "git service not configured")
+	}
+	var author *domain.Signature
+	if a := req.GetAuthor(); a != nil {
+		sig := domain.Signature{Name: a.GetName(), Email: a.GetEmail()}
+		if when := a.GetWhen(); when != "" {
+			t, err := time.Parse(time.RFC3339, when)
+			if err != nil {
+				return nil, appErrorToStatus(ctx, domain.AppError{
+					Code:    domain.ErrCodeCommitFailed,
+					Message: "invalid author.when: must be RFC3339",
+					Details: map[string]string{"when": when},
+				})
+			}
+			sig.When = t
+		}
+		author = &sig
+	}
+	c, err := s.gitSvc.Commit(ctx, domain.RepositoryId(req.GetRepoId()), req.GetMessage(), author)
+	if err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	return commitToProto(*c), nil
 }
 
 // streamProgress drains a domain RemoteOpResult channel, forwarding each

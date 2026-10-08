@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { RepoState } from '@core/services/repo-state.service';
+import { WorkspacesStore } from '@core/services/workspaces.store';
 import { GraphStore } from '../graph/graph.store';
 
 /**
@@ -170,6 +171,7 @@ import { GraphStore } from '../graph/graph.store';
 export class RepoPicker {
   readonly store = inject(GraphStore);
   readonly repoState = inject(RepoState);
+  private readonly workspaces = inject(WorkspacesStore);
 
   /** Path typed by the user; trimmed before opening. */
   readonly path = signal('');
@@ -187,13 +189,19 @@ export class RepoPicker {
     const value = this.path().trim();
     if (!value) return;
     const repo = await this.store.openRepository(value);
-    if (repo) this.repoState.setActive(repo);
+    if (repo) {
+      this.workspaces.openTab(repo);
+      this.repoState.setActive(repo);
+    }
   }
 
   /** Open a repository picked from the recents list. */
   openPath(fsPath: string): void {
     void this.store.openRepository(fsPath).then((repo) => {
-      if (repo) this.repoState.setActive(repo);
+      if (repo) {
+        this.workspaces.openTab(repo);
+        this.repoState.setActive(repo);
+      }
     });
   }
 }

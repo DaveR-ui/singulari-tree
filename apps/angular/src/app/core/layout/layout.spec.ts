@@ -2,18 +2,28 @@ import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/c
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Repository } from '@contracts/domain';
-import { IpcBridge, type AppError, type MenuNavigatePayload } from '@core/services/ipc-bridge.service';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import type { Repository, Stash } from '@contracts/domain';
+import type { GitFlowConfig, GitFlowResult, MergeResponse } from '@contracts/gitcore';
+import { CommitFocusService } from '@core/services/commit-focus.service';
+import {
+  IpcBridge,
+  type AppError,
+  type DeepLinkPayload,
+  type MenuNavigatePayload,
+} from '@core/services/ipc-bridge.service';
 import { RepoState } from '@core/services/repo-state.service';
+import { WorkspacesStore, type RepoTab } from '@core/services/workspaces.store';
 import { GithubAccountStore } from '@features/github-account/github-account.store';
 import { RemoteOpsStore } from '@features/remote/remote-ops.store';
 import type {
+  FetchAllProgress,
   PushRowView,
   RemoteBranchOption,
   RemoteDialogKind,
   RemoteOpProgress,
   RemoteOption,
+  RepoFetchState,
 } from '@features/remote/remote-models';
 import { LayoutComponent } from './layout';
 
@@ -70,6 +80,10 @@ function makeRepository(index: number): Repository {
   };
 }
 
+function makeStash(index: number, message = `WIP ${index}`): Stash {
+  return { index, oid: undefined, message, branchName: 'main' };
+}
+
 interface StubRepoStateOptions {
   repos?: Repository[];
   activeId?: string | null;
@@ -89,6 +103,20 @@ interface StubRepoStateOptions {
   checkoutRunning?: boolean;
   stashRunning?: boolean;
   checkoutError?: AppError | null;
+  refOpRunning?: boolean;
+  refOpError?: AppError | null;
+  mergeConflict?: MergeResponse | null;
+  stashes?: Stash[];
+  stashesLoading?: boolean;
+  stashesError?: AppError | null;
+  stashOpRunning?: boolean;
+  stashOpError?: AppError | null;
+  gitFlowConfig?: GitFlowConfig | null;
+  gitFlowConfigLoading?: boolean;
+  gitFlowConfigError?: AppError | null;
+  gitFlowRunning?: boolean;
+  gitFlowError?: AppError | null;
+  gitFlowResult?: GitFlowResult | null;
 }
 
 function makeRepoState(opts: StubRepoStateOptions = {}) {
@@ -117,13 +145,51 @@ function makeRepoState(opts: StubRepoStateOptions = {}) {
     checkoutRunning: signal(opts.checkoutRunning ?? false),
     stashRunning: signal(opts.stashRunning ?? false),
     checkoutError: signal<AppError | null>(opts.checkoutError ?? null),
+    refOpRunning: signal(opts.refOpRunning ?? false),
+    refOpError: signal<AppError | null>(opts.refOpError ?? null),
+    mergeConflict: signal<MergeResponse | null>(opts.mergeConflict ?? null),
+    stashes: signal<Stash[]>(opts.stashes ?? []),
+    stashesLoading: signal(opts.stashesLoading ?? false),
+    stashesError: signal<AppError | null>(opts.stashesError ?? null),
+    stashOpRunning: signal(opts.stashOpRunning ?? false),
+    stashOpError: signal<AppError | null>(opts.stashOpError ?? null),
+    gitFlowConfig: signal<GitFlowConfig | null>(opts.gitFlowConfig ?? null),
+    gitFlowConfigLoading: signal(opts.gitFlowConfigLoading ?? false),
+    gitFlowConfigError: signal<AppError | null>(opts.gitFlowConfigError ?? null),
+    gitFlowRunning: signal(opts.gitFlowRunning ?? false),
+    gitFlowError: signal<AppError | null>(opts.gitFlowError ?? null),
+    gitFlowResult: signal<GitFlowResult | null>(opts.gitFlowResult ?? null),
+    statusRefreshRequested: signal(0),
     loadRepositories: vi.fn(async () => {}),
+    reposLoaded: signal(false),
+    whenRepositoriesLoaded: vi.fn(async () => {}),
     setActive: vi.fn(),
+    clearActive: vi.fn(),
     loadRefs: vi.fn(async () => {}),
+    loadStashes: vi.fn(async () => {}),
     removeRepository: vi.fn(async () => true),
+    openRepositoryPath: vi.fn(async (): Promise<Repository | null> => null),
     checkoutBranch: vi.fn(async () => {}),
     stashPush: vi.fn(async () => true),
+    stashApply: vi.fn(async () => true),
+    stashPop: vi.fn(async () => true),
+    stashDrop: vi.fn(async () => true),
+    clearStashOpError: vi.fn(),
     dismissCheckoutError: vi.fn(),
+    clearRefOpError: vi.fn(),
+    dismissMergeConflict: vi.fn(),
+    createBranch: vi.fn(async () => true),
+    renameBranch: vi.fn(async () => true),
+    deleteBranch: vi.fn(async () => true),
+    createTag: vi.fn(async () => true),
+    deleteTag: vi.fn(async () => true),
+    merge: vi.fn(async () => true),
+    loadGitFlowConfig: vi.fn(async () => {}),
+    saveGitFlowConfig: vi.fn(async () => true),
+    startGitFlow: vi.fn(async () => true),
+    finishGitFlow: vi.fn(async () => true),
+    clearGitFlowError: vi.fn(),
+    dismissGitFlowResult: vi.fn(),
   };
 }
 
@@ -154,36 +220,56 @@ function makeRemoteOps(opts: StubRemoteOpsOptions = {}) {
     progress: signal<RemoteOpProgress | null>(null),
     opError: signal<AppError | null>(null),
     refsError: signal<AppError | null>(null),
+    fetchAllRunning: signal(false),
+    fetchAllStatus: signal<Readonly<Record<string, RepoFetchState>>>({}),
+    fetchAllProgress: signal<FetchAllProgress | null>(null),
+    fetchAllError: signal<AppError | null>(null),
     openDialog: vi.fn(),
     closeDialog: vi.fn(),
     loadRefs: vi.fn(async () => {}),
     runPull: vi.fn(async () => {}),
     runPush: vi.fn(async () => {}),
     runFetch: vi.fn(async () => {}),
+    runFetchAll: vi.fn(async () => {}),
+    clearFetchAll: vi.fn(),
   };
 }
 
 interface StubIpcBridge {
   onMenuNavigate: ReturnType<typeof vi.fn>;
+  onDeepLink: ReturnType<typeof vi.fn>;
+  signalDeepLinkReady: ReturnType<typeof vi.fn>;
   emitMenuNavigate: (payload: MenuNavigatePayload) => void;
+  emitDeepLink: (payload: DeepLinkPayload) => void;
   unsubscribe: ReturnType<typeof vi.fn>;
+  unsubscribeDeepLink: ReturnType<typeof vi.fn>;
 }
 
 /**
- * `IpcBridge` stand-in that captures the single native-menu listener so tests
- * can push `menu:navigate` payloads and assert the unsubscribe on destroy.
+ * `IpcBridge` stand-in that captures the native-menu and deep-link listeners so
+ * tests can push payloads and assert each unsubscribe on destroy.
  */
 function makeIpcBridge(): StubIpcBridge {
-  let listener: ((payload: MenuNavigatePayload) => void) | null = null;
+  let menuListener: ((payload: MenuNavigatePayload) => void) | null = null;
+  let deepLinkListener: ((payload: DeepLinkPayload) => void) | null = null;
   const unsubscribe = vi.fn();
+  const unsubscribeDeepLink = vi.fn();
   const onMenuNavigate = vi.fn((cb: (payload: MenuNavigatePayload) => void) => {
-    listener = cb;
+    menuListener = cb;
     return unsubscribe;
+  });
+  const onDeepLink = vi.fn((cb: (payload: DeepLinkPayload) => void) => {
+    deepLinkListener = cb;
+    return unsubscribeDeepLink;
   });
   return {
     onMenuNavigate,
-    emitMenuNavigate: (payload) => listener?.(payload),
+    onDeepLink,
+    signalDeepLinkReady: vi.fn(),
+    emitMenuNavigate: (payload) => menuListener?.(payload),
+    emitDeepLink: (payload) => deepLinkListener?.(payload),
     unsubscribe,
+    unsubscribeDeepLink,
   };
 }
 
@@ -192,9 +278,70 @@ function makeGithubAccount() {
   return { autoConnectOnce: vi.fn(async () => {}) };
 }
 
+/** Minimal `WorkspacesStore` stand-in with real tab/active signals. */
+function makeWorkspaces(initialTabs: RepoTab[] = [], initialActive: string | null = null) {
+  const tabs = signal<RepoTab[]>(initialTabs);
+  const activeTabId = signal<string | null>(initialActive);
+  return {
+    tabs,
+    activeTabId,
+    openTab: vi.fn((repo: Repository) => {
+      tabs.update((prev) =>
+        prev.some((tab) => tab.repoId === repo.id)
+          ? prev
+          : [...prev, { repoId: repo.id, fsPath: repo.fsPath, name: repo.name }],
+      );
+      activeTabId.set(repo.id);
+    }),
+    selectTab: vi.fn((id: string) => activeTabId.set(id)),
+    closeTab: vi.fn((id: string) => {
+      const current = tabs();
+      const index = current.findIndex((tab) => tab.repoId === id);
+      const next = current.filter((tab) => tab.repoId !== id);
+      tabs.set(next);
+      if (activeTabId() === id) {
+        activeTabId.set(next[Math.min(index, next.length - 1)]?.repoId ?? null);
+      }
+    }),
+    rehydrate: vi.fn(),
+    reconcile: vi.fn(),
+  };
+}
+
+/** Minimal `CommitFocusService` stand-in with a real pending signal. */
+function makeCommitFocus() {
+  const pending = signal<{ repoId: string; oid: string } | null>(null);
+  return {
+    pending,
+    request: vi.fn((repoId: string, oid: string) => pending.set({ repoId, oid })),
+    clear: vi.fn(() => pending.set(null)),
+    consume: vi.fn((repoId: string) => {
+      const value = pending();
+      if (value && value.repoId === repoId) {
+        pending.set(null);
+        return value.oid;
+      }
+      return null;
+    }),
+  };
+}
+
+/** Install an in-memory `navigator.clipboard` for copy/read assertions. */
+function stubClipboard(initial = ''): { writeText: Mock; readText: Mock } {
+  const writeText = vi.fn(async () => {});
+  const readText = vi.fn(async () => initial);
+  Object.defineProperty(navigator, 'clipboard', {
+    value: { writeText, readText },
+    configurable: true,
+  });
+  return { writeText, readText };
+}
+
 async function setup(
   repoStateOpts: StubRepoStateOptions = {},
   remoteOpsOpts: StubRemoteOpsOptions = {},
+  workspaces: ReturnType<typeof makeWorkspaces> = makeWorkspaces(),
+  commitFocus: ReturnType<typeof makeCommitFocus> = makeCommitFocus(),
 ) {
   const repoState = makeRepoState(repoStateOpts);
   const remoteOps = makeRemoteOps(remoteOpsOpts);
@@ -206,6 +353,8 @@ async function setup(
       provideRouter([{ path: '**', component: StubPageComponent }]),
       { provide: RepoState, useValue: repoState },
       { provide: RemoteOpsStore, useValue: remoteOps },
+      { provide: WorkspacesStore, useValue: workspaces },
+      { provide: CommitFocusService, useValue: commitFocus },
       { provide: IpcBridge, useValue: ipcBridge },
       { provide: GithubAccountStore, useValue: githubAccount },
     ],
@@ -215,7 +364,7 @@ async function setup(
   fixture.detectChanges();
   await fixture.whenStable();
   fixture.detectChanges();
-  return { fixture, repoState, remoteOps, ipcBridge, githubAccount };
+  return { fixture, repoState, remoteOps, ipcBridge, githubAccount, workspaces, commitFocus };
 }
 
 function text(fixture: { nativeElement: unknown }): string {
@@ -932,5 +1081,740 @@ describe('LayoutComponent', () => {
 
     expect(query(fixture, 'switch-branch-message')).toBeNull();
     expect(query(fixture, 'checkout-error-banner')).not.toBeNull();
+  });
+
+  // -- ref mutation dialogs (ADR-028) --------------------------------------
+
+  function openBranchMenu(fixture: { nativeElement: unknown; detectChanges: () => void }, name: string): void {
+    const row = queryAll<HTMLElement>(fixture, 'st-sidebar-branch').find(
+      (el) => el.textContent?.trim() === name,
+    );
+    if (!row) throw new Error(`branch row '${name}' not found`);
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+  }
+
+  it('renders and dismisses the merge conflict banner through the store', async () => {
+    const { fixture, repoState } = await setup({
+      mergeConflict: { hasConflict: true, oid: 'abc' },
+    });
+
+    expect(query(fixture, 'merge-conflict-banner')).not.toBeNull();
+
+    query<HTMLButtonElement>(fixture, 'merge-conflict-dismiss')!.click();
+
+    expect(repoState.dismissMergeConflict).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the create-branch dialog from the sidebar "+" and routes the submit', async () => {
+    const { fixture, repoState } = await setup({
+      branches: ['main', 'feature/x'],
+      currentBranch: 'main',
+    });
+
+    query<HTMLButtonElement>(fixture, 'st-sidebar-add-branch')!.click();
+    fixture.detectChanges();
+
+    expect((query<HTMLInputElement>(fixture, 'branch-create-start')!).value).toBe('main');
+
+    const name = query<HTMLInputElement>(fixture, 'branch-create-name')!;
+    name.value = 'topic';
+    name.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    query<HTMLButtonElement>(fixture, 'branch-create-submit')!.click();
+
+    await vi.waitFor(() =>
+      expect(repoState.createBranch).toHaveBeenCalledWith('topic', 'main', true),
+    );
+  });
+
+  it('creates a tag from the sidebar TAGS "+"', async () => {
+    const { fixture, repoState } = await setup({ tags: ['v1'] });
+
+    query<HTMLButtonElement>(fixture, 'st-sidebar-add-tag')!.click();
+    fixture.detectChanges();
+
+    const name = query<HTMLInputElement>(fixture, 'tag-create-name')!;
+    name.value = 'v2';
+    name.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    query<HTMLButtonElement>(fixture, 'tag-create-submit')!.click();
+
+    await vi.waitFor(() =>
+      expect(repoState.createTag).toHaveBeenCalledWith('v2', 'HEAD', false, '', false),
+    );
+  });
+
+  it('renames a branch through its row menu and dialog', async () => {
+    const { fixture, repoState } = await setup({ branches: ['main', 'feature/x'] });
+
+    openBranchMenu(fixture, 'feature/x');
+    query<HTMLButtonElement>(fixture, 'st-sidebar-menu-rename')!.click();
+    fixture.detectChanges();
+
+    const input = query<HTMLInputElement>(fixture, 'ref-rename-input')!;
+    input.value = 'feature/y';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    query<HTMLButtonElement>(fixture, 'ref-rename-submit')!.click();
+
+    await vi.waitFor(() =>
+      expect(repoState.renameBranch).toHaveBeenCalledWith('feature/x', 'feature/y'),
+    );
+  });
+
+  it('deletes a branch through its row menu with the force toggle', async () => {
+    const { fixture, repoState } = await setup({ branches: ['main', 'feature/x'] });
+
+    openBranchMenu(fixture, 'feature/x');
+    query<HTMLButtonElement>(fixture, 'st-sidebar-menu-delete')!.click();
+    fixture.detectChanges();
+
+    expect(query(fixture, 'ref-delete-warning')?.textContent).toContain('feature/x');
+
+    const force = query<HTMLInputElement>(fixture, 'ref-delete-force')!;
+    force.checked = true;
+    force.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    query<HTMLButtonElement>(fixture, 'ref-delete-confirm')!.click();
+
+    await vi.waitFor(() =>
+      expect(repoState.deleteBranch).toHaveBeenCalledWith('feature/x', true),
+    );
+  });
+
+  it('deletes a tag through its row menu (no force toggle)', async () => {
+    const { fixture, repoState } = await setup({ tags: ['v0.1.0'] });
+
+    const tagsHead = Array.from(queryAll<HTMLButtonElement>(fixture, 'st-sidebar-tag'));
+    expect(tagsHead).toHaveLength(0);
+    // Expand TAGS first.
+    const head = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.st-left__head'),
+    ).find((b) => b.textContent?.includes('TAGS'))!;
+    head.click();
+    fixture.detectChanges();
+
+    const tag = queryAll<HTMLElement>(fixture, 'st-sidebar-tag')[0];
+    tag.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+    query<HTMLButtonElement>(fixture, 'st-sidebar-menu-delete')!.click();
+    fixture.detectChanges();
+
+    expect(query(fixture, 'ref-delete-force')).toBeNull();
+    query<HTMLButtonElement>(fixture, 'ref-delete-confirm')!.click();
+
+    await vi.waitFor(() => expect(repoState.deleteTag).toHaveBeenCalledWith('v0.1.0'));
+  });
+
+  it('merges a branch into the current one through its row menu', async () => {
+    const { fixture, repoState } = await setup({
+      branches: ['main', 'feature/x'],
+      currentBranch: 'main',
+    });
+
+    openBranchMenu(fixture, 'feature/x');
+    query<HTMLButtonElement>(fixture, 'st-sidebar-menu-merge')!.click();
+    fixture.detectChanges();
+
+    expect((query<HTMLSelectElement>(fixture, 'merge-ref')!).value).toBe('feature/x');
+    query<HTMLButtonElement>(fixture, 'merge-submit')!.click();
+
+    await vi.waitFor(() =>
+      expect(repoState.merge).toHaveBeenCalledWith('feature/x', 'MERGE', false, ''),
+    );
+  });
+
+  it('clears a ref-op error when a ref dialog is cancelled', async () => {
+    const { fixture, repoState } = await setup({ branches: ['main', 'feature/x'] });
+
+    query<HTMLButtonElement>(fixture, 'st-sidebar-add-branch')!.click();
+    fixture.detectChanges();
+    query<HTMLButtonElement>(fixture, 'branch-create-cancel')!.click();
+
+    expect(repoState.clearRefOpError).toHaveBeenCalled();
+  });
+
+  // -- stashes (ADR-028) ---------------------------------------------------
+
+  function expandStashes(fixture: { nativeElement: unknown; detectChanges: () => void }): void {
+    const head = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.st-left__head'),
+    ).find((b) => b.textContent?.includes('STASHES'))!;
+    head.click();
+    fixture.detectChanges();
+  }
+
+  it('opens the stash push dialog from the sidebar and routes the submit', async () => {
+    const { fixture, repoState } = await setup({ stashes: [makeStash(0)] });
+
+    query<HTMLButtonElement>(fixture, 'st-sidebar-stash-push')!.click();
+    fixture.detectChanges();
+
+    const message = query<HTMLInputElement>(fixture, 'stash-push-message')!;
+    message.value = 'WIP';
+    message.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    query<HTMLButtonElement>(fixture, 'stash-push-submit')!.click();
+
+    await vi.waitFor(() => expect(repoState.stashPush).toHaveBeenCalledWith('WIP'));
+  });
+
+  it('routes stash apply and pop straight to the store', async () => {
+    const { fixture, repoState } = await setup({ stashes: [makeStash(0), makeStash(1)] });
+    expandStashes(fixture);
+
+    queryAll<HTMLButtonElement>(fixture, 'st-sidebar-stash-apply')[1].click();
+    queryAll<HTMLButtonElement>(fixture, 'st-sidebar-stash-pop')[0].click();
+
+    expect(repoState.stashApply).toHaveBeenCalledWith(1, false);
+    expect(repoState.stashPop).toHaveBeenCalledWith(0);
+  });
+
+  it('confirms a stash drop through the dialog before dropping', async () => {
+    const { fixture, repoState } = await setup({ stashes: [makeStash(2, 'WIP on main')] });
+    expandStashes(fixture);
+
+    queryAll<HTMLButtonElement>(fixture, 'st-sidebar-stash-drop')[0].click();
+    fixture.detectChanges();
+
+    expect(query(fixture, 'stash-drop-warning')?.textContent).toContain('stash@{2}');
+    expect(repoState.stashDrop).not.toHaveBeenCalled();
+
+    query<HTMLButtonElement>(fixture, 'stash-drop-confirm')!.click();
+
+    await vi.waitFor(() => expect(repoState.stashDrop).toHaveBeenCalledWith(2));
+  });
+
+  it('opens the git-flow dialog on Start and routes the start payload', async () => {
+    const { fixture, repoState } = await setup({
+      branches: ['main', 'develop'],
+      currentBranch: 'develop',
+    });
+
+    query<HTMLButtonElement>(fixture, 'st-sidebar-git-flow')!.click();
+    fixture.detectChanges();
+
+    expect(repoState.loadGitFlowConfig).toHaveBeenCalledTimes(1);
+    expect((query<HTMLInputElement>(fixture, 'git-flow-start-base')!).value).toBe('develop');
+
+    const name = query<HTMLInputElement>(fixture, 'git-flow-start-name')!;
+    name.value = 'login';
+    name.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    query<HTMLButtonElement>(fixture, 'git-flow-start-submit')!.click();
+
+    await vi.waitFor(() =>
+      expect(repoState.startGitFlow).toHaveBeenCalledWith('FEATURE', 'login', 'develop'),
+    );
+  });
+
+  it('routes the git-flow finish payload and keeps the dialog open for steps', async () => {
+    const { fixture, repoState } = await setup({ branches: ['main', 'feature/x'] });
+
+    query<HTMLButtonElement>(fixture, 'st-sidebar-git-flow')!.click();
+    fixture.detectChanges();
+    query<HTMLButtonElement>(fixture, 'git-flow-tab-finish')!.click();
+    fixture.detectChanges();
+
+    const name = query<HTMLInputElement>(fixture, 'git-flow-finish-name')!;
+    name.value = 'login';
+    name.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    query<HTMLButtonElement>(fixture, 'git-flow-finish-submit')!.click();
+
+    await vi.waitFor(() =>
+      expect(repoState.finishGitFlow).toHaveBeenCalledWith('FEATURE', 'login', true),
+    );
+    // The dialog stays open so the returned steps/conflict remain visible.
+    expect(query(fixture, 'git-flow-finish-submit')).not.toBeNull();
+  });
+
+  it('routes the git-flow config submit to the store', async () => {
+    const { fixture, repoState } = await setup();
+
+    query<HTMLButtonElement>(fixture, 'st-sidebar-git-flow')!.click();
+    fixture.detectChanges();
+    query<HTMLButtonElement>(fixture, 'git-flow-tab-config')!.click();
+    fixture.detectChanges();
+    query<HTMLButtonElement>(fixture, 'git-flow-config-submit')!.click();
+
+    await vi.waitFor(() =>
+      expect(repoState.saveGitFlowConfig).toHaveBeenCalledWith({
+        mainBranch: 'main',
+        developBranch: 'develop',
+        featurePrefix: 'feature/',
+        releasePrefix: 'release/',
+        hotfixPrefix: 'hotfix/',
+        versionTagPrefix: 'v',
+      }),
+    );
+  });
+
+  it('shows the git-flow steps and conflict from the store result', async () => {
+    const { fixture } = await setup({
+      gitFlowResult: {
+        branch: 'release/1.0',
+        steps: ['checkout main', 'merge release/1.0'],
+        hasConflict: true,
+      },
+    });
+
+    query<HTMLButtonElement>(fixture, 'st-sidebar-git-flow')!.click();
+    fixture.detectChanges();
+    query<HTMLButtonElement>(fixture, 'git-flow-tab-finish')!.click();
+    fixture.detectChanges();
+
+    const steps = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('[data-testid="git-flow-step"]'),
+    ).map((el) => el.textContent?.trim());
+    expect(steps).toEqual(['checkout main', 'merge release/1.0']);
+    expect(query(fixture, 'git-flow-conflict')).not.toBeNull();
+  });
+
+  it('clears the git-flow error and result when the dialog is cancelled', async () => {
+    const { fixture, repoState } = await setup();
+
+    query<HTMLButtonElement>(fixture, 'st-sidebar-git-flow')!.click();
+    fixture.detectChanges();
+    query<HTMLButtonElement>(fixture, 'git-flow-cancel')!.click();
+    fixture.detectChanges();
+
+    expect(repoState.clearGitFlowError).toHaveBeenCalled();
+    expect(repoState.dismissGitFlowResult).toHaveBeenCalled();
+    expect(query(fixture, 'git-flow-cancel')).toBeNull();
+  });
+
+  // -- repo tabs / workspaces (ADR-024) ------------------------------------
+
+  it('renders header tabs from the workspace store and selects on click', async () => {
+    const workspaces = makeWorkspaces(
+      [
+        { repoId: 'repo-1', fsPath: '/tmp/local-1', name: 'local-1' },
+        { repoId: 'repo-2', fsPath: '/tmp/local-2', name: 'local-2' },
+      ],
+      'repo-1',
+    );
+    const { fixture } = await setup({}, {}, workspaces);
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    const tabs = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.st-tab');
+    expect(tabs).toHaveLength(2);
+    tabs[1].click();
+
+    expect(workspaces.selectTab).toHaveBeenCalledWith('repo-2');
+    expect(navigate).toHaveBeenCalledWith(['/repo']);
+  });
+
+  it('closing the active tab selects the neighbour and routes to the graph', async () => {
+    const workspaces = makeWorkspaces(
+      [
+        { repoId: 'repo-1', fsPath: '/tmp/local-1', name: 'local-1' },
+        { repoId: 'repo-2', fsPath: '/tmp/local-2', name: 'local-2' },
+      ],
+      'repo-2',
+    );
+    const { fixture } = await setup({}, {}, workspaces);
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    const closes = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+      '.st-tab__close',
+    );
+    closes[1].click();
+
+    expect(workspaces.closeTab).toHaveBeenCalledWith('repo-2');
+    expect(navigate).toHaveBeenCalledWith(['/repo']);
+  });
+
+  it('closing the last tab routes to the repository manager', async () => {
+    const workspaces = makeWorkspaces(
+      [{ repoId: 'repo-1', fsPath: '/tmp/local-1', name: 'local-1' }],
+      'repo-1',
+    );
+    const { fixture } = await setup({}, {}, workspaces);
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.st-tab__close')!.click();
+
+    expect(navigate).toHaveBeenCalledWith(['/repos']);
+  });
+
+  it('the "+" header control routes to the repository manager', async () => {
+    const { fixture } = await setup();
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.st-tab__add')!.click();
+
+    expect(navigate).toHaveBeenCalledWith(['/repos']);
+  });
+
+  it('selecting a repository from the drawer opens a tab', async () => {
+    const repo = makeRepository(1);
+    const { fixture, workspaces } = await setup({ repos: [repo] });
+
+    query<HTMLElement>(fixture, 'repo-card')!.click();
+
+    expect(workspaces.openTab).toHaveBeenCalledWith(repo);
+  });
+
+  it('removing a repository closes its tab', async () => {
+    const repo = makeRepository(1);
+    const { fixture, repoState, workspaces } = await setup({ repos: [repo], activeId: repo.id });
+    repoState.removeRepository.mockResolvedValue(true);
+
+    query<HTMLButtonElement>(fixture, 'repo-drawer-remove')!.click();
+    await vi.waitFor(() => expect(workspaces.closeTab).toHaveBeenCalledWith(repo.id));
+  });
+
+  // -- multi-repo fetch (ADR-024) ------------------------------------------
+
+  it('fans out fetch across every open tab', async () => {
+    const workspaces = makeWorkspaces([
+      { repoId: 'repo-1', fsPath: '/tmp/local-1', name: 'local-1' },
+      { repoId: 'repo-2', fsPath: '/tmp/local-2', name: 'local-2' },
+    ]);
+    const { fixture, remoteOps } = await setup({}, {}, workspaces);
+
+    const button = query<HTMLButtonElement>(fixture, 'toolbar-fetch-all')!;
+    expect(button.disabled).toBe(false);
+    button.click();
+
+    expect(remoteOps.runFetchAll).toHaveBeenCalledWith([
+      { repoId: 'repo-1', name: 'local-1' },
+      { repoId: 'repo-2', name: 'local-2' },
+    ]);
+  });
+
+  it('disables fetch-all when no tab is open', async () => {
+    const { fixture } = await setup();
+
+    expect(query<HTMLButtonElement>(fixture, 'toolbar-fetch-all')!.disabled).toBe(true);
+  });
+
+  // -- cross-repo search (ADR-026) -----------------------------------------
+
+  it('renders the search workspace when the sidebar selects search', async () => {
+    const { fixture } = await setup();
+
+    fixture.componentInstance.activeWorkspace.set('search');
+    fixture.detectChanges();
+
+    expect(query(fixture, 'search-workspace')).not.toBeNull();
+  });
+
+  it('opens a search hit tab, queues the focus and routes to the graph', async () => {
+    const repo = makeRepository(1);
+    const { fixture, workspaces, commitFocus } = await setup({ repos: [repo] });
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    fixture.componentInstance.onSearchHitSelected({
+      repoId: repo.id,
+      oid: 'abc123',
+      message: 'fix',
+      authorName: 'Ada',
+      authorEmail: 'ada@example.com',
+      committedAt: 0,
+    });
+
+    expect(workspaces.openTab).toHaveBeenCalledWith(repo);
+    expect(workspaces.selectTab).toHaveBeenCalledWith(repo.id);
+    expect(commitFocus.request).toHaveBeenCalledWith(repo.id, 'abc123');
+    expect(navigate).toHaveBeenCalledWith(['/repo']);
+    expect(fixture.componentInstance.activeWorkspace()).toBe('history');
+  });
+
+  it('ignores a search hit for an unknown repository', async () => {
+    const { fixture, workspaces, commitFocus } = await setup({ repos: [] });
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    fixture.componentInstance.onSearchHitSelected({
+      repoId: 'ghost',
+      oid: 'abc',
+      message: '',
+      authorName: '',
+      authorEmail: '',
+      committedAt: 0,
+    });
+
+    expect(workspaces.openTab).not.toHaveBeenCalled();
+    expect(commitFocus.request).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  // -- deep links (ADR-025) ------------------------------------------------
+
+  it('opens a repository by absolute path from a deep link', async () => {
+    const repo = makeRepository(1);
+    const { fixture, repoState, workspaces, ipcBridge } = await setup({ repos: [repo] });
+    repoState.openRepositoryPath.mockResolvedValue(repo);
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    ipcBridge.emitDeepLink({ kind: 'open-path', path: repo.fsPath });
+    await vi.waitFor(() => expect(workspaces.openTab).toHaveBeenCalledWith(repo));
+
+    expect(repoState.openRepositoryPath).toHaveBeenCalledWith(repo.fsPath);
+    expect(navigate).toHaveBeenCalledWith(['/repo']);
+    expect(fixture.componentInstance.activeWorkspace()).toBe('history');
+  });
+
+  it('ignores an open-path deep link when the repository cannot be opened', async () => {
+    const { fixture, repoState, workspaces, ipcBridge } = await setup();
+    repoState.openRepositoryPath.mockResolvedValue(null);
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    ipcBridge.emitDeepLink({ kind: 'open-path', path: '/nope' });
+    await vi.waitFor(() => expect(repoState.openRepositoryPath).toHaveBeenCalledWith('/nope'));
+
+    expect(workspaces.openTab).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('opens the target repo and focuses the commit from a deep link', async () => {
+    const repo = makeRepository(1);
+    const { workspaces, commitFocus, ipcBridge } = await setup({ repos: [repo] });
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    ipcBridge.emitDeepLink({ kind: 'open-commit', repo: repo.name, oid: 'abc123' });
+    await vi.waitFor(() => expect(commitFocus.request).toHaveBeenCalledWith(repo.id, 'abc123'));
+
+    expect(workspaces.openTab).toHaveBeenCalledWith(repo);
+    expect(workspaces.selectTab).toHaveBeenCalledWith(repo.id);
+    expect(navigate).toHaveBeenCalledWith(['/repo']);
+  });
+
+  it('ignores a commit deep link for an unknown repository', async () => {
+    const { workspaces, commitFocus, ipcBridge } = await setup({ repos: [] });
+
+    ipcBridge.emitDeepLink({ kind: 'open-commit', repo: 'ghost', oid: 'abc' });
+    await Promise.resolve();
+
+    expect(workspaces.openTab).not.toHaveBeenCalled();
+    expect(commitFocus.request).not.toHaveBeenCalled();
+  });
+
+  it('waits for repositories to load before routing a repo-token deep link', async () => {
+    const repo = makeRepository(1);
+    const { repoState, workspaces, commitFocus, ipcBridge } = await setup({ repos: [] });
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    // Hold the repos-loaded signal so the queued link must wait for it.
+    let release!: () => void;
+    const loaded = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    repoState.whenRepositoriesLoaded.mockReturnValueOnce(loaded);
+
+    ipcBridge.emitDeepLink({ kind: 'open-commit', repo: repo.name, oid: 'abc123' });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Not routed yet: the token cannot resolve against the still-empty list.
+    expect(workspaces.openTab).not.toHaveBeenCalled();
+    expect(commitFocus.request).not.toHaveBeenCalled();
+
+    // The repository list arrives; the queued link is retried and routed.
+    repoState.repos.set([repo]);
+    release();
+    await vi.waitFor(() => expect(commitFocus.request).toHaveBeenCalledWith(repo.id, 'abc123'));
+
+    expect(workspaces.openTab).toHaveBeenCalledWith(repo);
+    expect(navigate).toHaveBeenCalledWith(['/repo']);
+  });
+
+  it('acks deep-link readiness once the listener is subscribed', async () => {
+    const { ipcBridge } = await setup();
+
+    expect(ipcBridge.signalDeepLinkReady).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes a local branch deep link through the switch confirmation before checkout', async () => {
+    const repo = makeRepository(1);
+    const { fixture, repoState, workspaces, ipcBridge } = await setup({ repos: [repo] });
+    const router = TestBed.inject(Router);
+    vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    ipcBridge.emitDeepLink({ kind: 'open-branch', repo: repo.name, branch: 'feature/x' });
+    await vi.waitFor(() => expect(fixture.componentInstance.checkoutPrompt()).not.toBeNull());
+    fixture.detectChanges();
+
+    // A link must not silently switch: it opens the same confirmation dialog as
+    // an interactive branch click, before any checkout IPC.
+    expect(query(fixture, 'switch-branch-message')?.textContent?.trim()).toBe(
+      "Are you sure you want to switch your working copy to a branch 'feature/x'?",
+    );
+    expect(repoState.checkoutBranch).not.toHaveBeenCalled();
+
+    query<HTMLButtonElement>(fixture, 'switch-branch-confirm')!.click();
+
+    expect(repoState.checkoutBranch).toHaveBeenCalledWith('feature/x', false, false, false);
+    expect(workspaces.openTab).toHaveBeenCalledWith(repo);
+    expect(workspaces.selectTab).toHaveBeenCalledWith(repo.id);
+    expect(repoState.loadRefs).toHaveBeenCalled();
+  });
+
+  it('routes a remote-tracking branch deep link through the switch confirmation', async () => {
+    const repo = makeRepository(1);
+    const { fixture, repoState, ipcBridge } = await setup({
+      repos: [repo],
+      remoteBranches: ['origin/topic'],
+    });
+
+    ipcBridge.emitDeepLink({ kind: 'open-branch', repo: repo.name, branch: 'origin/topic' });
+    await vi.waitFor(() => expect(fixture.componentInstance.checkoutPrompt()).not.toBeNull());
+    fixture.detectChanges();
+
+    expect(repoState.checkoutBranch).not.toHaveBeenCalled();
+
+    query<HTMLButtonElement>(fixture, 'switch-branch-confirm')!.click();
+
+    expect(repoState.checkoutBranch).toHaveBeenCalledWith('origin/topic', true, false, false);
+  });
+
+  it('ignores a branch deep link for an unknown repository', async () => {
+    const { repoState, ipcBridge } = await setup({ repos: [] });
+
+    ipcBridge.emitDeepLink({ kind: 'open-branch', repo: 'ghost', branch: 'main' });
+    await Promise.resolve();
+
+    expect(repoState.checkoutBranch).not.toHaveBeenCalled();
+  });
+
+  it('opens the clone dialog prefilled from a clone deep link', async () => {
+    const { fixture, ipcBridge } = await setup();
+
+    ipcBridge.emitDeepLink({ kind: 'clone', url: 'https://example.com/me/app.git' });
+    fixture.detectChanges();
+
+    expect(query<HTMLInputElement>(fixture, 'clone-url')?.value).toBe(
+      'https://example.com/me/app.git',
+    );
+  });
+
+  it('ignores a clone deep link with a non-git URL', async () => {
+    const { fixture, ipcBridge } = await setup();
+
+    ipcBridge.emitDeepLink({ kind: 'clone', url: 'ftp://example.com/x' });
+    fixture.detectChanges();
+
+    expect(query(fixture, 'clone-url')).toBeNull();
+  });
+
+  it('ignores a malformed deep-link payload', async () => {
+    const { fixture, ipcBridge, workspaces } = await setup();
+
+    ipcBridge.emitDeepLink(undefined as unknown as DeepLinkPayload);
+    ipcBridge.emitDeepLink({ kind: 'bogus' } as unknown as DeepLinkPayload);
+    fixture.detectChanges();
+
+    expect(workspaces.openTab).not.toHaveBeenCalled();
+  });
+
+  it('unsubscribes from the deep-link listener on destroy', async () => {
+    const { fixture, ipcBridge } = await setup();
+
+    fixture.destroy();
+
+    expect(ipcBridge.unsubscribeDeepLink).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes the clone dialog on cancel', async () => {
+    const { fixture, ipcBridge } = await setup();
+
+    ipcBridge.emitDeepLink({ kind: 'clone', url: 'https://example.com/me/app.git' });
+    fixture.detectChanges();
+    query<HTMLButtonElement>(fixture, 'clone-cancel')!.click();
+    fixture.detectChanges();
+
+    expect(query(fixture, 'clone-url')).toBeNull();
+  });
+
+  // -- clipboard clone (ADR-025) -------------------------------------------
+
+  it('prefills the clone dialog from a git URL on the clipboard', async () => {
+    stubClipboard('git@github.com:org/repo.git');
+    const { fixture } = await setup();
+
+    await fixture.componentInstance.onCloneFromClipboard();
+    fixture.detectChanges();
+
+    expect(query<HTMLInputElement>(fixture, 'clone-url')?.value).toBe(
+      'git@github.com:org/repo.git',
+    );
+  });
+
+  it('reports a non-git clipboard without a prefilled URL', async () => {
+    stubClipboard('just some text');
+    const { fixture } = await setup();
+
+    await fixture.componentInstance.onCloneFromClipboard();
+    fixture.detectChanges();
+
+    expect(query<HTMLInputElement>(fixture, 'clone-url')?.value).toBe('');
+    expect(query(fixture, 'clone-error')?.textContent).toContain('does not contain a Git URL');
+  });
+
+  it('copies the active repository remote URL to the clipboard', async () => {
+    const repo = makeRepository(1);
+    const { fixture, remoteOps } = await setup(
+      { repos: [repo], activeId: repo.id },
+      { remoteOptions: [{ name: 'origin', url: 'git@github.com:org/repo.git' }] },
+    );
+    const { writeText } = stubClipboard();
+
+    await fixture.componentInstance.onCopyRepoUrl();
+
+    expect(remoteOps.loadRefs).toHaveBeenCalled();
+    expect(writeText).toHaveBeenCalledWith('git@github.com:org/repo.git');
+  });
+
+  it('copies a repo deep link when the repository has no remote', async () => {
+    const repo = makeRepository(1);
+    const { fixture } = await setup({ repos: [repo], activeId: repo.id }, { remoteOptions: [] });
+    const { writeText } = stubClipboard();
+
+    await fixture.componentInstance.onCopyRepoUrl();
+
+    expect(writeText).toHaveBeenCalledWith(
+      `singularitree://open?path=${encodeURIComponent(repo.fsPath)}`,
+    );
+  });
+
+  it('does not copy when no repository is active', async () => {
+    const { fixture } = await setup({ activeId: null });
+    const { writeText } = stubClipboard();
+
+    await fixture.componentInstance.onCopyRepoUrl();
+
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it('opens the clone dialog from the toolbar clipboard affordance', async () => {
+    stubClipboard('https://example.com/me/app.git');
+    const { fixture } = await setup();
+
+    query<HTMLButtonElement>(fixture, 'toolbar-clone-clipboard')!.click();
+    await vi.waitFor(() => expect(query(fixture, 'clone-url')).not.toBeNull());
+  });
+
+  it('copies the active repo URL from the toolbar', async () => {
+    const repo = makeRepository(1);
+    const { fixture } = await setup(
+      { repos: [repo], activeId: repo.id },
+      { remoteOptions: [{ name: 'origin', url: 'https://example.com/me/app.git' }] },
+    );
+    const { writeText } = stubClipboard();
+
+    query<HTMLButtonElement>(fixture, 'toolbar-copy-repo-url')!.click();
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledWith('https://example.com/me/app.git'));
   });
 });

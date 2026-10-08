@@ -98,6 +98,23 @@ func (s *CacheService) PutCommits(ctx context.Context, repoID domain.RepositoryI
 	return nil
 }
 
+// GetCommitStats reads cached change-size counts from the L2 store (ADR-0023).
+// Stats are not held in the L1 commit-window LRU; a miss falls through to Git.
+func (s *CacheService) GetCommitStats(ctx context.Context, repoID domain.RepositoryId, oids []string) ([]domain.CommitStats, bool) {
+	if s.store == nil {
+		return nil, false
+	}
+	return s.store.GetCommitStats(ctx, repoID, oids)
+}
+
+// PutCommitStats writes change-size counts through to the L2 store.
+func (s *CacheService) PutCommitStats(ctx context.Context, repoID domain.RepositoryId, stats []domain.CommitStats) error {
+	if s.store == nil {
+		return nil
+	}
+	return s.store.PutCommitStats(ctx, repoID, stats)
+}
+
 // Invalidate removes entries for a repo from L1 and, when present, from L2.
 func (s *CacheService) Invalidate(repoID domain.RepositoryId) {
 	s.mu.Lock()

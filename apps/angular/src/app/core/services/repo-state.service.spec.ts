@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import type { Branch, Remote, Repository, Tag } from '@contracts/domain';
+import type { Branch, Remote, Repository, Stash, Tag } from '@contracts/domain';
+import type { GitFlowConfig } from '@contracts/gitcore';
 import type { AppError } from './ipc-bridge.service';
 import { IpcBridge } from './ipc-bridge.service';
 import { RepoState } from './repo-state.service';
@@ -59,6 +60,10 @@ function tag(name: string): Tag {
   };
 }
 
+function stash(index: number, message = `WIP ${index}`): Stash {
+  return { index, oid: undefined, message, branchName: 'main' };
+}
+
 function makeBridge(): IpcBridge & { invoke: Mock } {
   const invoke = vi.fn(async (method: string, req: { repoId: string }) => {
     const suffix = req.repoId === REPO_A.id ? 'a' : 'b';
@@ -78,6 +83,8 @@ function makeBridge(): IpcBridge & { invoke: Mock } {
         return { remotes: [remote(`origin-${suffix}`)] };
       case 'getTags':
         return { tags: [tag(`v1-${suffix}`)] };
+      case 'getStashes':
+        return { stashes: [] };
       case 'listRepositories':
         return { repositories: [] };
       case 'checkout':
@@ -89,6 +96,30 @@ function makeBridge(): IpcBridge & { invoke: Mock } {
     }
   });
   return { invoke } as unknown as IpcBridge & { invoke: Mock };
+}
+
+/**
+ * Bridge implementation that serves the ref reads plus the supplied mutation
+ * handlers (throwing inside a handler models a rejected mutation).
+ */
+function refsImpl(extra: Record<string, () => unknown>) {
+  return async (method: string, req: { repoId: string }) => {
+    const handler = extra[method];
+    if (handler) return handler();
+    const suffix = req.repoId === REPO_A.id ? 'a' : 'b';
+    switch (method) {
+      case 'getBranches':
+        return { branches: [branch(`main-${suffix}`), branch(`feature-${suffix}`), remoteBranch(`origin/base-${suffix}`)] };
+      case 'getRemotes':
+        return { remotes: [remote(`origin-${suffix}`)] };
+      case 'getTags':
+        return { tags: [tag(`v1-${suffix}`)] };
+      case 'getStashes':
+        return { stashes: [] };
+      default:
+        throw new Error(`unexpected method ${method}`);
+    }
+  };
 }
 
 describe('RepoState', () => {
@@ -160,6 +191,105 @@ describe('RepoState', () => {
     expect(store.repos()).toEqual([REPO_A]);
     expect(store.reposOffline()).toBe(false);
     expect(store.reposLoading()).toBe(false);
+  });
+
+  it('whenRepositoriesLoaded waits for the first list load to settle', async () => {
+    let resolveList!: (value: { repositories: Repository[] }) => void;
+    bridge.invoke.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveList = resolve;
+        }),
+    );
+
+    expect(store.reposLoaded()).toBe(false);
+    const pending = store.loadRepositories();
+    const loaded = store.whenRepositoriesLoaded();
+
+    let settled = false;
+    void loaded.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    // Still in flight: the readiness promise must not resolve early.
+    expect(settled).toBe(false);
+
+    resolveList({ repositories: [REPO_A] });
+    await pending;
+    await loaded;
+
+    expect(store.reposLoaded()).toBe(true);
+    expect(store.repos()).toEqual([REPO_A]);
+  });
+
+  it('whenRepositoriesLoaded resolves immediately once the list is loaded', async () => {
+    bridge.invoke.mockImplementation(async (method: string) => {
+      if (method === 'listRepositories') return { repositories: [REPO_A] };
+      throw new Error(`unexpected method ${method}`);
+    });
+    await store.loadRepositories();
+
+    await expect(store.whenRepositoriesLoaded()).resolves.toBeUndefined();
+  });
+
+  it('clearActive drops the selection and clears the ref/stash lists', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+
+    store.clearActive();
+
+    expect(store.activeId()).toBeNull();
+    await vi.waitFor(() => expect(store.branches()).toEqual([]));
+    expect(store.remoteBranches()).toEqual([]);
+    expect(store.tags()).toEqual([]);
+    expect(store.remotes()).toEqual([]);
+    expect(store.stashes()).toEqual([]);
+  });
+
+  it('opens a repository by path, upserts and activates it (deep link)', async () => {
+    bridge.invoke.mockImplementation(async (method: string) => {
+      if (method === 'openRepository') return REPO_A;
+      if (method === 'getBranches') return { branches: [] };
+      if (method === 'getRemotes') return { remotes: [] };
+      if (method === 'getTags') return { tags: [] };
+      if (method === 'getStashes') return { stashes: [] };
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    const opened = await store.openRepositoryPath('  /tmp/a  ');
+
+    expect(opened).toEqual(REPO_A);
+    expect(bridge.invoke).toHaveBeenCalledWith('openRepository', { fsPath: '/tmp/a' });
+    expect(store.activeId()).toBe(REPO_A.id);
+    expect(store.repos().some((r) => r.id === REPO_A.id)).toBe(true);
+    expect(store.reposError()).toBeNull();
+    expect(store.reposOffline()).toBe(false);
+  });
+
+  it('ignores a blank path without touching the bridge', async () => {
+    const opened = await store.openRepositoryPath('   ');
+
+    expect(opened).toBeNull();
+    expect(bridge.invoke).not.toHaveBeenCalled();
+  });
+
+  it('sets reposOffline and returns null when openRepository hits IPC_UNAVAILABLE', async () => {
+    bridge.invoke.mockRejectedValue({ code: 'IPC_UNAVAILABLE', message: 'no bridge' } as AppError);
+
+    const opened = await store.openRepositoryPath('/tmp/a');
+
+    expect(opened).toBeNull();
+    expect(store.reposOffline()).toBe(true);
+    expect(store.reposError()).toBeNull();
+  });
+
+  it('records a generic error and returns null when openRepository fails', async () => {
+    bridge.invoke.mockRejectedValue({ code: 'REPO_NOT_FOUND', message: 'missing' } as AppError);
+
+    const opened = await store.openRepositoryPath('/tmp/a');
+
+    expect(opened).toBeNull();
+    expect(store.reposError()).toEqual({ code: 'REPO_NOT_FOUND', message: 'missing', details: {} });
   });
 
   it('clears the lists without touching the bridge when there is no active repo', async () => {
@@ -690,5 +820,687 @@ describe('RepoState', () => {
     resolveCheckout({});
     await first;
     expect(store.checkoutRunning()).toBe(false);
+  });
+
+  // -- ref mutations (ADR-028) ---------------------------------------------
+
+  it('createBranch sends the request, reloads refs and bumps status refresh on checkout', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockImplementation(refsImpl({ createBranch: () => ({ name: 'topic' }) }));
+    bridge.invoke.mockClear();
+    const before = store.statusRefreshRequested();
+
+    const ok = await store.createBranch('topic', 'main-a', true);
+
+    expect(ok).toBe(true);
+    expect(bridge.invoke).toHaveBeenCalledWith('createBranch', {
+      repoId: REPO_A.id,
+      name: 'topic',
+      startPoint: 'main-a',
+      checkout: true,
+    });
+    expect(bridge.invoke.mock.calls.filter((c) => c[0] === 'getBranches')).toHaveLength(1);
+    expect(store.statusRefreshRequested()).toBe(before + 1);
+    expect(store.refOpRunning()).toBe(false);
+    expect(store.refOpError()).toBeNull();
+  });
+
+  it('createBranch without checkout does not bump the status refresh', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockImplementation(refsImpl({ createBranch: () => ({ name: 'topic' }) }));
+    const before = store.statusRefreshRequested();
+
+    expect(await store.createBranch('topic', 'main-a', false)).toBe(true);
+
+    expect(store.statusRefreshRequested()).toBe(before);
+  });
+
+  it('createBranch no-ops without an active repo or with a blank name', async () => {
+    expect(await store.createBranch('topic', 'HEAD', false)).toBe(false);
+
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockClear();
+
+    expect(await store.createBranch('   ', 'HEAD', false)).toBe(false);
+    expect(bridge.invoke).not.toHaveBeenCalledWith('createBranch', expect.anything());
+  });
+
+  it('createBranch records refOpError on a generic failure', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockImplementation(
+      refsImpl({
+        createBranch: () => {
+          throw { code: 'BRANCH_EXISTS', message: 'already exists' } as AppError;
+        },
+      }),
+    );
+
+    expect(await store.createBranch('main-a', 'HEAD', true)).toBe(false);
+    expect(store.refOpError()).toEqual({ code: 'BRANCH_EXISTS', message: 'already exists', details: {} });
+    expect(store.refOpRunning()).toBe(false);
+  });
+
+  it('renameBranch sends the request and reloads the refs', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockImplementation(refsImpl({ renameBranch: () => ({ name: 'trunk' }) }));
+    bridge.invoke.mockClear();
+
+    expect(await store.renameBranch('main-a', 'trunk')).toBe(true);
+
+    expect(bridge.invoke).toHaveBeenCalledWith('renameBranch', {
+      repoId: REPO_A.id,
+      oldName: 'main-a',
+      newName: 'trunk',
+    });
+    expect(bridge.invoke.mock.calls.filter((c) => c[0] === 'getBranches')).toHaveLength(1);
+  });
+
+  it('renameBranch no-ops without an active repo or with a blank new name', async () => {
+    expect(await store.renameBranch('main', 'trunk')).toBe(false);
+
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockClear();
+
+    expect(await store.renameBranch('main-a', '  ')).toBe(false);
+    expect(bridge.invoke).not.toHaveBeenCalledWith('renameBranch', expect.anything());
+  });
+
+  it('deleteBranch forwards the force flag', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockImplementation(refsImpl({ deleteBranch: () => ({}) }));
+    bridge.invoke.mockClear();
+
+    expect(await store.deleteBranch('feature-a', true)).toBe(true);
+
+    expect(bridge.invoke).toHaveBeenCalledWith('deleteBranch', {
+      repoId: REPO_A.id,
+      name: 'feature-a',
+      force: true,
+    });
+  });
+
+  it('createTag sends the request and reloads the refs', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.tags()).toEqual(['v1-a']));
+    bridge.invoke.mockImplementation(refsImpl({ createTag: () => ({ name: 'v2' }) }));
+    bridge.invoke.mockClear();
+
+    expect(await store.createTag('v2', 'abc', true, 'notes', false)).toBe(true);
+
+    expect(bridge.invoke).toHaveBeenCalledWith('createTag', {
+      repoId: REPO_A.id,
+      name: 'v2',
+      target: 'abc',
+      annotated: true,
+      message: 'notes',
+      force: false,
+    });
+    expect(bridge.invoke.mock.calls.filter((c) => c[0] === 'getTags')).toHaveLength(1);
+  });
+
+  it('createTag rejects an annotated tag without a message', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockClear();
+
+    expect(await store.createTag('v2', 'abc', true, '   ', false)).toBe(false);
+    expect(bridge.invoke).not.toHaveBeenCalledWith('createTag', expect.anything());
+  });
+
+  it('deleteTag sends the request and reloads the refs', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.tags()).toEqual(['v1-a']));
+    bridge.invoke.mockImplementation(refsImpl({ deleteTag: () => ({}) }));
+    bridge.invoke.mockClear();
+
+    expect(await store.deleteTag('v1-a')).toBe(true);
+
+    expect(bridge.invoke).toHaveBeenCalledWith('deleteTag', {
+      repoId: REPO_A.id,
+      name: 'v1-a',
+    });
+  });
+
+  it('merge sends the strategy request, reloads refs and refreshes status', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockImplementation(
+      refsImpl({ merge: () => ({ hasConflict: false, oid: 'abc' }) }),
+    );
+    bridge.invoke.mockClear();
+    const before = store.statusRefreshRequested();
+
+    expect(await store.merge('feature-a', 'MERGE', false, 'msg')).toBe(true);
+
+    expect(bridge.invoke).toHaveBeenCalledWith('merge', {
+      repoId: REPO_A.id,
+      ref: 'feature-a',
+      strategy: 'MERGE',
+      noCommit: false,
+      message: 'msg',
+    });
+    expect(store.mergeConflict()).toBeNull();
+    expect(store.statusRefreshRequested()).toBe(before + 1);
+  });
+
+  it('merge publishes the conflict result when hasConflict is true', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockImplementation(
+      refsImpl({ merge: () => ({ hasConflict: true, oid: 'abc' }) }),
+    );
+
+    expect(await store.merge('feature-a', 'NO_FF', true, '')).toBe(true);
+    expect(store.mergeConflict()).toEqual({ hasConflict: true, oid: 'abc' });
+
+    store.dismissMergeConflict();
+    expect(store.mergeConflict()).toBeNull();
+  });
+
+  it('merge treats a MERGE_CONFLICT rejection as a surfaced conflict', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockImplementation(
+      refsImpl({
+        merge: () => {
+          throw { code: 'MERGE_CONFLICT', message: 'conflict' } as AppError;
+        },
+      }),
+    );
+
+    expect(await store.merge('feature-a', 'MERGE', false, '')).toBe(true);
+    expect(store.mergeConflict()).toEqual({ hasConflict: true, oid: '' });
+    expect(store.refOpError()).toBeNull();
+  });
+
+  it('merge records refOpError on a generic failure', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockImplementation(
+      refsImpl({
+        merge: () => {
+          throw { code: 'MERGE_FAILED', message: 'boom' } as AppError;
+        },
+      }),
+    );
+
+    expect(await store.merge('feature-a', 'SQUASH', false, '')).toBe(false);
+    expect(store.refOpError()).toEqual({ code: 'MERGE_FAILED', message: 'boom', details: {} });
+    expect(store.refOpRunning()).toBe(false);
+  });
+
+  it('a ref mutation maps IPC_UNAVAILABLE to refsOffline', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockImplementation(
+      refsImpl({
+        deleteTag: () => {
+          throw { code: 'IPC_UNAVAILABLE', message: 'no bridge' } as AppError;
+        },
+      }),
+    );
+
+    expect(await store.deleteTag('v1-a')).toBe(false);
+    expect(store.refsOffline()).toBe(true);
+    expect(store.refOpError()).toBeNull();
+  });
+
+  it('ref mutations no-op without an active repo and clearRefOpError resets the error', async () => {
+    expect(await store.deleteBranch('main', false)).toBe(false);
+    expect(await store.deleteTag('v1')).toBe(false);
+    expect(await store.merge('main', 'MERGE', false, '')).toBe(false);
+
+    store.refOpError.set({ code: 'GIT_FAILED', message: 'boom' });
+    store.clearRefOpError();
+    expect(store.refOpError()).toBeNull();
+  });
+
+  it('ignores a re-entrant ref mutation while running', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+
+    let resolveCreate: (value: unknown) => void = () => {};
+    bridge.invoke.mockImplementation((method: string) => {
+      if (method === 'createBranch') {
+        return new Promise((resolve) => {
+          resolveCreate = resolve;
+        });
+      }
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    const first = store.createBranch('topic', 'HEAD', false);
+    expect(store.refOpRunning()).toBe(true);
+
+    expect(await store.deleteTag('v1-a')).toBe(false);
+    expect(bridge.invoke.mock.calls.filter((c) => c[0] === 'deleteTag')).toHaveLength(0);
+
+    resolveCreate({});
+    await first;
+    expect(store.refOpRunning()).toBe(false);
+  });
+
+  // -- stashes (ADR-028) ---------------------------------------------------
+
+  it('loadStashes maps the entries for the active repository', async () => {
+    bridge.invoke.mockImplementation(async (method: string) => {
+      if (method === 'getStashes') return { stashes: [stash(0, 'first'), stash(1, 'second')] };
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.stashes()).toEqual([stash(0, 'first'), stash(1, 'second')]));
+
+    expect(bridge.invoke).toHaveBeenCalledWith('getStashes', { repoId: REPO_A.id });
+    expect(store.stashesLoading()).toBe(false);
+    expect(store.stashesError()).toBeNull();
+  });
+
+  it('loadStashes clears the list without an active repo', async () => {
+    store.stashes.set([stash(0)]);
+    bridge.invoke.mockClear();
+
+    await store.loadStashes();
+
+    expect(store.stashes()).toEqual([]);
+    expect(bridge.invoke).not.toHaveBeenCalled();
+  });
+
+  it('loadStashes records an error and clears stale entries on failure', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.stashesLoading()).toBe(false));
+    bridge.invoke.mockImplementation(async (method: string) => {
+      if (method === 'getStashes') throw { code: 'GIT_FAILED', message: 'boom' } as AppError;
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    await store.loadStashes();
+
+    expect(store.stashesError()).toEqual({ code: 'GIT_FAILED', message: 'boom', details: {} });
+    expect(store.stashes()).toEqual([]);
+  });
+
+  it('loadStashes maps IPC_UNAVAILABLE to refsOffline', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.stashesLoading()).toBe(false));
+    bridge.invoke.mockImplementation(async (method: string) => {
+      if (method === 'getStashes') throw { code: 'IPC_UNAVAILABLE', message: 'no bridge' } as AppError;
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    await store.loadStashes();
+
+    expect(store.refsOffline()).toBe(true);
+    expect(store.stashesError()).toBeNull();
+  });
+
+  it('stashApply sends the index, reloads stashes and refreshes status', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.stashesLoading()).toBe(false));
+    bridge.invoke.mockImplementation(refsImpl({ stashApply: () => ({}) }));
+    const before = store.statusRefreshRequested();
+
+    expect(await store.stashApply(2, true)).toBe(true);
+
+    expect(bridge.invoke).toHaveBeenCalledWith('stashApply', {
+      repoId: REPO_A.id,
+      index: 2,
+      restoreIndex: true,
+    });
+    expect(store.statusRefreshRequested()).toBe(before + 1);
+    expect(store.stashOpRunning()).toBe(false);
+    expect(store.stashOpError()).toBeNull();
+  });
+
+  it('stashApply defaults restoreIndex to false', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.stashesLoading()).toBe(false));
+    bridge.invoke.mockImplementation(refsImpl({ stashApply: () => ({}) }));
+
+    await store.stashApply(0);
+
+    expect(bridge.invoke).toHaveBeenCalledWith('stashApply', {
+      repoId: REPO_A.id,
+      index: 0,
+      restoreIndex: false,
+    });
+  });
+
+  it('stashPop sends the index and reloads stashes', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.stashesLoading()).toBe(false));
+    bridge.invoke.mockImplementation(refsImpl({ stashPop: () => ({}) }));
+    const before = store.statusRefreshRequested();
+
+    expect(await store.stashPop(1)).toBe(true);
+
+    expect(bridge.invoke).toHaveBeenCalledWith('stashPop', { repoId: REPO_A.id, index: 1 });
+    expect(store.statusRefreshRequested()).toBe(before + 1);
+  });
+
+  it('stashDrop sends the index and reloads stashes without a status refresh', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.stashesLoading()).toBe(false));
+    bridge.invoke.mockImplementation(refsImpl({ stashDrop: () => ({}) }));
+    const before = store.statusRefreshRequested();
+
+    expect(await store.stashDrop(3)).toBe(true);
+
+    expect(bridge.invoke).toHaveBeenCalledWith('stashDrop', { repoId: REPO_A.id, index: 3 });
+    expect(store.statusRefreshRequested()).toBe(before);
+  });
+
+  it('stash mutations no-op without an active repo', async () => {
+    expect(await store.stashApply(0)).toBe(false);
+    expect(await store.stashPop(0)).toBe(false);
+    expect(await store.stashDrop(0)).toBe(false);
+
+    expect(bridge.invoke).not.toHaveBeenCalledWith('stashApply', expect.anything());
+    expect(bridge.invoke).not.toHaveBeenCalledWith('stashPop', expect.anything());
+    expect(bridge.invoke).not.toHaveBeenCalledWith('stashDrop', expect.anything());
+  });
+
+  it('a stash mutation records stashOpError on a generic failure', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.stashesLoading()).toBe(false));
+    bridge.invoke.mockImplementation(
+      refsImpl({
+        stashPop: () => {
+          throw { code: 'STASH_FAILED', message: 'boom' } as AppError;
+        },
+      }),
+    );
+
+    expect(await store.stashPop(0)).toBe(false);
+    expect(store.stashOpError()).toEqual({ code: 'STASH_FAILED', message: 'boom', details: {} });
+    expect(store.stashOpRunning()).toBe(false);
+  });
+
+  it('a stash mutation maps IPC_UNAVAILABLE to refsOffline', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.stashesLoading()).toBe(false));
+    bridge.invoke.mockImplementation(
+      refsImpl({
+        stashDrop: () => {
+          throw { code: 'IPC_UNAVAILABLE', message: 'no bridge' } as AppError;
+        },
+      }),
+    );
+
+    expect(await store.stashDrop(0)).toBe(false);
+    expect(store.refsOffline()).toBe(true);
+    expect(store.stashOpError()).toBeNull();
+  });
+
+  it('ignores a re-entrant stash mutation while running', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.stashesLoading()).toBe(false));
+
+    let resolveApply: (value: unknown) => void = () => {};
+    bridge.invoke.mockImplementation((method: string) => {
+      if (method === 'stashApply') {
+        return new Promise((resolve) => {
+          resolveApply = resolve;
+        });
+      }
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    const first = store.stashApply(0);
+    expect(store.stashOpRunning()).toBe(true);
+
+    expect(await store.stashDrop(0)).toBe(false);
+    expect(bridge.invoke.mock.calls.filter((c) => c[0] === 'stashDrop')).toHaveLength(0);
+
+    resolveApply({});
+    await first;
+    expect(store.stashOpRunning()).toBe(false);
+  });
+
+  it('clearStashOpError resets the recorded failure', () => {
+    store.stashOpError.set({ code: 'STASH_FAILED', message: 'boom' });
+
+    store.clearStashOpError();
+
+    expect(store.stashOpError()).toBeNull();
+  });
+
+  it('stashPush reloads stashes and refreshes status on success', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockClear();
+    const before = store.statusRefreshRequested();
+
+    expect(await store.stashPush('msg')).toBe(true);
+
+    expect(bridge.invoke.mock.calls.filter((c) => c[0] === 'getStashes')).toHaveLength(1);
+    expect(store.statusRefreshRequested()).toBe(before + 1);
+  });
+
+  // -- git-flow presets (ADR-027) ------------------------------------------
+
+  const GIT_FLOW_CONFIG: GitFlowConfig = {
+    mainBranch: 'main',
+    developBranch: 'develop',
+    featurePrefix: 'feature/',
+    releasePrefix: 'release/',
+    hotfixPrefix: 'hotfix/',
+    versionTagPrefix: 'v',
+  };
+
+  it('loadGitFlowConfig stores the config for the active repository', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.stashesLoading()).toBe(false));
+    bridge.invoke.mockImplementation(async (method: string) => {
+      if (method === 'getGitFlowConfig') return GIT_FLOW_CONFIG;
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    await store.loadGitFlowConfig();
+
+    expect(bridge.invoke).toHaveBeenCalledWith('getGitFlowConfig', { repoId: REPO_A.id });
+    expect(store.gitFlowConfig()).toEqual(GIT_FLOW_CONFIG);
+    expect(store.gitFlowConfigLoading()).toBe(false);
+    expect(store.gitFlowConfigError()).toBeNull();
+  });
+
+  it('loadGitFlowConfig clears without an active repo and records errors', async () => {
+    store.gitFlowConfig.set(GIT_FLOW_CONFIG);
+    await store.loadGitFlowConfig();
+    expect(store.gitFlowConfig()).toBeNull();
+
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.stashesLoading()).toBe(false));
+    bridge.invoke.mockImplementation(async (method: string) => {
+      if (method === 'getGitFlowConfig') throw { code: 'GIT_FAILED', message: 'boom' } as AppError;
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    await store.loadGitFlowConfig();
+
+    expect(store.gitFlowConfigError()).toEqual({ code: 'GIT_FAILED', message: 'boom', details: {} });
+  });
+
+  it('saveGitFlowConfig stores the normalized config returned by the core', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.stashesLoading()).toBe(false));
+    const saved: GitFlowConfig = { ...GIT_FLOW_CONFIG, mainBranch: 'trunk' };
+    bridge.invoke.mockImplementation(refsImpl({ setGitFlowConfig: () => saved }));
+
+    expect(await store.saveGitFlowConfig(GIT_FLOW_CONFIG)).toBe(true);
+
+    expect(bridge.invoke).toHaveBeenCalledWith('setGitFlowConfig', {
+      repoId: REPO_A.id,
+      config: GIT_FLOW_CONFIG,
+    });
+    expect(store.gitFlowConfig()).toEqual(saved);
+    expect(store.gitFlowRunning()).toBe(false);
+  });
+
+  it('startGitFlow sends the request, reloads and publishes the result', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockImplementation(
+      refsImpl({ startGitFlow: () => ({ branch: 'feature/login', steps: ['checkout develop'], hasConflict: false }) }),
+    );
+    const before = store.statusRefreshRequested();
+
+    expect(await store.startGitFlow('FEATURE', 'login', 'develop')).toBe(true);
+
+    expect(bridge.invoke).toHaveBeenCalledWith('startGitFlow', {
+      repoId: REPO_A.id,
+      kind: 'FEATURE',
+      name: 'login',
+      base: 'develop',
+    });
+    expect(store.gitFlowResult()).toEqual({
+      branch: 'feature/login',
+      steps: ['checkout develop'],
+      hasConflict: false,
+    });
+    expect(store.statusRefreshRequested()).toBe(before + 1);
+    expect(store.gitFlowRunning()).toBe(false);
+  });
+
+  it('startGitFlow no-ops without an active repo, a blank name or while running', async () => {
+    expect(await store.startGitFlow('FEATURE', 'login', '')).toBe(false);
+
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockClear();
+
+    expect(await store.startGitFlow('FEATURE', '   ', '')).toBe(false);
+    expect(bridge.invoke).not.toHaveBeenCalledWith('startGitFlow', expect.anything());
+  });
+
+  it('finishGitFlow publishes the steps and clears a previous conflict on success', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    store.mergeConflict.set({ hasConflict: true, oid: 'old' });
+    bridge.invoke.mockImplementation(
+      refsImpl({ finishGitFlow: () => ({ branch: 'feature/login', steps: ['merge feature/login'], hasConflict: false }) }),
+    );
+
+    expect(await store.finishGitFlow('FEATURE', 'login', true)).toBe(true);
+
+    expect(bridge.invoke).toHaveBeenCalledWith('finishGitFlow', {
+      repoId: REPO_A.id,
+      kind: 'FEATURE',
+      name: 'login',
+      deleteBranch: true,
+    });
+    expect(store.gitFlowResult()?.steps).toEqual(['merge feature/login']);
+    expect(store.mergeConflict()).toBeNull();
+  });
+
+  it('finishGitFlow surfaces a hasConflict result and refreshes', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockImplementation(
+      refsImpl({ finishGitFlow: () => ({ branch: 'release/1.0', steps: ['merge release/1.0'], hasConflict: true }) }),
+    );
+    const before = store.statusRefreshRequested();
+
+    expect(await store.finishGitFlow('RELEASE', '1.0', true)).toBe(true);
+
+    expect(store.gitFlowResult()?.hasConflict).toBe(true);
+    expect(store.mergeConflict()).toEqual({ hasConflict: true, oid: '' });
+    expect(store.statusRefreshRequested()).toBe(before + 1);
+    expect(store.gitFlowError()).toBeNull();
+  });
+
+  it('finishGitFlow treats a MERGE_CONFLICT rejection as a surfaced conflict', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockImplementation(
+      refsImpl({
+        finishGitFlow: () => {
+          throw { code: 'MERGE_CONFLICT', message: 'conflict' } as AppError;
+        },
+      }),
+    );
+
+    expect(await store.finishGitFlow('HOTFIX', '1.0.1', false)).toBe(true);
+
+    expect(store.gitFlowResult()).toEqual({ branch: '', steps: [], hasConflict: true });
+    expect(store.mergeConflict()).toEqual({ hasConflict: true, oid: '' });
+    expect(store.gitFlowError()).toBeNull();
+  });
+
+  it('finishGitFlow records gitFlowError on a generic failure', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockImplementation(
+      refsImpl({
+        finishGitFlow: () => {
+          throw { code: 'GIT_FLOW_FAILED', message: 'boom' } as AppError;
+        },
+      }),
+    );
+
+    expect(await store.finishGitFlow('FEATURE', 'login', true)).toBe(false);
+    expect(store.gitFlowError()).toEqual({ code: 'GIT_FLOW_FAILED', message: 'boom', details: {} });
+    expect(store.gitFlowRunning()).toBe(false);
+  });
+
+  it('git-flow mutations map IPC_UNAVAILABLE to refsOffline', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    bridge.invoke.mockImplementation(
+      refsImpl({
+        startGitFlow: () => {
+          throw { code: 'IPC_UNAVAILABLE', message: 'no bridge' } as AppError;
+        },
+      }),
+    );
+
+    expect(await store.startGitFlow('FEATURE', 'login', '')).toBe(false);
+    expect(store.refsOffline()).toBe(true);
+    expect(store.gitFlowError()).toBeNull();
+  });
+
+  it('clearGitFlowError and dismissGitFlowResult reset the git-flow signals', () => {
+    store.gitFlowError.set({ code: 'GIT_FLOW_FAILED', message: 'boom' });
+    store.gitFlowResult.set({ branch: 'feature/x', steps: [], hasConflict: false });
+
+    store.clearGitFlowError();
+    store.dismissGitFlowResult();
+
+    expect(store.gitFlowError()).toBeNull();
+    expect(store.gitFlowResult()).toBeNull();
+  });
+
+  it('ignores a re-entrant git-flow mutation while running', async () => {
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+
+    let resolveStart: (value: unknown) => void = () => {};
+    bridge.invoke.mockImplementation((method: string) => {
+      if (method === 'startGitFlow') {
+        return new Promise((resolve) => {
+          resolveStart = resolve;
+        });
+      }
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    const first = store.startGitFlow('FEATURE', 'login', '');
+    expect(store.gitFlowRunning()).toBe(true);
+
+    expect(await store.finishGitFlow('FEATURE', 'login', true)).toBe(false);
+    expect(await store.saveGitFlowConfig(GIT_FLOW_CONFIG)).toBe(false);
+    expect(bridge.invoke.mock.calls.filter((c) => c[0] === 'finishGitFlow')).toHaveLength(0);
+    expect(bridge.invoke.mock.calls.filter((c) => c[0] === 'setGitFlowConfig')).toHaveLength(0);
+
+    resolveStart({ branch: 'feature/login', steps: [], hasConflict: false });
+    await first;
+    expect(store.gitFlowRunning()).toBe(false);
   });
 });

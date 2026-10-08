@@ -26,6 +26,9 @@
             "browser": "src/main.ts",
             "tsConfig": "tsconfig.json",
             "inlineStyleLanguage": "scss",
+            "loader": {
+              ".ttf": "file"
+            },
             "polyfills": [
               "@angular/localize/init"
             ],

@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { Repository } from '@contracts/domain';
 import { IpcBridge, type AppError } from '@core/services/ipc-bridge.service';
 import { RepoState } from '@core/services/repo-state.service';
+import { WorkspacesStore } from '@core/services/workspaces.store';
 import { ReposPage } from './repos-page';
 
 const REPO_A: Repository = {
@@ -48,6 +49,11 @@ function makeRepoState(opts: StubOptions = {}) {
   };
 }
 
+/** Minimal `WorkspacesStore` stand-in exposing the tab-open intent. */
+function makeWorkspaces() {
+  return { openTab: vi.fn() } as unknown as WorkspacesStore & { openTab: Mock };
+}
+
 function makeBridge(): IpcBridge & { invoke: Mock } {
   const invoke = vi.fn(async (method: string) => {
     switch (method) {
@@ -67,12 +73,14 @@ function makeRouter(): Router & { navigate: Mock } {
 
 async function setup(opts: StubOptions = {}) {
   const repoState = makeRepoState(opts);
+  const workspaces = makeWorkspaces();
   const bridge = makeBridge();
   const router = makeRouter();
   await TestBed.configureTestingModule({
     providers: [
       provideZonelessChangeDetection(),
       { provide: RepoState, useValue: repoState },
+      { provide: WorkspacesStore, useValue: workspaces },
       { provide: IpcBridge, useValue: bridge },
       { provide: Router, useValue: router },
     ],
@@ -82,7 +90,7 @@ async function setup(opts: StubOptions = {}) {
   fixture.detectChanges();
   await Promise.resolve();
   fixture.detectChanges();
-  return { fixture, repoState, bridge, router };
+  return { fixture, repoState, workspaces, bridge, router };
 }
 
 function query<T extends Element>(fixture: { nativeElement: unknown }, testId: string): T | null {
@@ -145,18 +153,19 @@ describe('ReposPage', () => {
     expect(query(fixture, 'repos-error')?.textContent).toContain('boom');
   });
 
-  it('opens a repository and routes to the graph page', async () => {
-    const { fixture, repoState, router } = await setup({ repos: [REPO_A, REPO_B] });
+  it('opens a repository, registers a tab and routes to the graph page', async () => {
+    const { fixture, repoState, workspaces, router } = await setup({ repos: [REPO_A, REPO_B] });
 
     queryAll<HTMLButtonElement>(fixture, 'repos-open')[0].click();
 
+    expect(workspaces.openTab).toHaveBeenCalledWith(REPO_A);
     expect(repoState.setActive).toHaveBeenCalledTimes(1);
     expect(repoState.setActive).toHaveBeenCalledWith(REPO_A);
     expect(router.navigate).toHaveBeenCalledWith(['/repo']);
   });
 
   it('adds a repository by path, activates it and routes to the graph page', async () => {
-    const { fixture, repoState, bridge, router } = await setup({ repos: [] });
+    const { fixture, repoState, workspaces, bridge, router } = await setup({ repos: [] });
 
     const input = query<HTMLInputElement>(fixture, 'repos-add-input')!;
     input.value = '/tmp/a';
@@ -169,6 +178,7 @@ describe('ReposPage', () => {
       expect(bridge.invoke).toHaveBeenCalledWith('openRepository', { fsPath: '/tmp/a' }),
     );
     await vi.waitFor(() => expect(repoState.setActive).toHaveBeenCalledWith(REPO_A));
+    expect(workspaces.openTab).toHaveBeenCalledWith(REPO_A);
     expect(router.navigate).toHaveBeenCalledWith(['/repo']);
   });
 

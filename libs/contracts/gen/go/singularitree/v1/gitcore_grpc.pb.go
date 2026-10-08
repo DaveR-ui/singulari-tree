@@ -35,13 +35,33 @@ const (
 	GitCore_GetDiff_FullMethodName          = "/singularitree.v1.GitCore/GetDiff"
 	GitCore_Stage_FullMethodName            = "/singularitree.v1.GitCore/Stage"
 	GitCore_Unstage_FullMethodName          = "/singularitree.v1.GitCore/Unstage"
+	GitCore_StageHunk_FullMethodName        = "/singularitree.v1.GitCore/StageHunk"
+	GitCore_UnstageHunk_FullMethodName      = "/singularitree.v1.GitCore/UnstageHunk"
+	GitCore_DiscardHunk_FullMethodName      = "/singularitree.v1.GitCore/DiscardHunk"
+	GitCore_Discard_FullMethodName          = "/singularitree.v1.GitCore/Discard"
+	GitCore_Reset_FullMethodName            = "/singularitree.v1.GitCore/Reset"
+	GitCore_GetCommitStats_FullMethodName   = "/singularitree.v1.GitCore/GetCommitStats"
 	GitCore_Commit_FullMethodName           = "/singularitree.v1.GitCore/Commit"
 	GitCore_Checkout_FullMethodName         = "/singularitree.v1.GitCore/Checkout"
 	GitCore_StashPush_FullMethodName        = "/singularitree.v1.GitCore/StashPush"
+	GitCore_CreateBranch_FullMethodName     = "/singularitree.v1.GitCore/CreateBranch"
+	GitCore_RenameBranch_FullMethodName     = "/singularitree.v1.GitCore/RenameBranch"
+	GitCore_DeleteBranch_FullMethodName     = "/singularitree.v1.GitCore/DeleteBranch"
+	GitCore_Merge_FullMethodName            = "/singularitree.v1.GitCore/Merge"
+	GitCore_CreateTag_FullMethodName        = "/singularitree.v1.GitCore/CreateTag"
+	GitCore_DeleteTag_FullMethodName        = "/singularitree.v1.GitCore/DeleteTag"
+	GitCore_StashApply_FullMethodName       = "/singularitree.v1.GitCore/StashApply"
+	GitCore_StashPop_FullMethodName         = "/singularitree.v1.GitCore/StashPop"
+	GitCore_StashDrop_FullMethodName        = "/singularitree.v1.GitCore/StashDrop"
 	GitCore_Fetch_FullMethodName            = "/singularitree.v1.GitCore/Fetch"
 	GitCore_Push_FullMethodName             = "/singularitree.v1.GitCore/Push"
 	GitCore_Pull_FullMethodName             = "/singularitree.v1.GitCore/Pull"
 	GitCore_Watch_FullMethodName            = "/singularitree.v1.GitCore/Watch"
+	GitCore_SearchCommits_FullMethodName    = "/singularitree.v1.GitCore/SearchCommits"
+	GitCore_GetGitFlowConfig_FullMethodName = "/singularitree.v1.GitCore/GetGitFlowConfig"
+	GitCore_SetGitFlowConfig_FullMethodName = "/singularitree.v1.GitCore/SetGitFlowConfig"
+	GitCore_StartGitFlow_FullMethodName     = "/singularitree.v1.GitCore/StartGitFlow"
+	GitCore_FinishGitFlow_FullMethodName    = "/singularitree.v1.GitCore/FinishGitFlow"
 )
 
 // GitCoreClient is the client API for GitCore service.
@@ -68,15 +88,50 @@ type GitCoreClient interface {
 	GetDiff(ctx context.Context, in *GetDiffRequest, opts ...grpc.CallOption) (*Diff, error)
 	Stage(ctx context.Context, in *StageRequest, opts ...grpc.CallOption) (*StageResponse, error)
 	Unstage(ctx context.Context, in *UnstageRequest, opts ...grpc.CallOption) (*UnstageResponse, error)
+	// Hunk/line staging and discard (ADR-0020). The renderer addresses by index
+	// only; the core re-derives the diff and constructs the patch.
+	StageHunk(ctx context.Context, in *StageHunkRequest, opts ...grpc.CallOption) (*StageHunkResponse, error)
+	UnstageHunk(ctx context.Context, in *UnstageHunkRequest, opts ...grpc.CallOption) (*UnstageHunkResponse, error)
+	DiscardHunk(ctx context.Context, in *DiscardHunkRequest, opts ...grpc.CallOption) (*DiscardHunkResponse, error)
+	// File-level discard; the only discard that accepts untracked paths.
+	Discard(ctx context.Context, in *DiscardRequest, opts ...grpc.CallOption) (*DiscardResponse, error)
+	// Reset soft/mixed/hard (ADR-0021).
+	Reset(ctx context.Context, in *ResetRequest, opts ...grpc.CallOption) (*ResetResponse, error)
+	// Commit change-size gauge (ADR-0023).
+	GetCommitStats(ctx context.Context, in *GetCommitStatsRequest, opts ...grpc.CallOption) (*GetCommitStatsResponse, error)
 	Commit(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (*Commit, error)
 	Checkout(ctx context.Context, in *CheckoutRequest, opts ...grpc.CallOption) (*CheckoutResponse, error)
 	// StashPush saves working-tree changes to a new stash entry (git stash push)
 	// so a subsequent checkout can proceed cleanly.
 	StashPush(ctx context.Context, in *StashPushRequest, opts ...grpc.CallOption) (*StashPushResponse, error)
+	// Advanced-git mutations (ADR-028): branch CRUD, merge, tag CRUD and stash
+	// apply/pop/drop. The renderer addresses by name/ref/index only; the core
+	// constructs and runs the git commands.
+	CreateBranch(ctx context.Context, in *CreateBranchRequest, opts ...grpc.CallOption) (*Branch, error)
+	RenameBranch(ctx context.Context, in *RenameBranchRequest, opts ...grpc.CallOption) (*Branch, error)
+	DeleteBranch(ctx context.Context, in *DeleteBranchRequest, opts ...grpc.CallOption) (*DeleteBranchResponse, error)
+	Merge(ctx context.Context, in *MergeRequest, opts ...grpc.CallOption) (*MergeResponse, error)
+	CreateTag(ctx context.Context, in *CreateTagRequest, opts ...grpc.CallOption) (*Tag, error)
+	DeleteTag(ctx context.Context, in *DeleteTagRequest, opts ...grpc.CallOption) (*DeleteTagResponse, error)
+	StashApply(ctx context.Context, in *StashApplyRequest, opts ...grpc.CallOption) (*StashApplyResponse, error)
+	StashPop(ctx context.Context, in *StashPopRequest, opts ...grpc.CallOption) (*StashPopResponse, error)
+	StashDrop(ctx context.Context, in *StashDropRequest, opts ...grpc.CallOption) (*StashDropResponse, error)
 	Fetch(ctx context.Context, in *FetchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Progress], error)
 	Push(ctx context.Context, in *PushRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Progress], error)
 	Pull(ctx context.Context, in *PullRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Progress], error)
 	Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[FsChangedEvent], error)
+	// Cross-repo local commit search over the SQLite metadata cache (ADR-026).
+	// The core owns the query; the backing store holds commit metadata only,
+	// never Git objects. Results are best-effort over what is cached plus a
+	// bounded per-repo backfill.
+	SearchCommits(ctx context.Context, in *SearchCommitsRequest, opts ...grpc.CallOption) (*SearchCommitsResponse, error)
+	// git-flow workflow presets (ADR-027), built on the ADR-028 operations. The
+	// core owns the branch/merge/tag sequence; the renderer addresses by
+	// kind/name only.
+	GetGitFlowConfig(ctx context.Context, in *GetGitFlowConfigRequest, opts ...grpc.CallOption) (*GitFlowConfig, error)
+	SetGitFlowConfig(ctx context.Context, in *SetGitFlowConfigRequest, opts ...grpc.CallOption) (*GitFlowConfig, error)
+	StartGitFlow(ctx context.Context, in *StartGitFlowRequest, opts ...grpc.CallOption) (*GitFlowResult, error)
+	FinishGitFlow(ctx context.Context, in *FinishGitFlowRequest, opts ...grpc.CallOption) (*GitFlowResult, error)
 }
 
 type gitCoreClient struct {
@@ -256,6 +311,66 @@ func (c *gitCoreClient) Unstage(ctx context.Context, in *UnstageRequest, opts ..
 	return out, nil
 }
 
+func (c *gitCoreClient) StageHunk(ctx context.Context, in *StageHunkRequest, opts ...grpc.CallOption) (*StageHunkResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StageHunkResponse)
+	err := c.cc.Invoke(ctx, GitCore_StageHunk_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gitCoreClient) UnstageHunk(ctx context.Context, in *UnstageHunkRequest, opts ...grpc.CallOption) (*UnstageHunkResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UnstageHunkResponse)
+	err := c.cc.Invoke(ctx, GitCore_UnstageHunk_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gitCoreClient) DiscardHunk(ctx context.Context, in *DiscardHunkRequest, opts ...grpc.CallOption) (*DiscardHunkResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DiscardHunkResponse)
+	err := c.cc.Invoke(ctx, GitCore_DiscardHunk_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gitCoreClient) Discard(ctx context.Context, in *DiscardRequest, opts ...grpc.CallOption) (*DiscardResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DiscardResponse)
+	err := c.cc.Invoke(ctx, GitCore_Discard_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gitCoreClient) Reset(ctx context.Context, in *ResetRequest, opts ...grpc.CallOption) (*ResetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResetResponse)
+	err := c.cc.Invoke(ctx, GitCore_Reset_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gitCoreClient) GetCommitStats(ctx context.Context, in *GetCommitStatsRequest, opts ...grpc.CallOption) (*GetCommitStatsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetCommitStatsResponse)
+	err := c.cc.Invoke(ctx, GitCore_GetCommitStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *gitCoreClient) Commit(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (*Commit, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Commit)
@@ -280,6 +395,96 @@ func (c *gitCoreClient) StashPush(ctx context.Context, in *StashPushRequest, opt
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(StashPushResponse)
 	err := c.cc.Invoke(ctx, GitCore_StashPush_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gitCoreClient) CreateBranch(ctx context.Context, in *CreateBranchRequest, opts ...grpc.CallOption) (*Branch, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Branch)
+	err := c.cc.Invoke(ctx, GitCore_CreateBranch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gitCoreClient) RenameBranch(ctx context.Context, in *RenameBranchRequest, opts ...grpc.CallOption) (*Branch, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Branch)
+	err := c.cc.Invoke(ctx, GitCore_RenameBranch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gitCoreClient) DeleteBranch(ctx context.Context, in *DeleteBranchRequest, opts ...grpc.CallOption) (*DeleteBranchResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteBranchResponse)
+	err := c.cc.Invoke(ctx, GitCore_DeleteBranch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gitCoreClient) Merge(ctx context.Context, in *MergeRequest, opts ...grpc.CallOption) (*MergeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MergeResponse)
+	err := c.cc.Invoke(ctx, GitCore_Merge_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gitCoreClient) CreateTag(ctx context.Context, in *CreateTagRequest, opts ...grpc.CallOption) (*Tag, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Tag)
+	err := c.cc.Invoke(ctx, GitCore_CreateTag_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gitCoreClient) DeleteTag(ctx context.Context, in *DeleteTagRequest, opts ...grpc.CallOption) (*DeleteTagResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteTagResponse)
+	err := c.cc.Invoke(ctx, GitCore_DeleteTag_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gitCoreClient) StashApply(ctx context.Context, in *StashApplyRequest, opts ...grpc.CallOption) (*StashApplyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StashApplyResponse)
+	err := c.cc.Invoke(ctx, GitCore_StashApply_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gitCoreClient) StashPop(ctx context.Context, in *StashPopRequest, opts ...grpc.CallOption) (*StashPopResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StashPopResponse)
+	err := c.cc.Invoke(ctx, GitCore_StashPop_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gitCoreClient) StashDrop(ctx context.Context, in *StashDropRequest, opts ...grpc.CallOption) (*StashDropResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StashDropResponse)
+	err := c.cc.Invoke(ctx, GitCore_StashDrop_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -362,6 +567,56 @@ func (c *gitCoreClient) Watch(ctx context.Context, in *WatchRequest, opts ...grp
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type GitCore_WatchClient = grpc.ServerStreamingClient[FsChangedEvent]
 
+func (c *gitCoreClient) SearchCommits(ctx context.Context, in *SearchCommitsRequest, opts ...grpc.CallOption) (*SearchCommitsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SearchCommitsResponse)
+	err := c.cc.Invoke(ctx, GitCore_SearchCommits_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gitCoreClient) GetGitFlowConfig(ctx context.Context, in *GetGitFlowConfigRequest, opts ...grpc.CallOption) (*GitFlowConfig, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GitFlowConfig)
+	err := c.cc.Invoke(ctx, GitCore_GetGitFlowConfig_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gitCoreClient) SetGitFlowConfig(ctx context.Context, in *SetGitFlowConfigRequest, opts ...grpc.CallOption) (*GitFlowConfig, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GitFlowConfig)
+	err := c.cc.Invoke(ctx, GitCore_SetGitFlowConfig_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gitCoreClient) StartGitFlow(ctx context.Context, in *StartGitFlowRequest, opts ...grpc.CallOption) (*GitFlowResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GitFlowResult)
+	err := c.cc.Invoke(ctx, GitCore_StartGitFlow_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gitCoreClient) FinishGitFlow(ctx context.Context, in *FinishGitFlowRequest, opts ...grpc.CallOption) (*GitFlowResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GitFlowResult)
+	err := c.cc.Invoke(ctx, GitCore_FinishGitFlow_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GitCoreServer is the server API for GitCore service.
 // All implementations must embed UnimplementedGitCoreServer
 // for forward compatibility.
@@ -386,15 +641,50 @@ type GitCoreServer interface {
 	GetDiff(context.Context, *GetDiffRequest) (*Diff, error)
 	Stage(context.Context, *StageRequest) (*StageResponse, error)
 	Unstage(context.Context, *UnstageRequest) (*UnstageResponse, error)
+	// Hunk/line staging and discard (ADR-0020). The renderer addresses by index
+	// only; the core re-derives the diff and constructs the patch.
+	StageHunk(context.Context, *StageHunkRequest) (*StageHunkResponse, error)
+	UnstageHunk(context.Context, *UnstageHunkRequest) (*UnstageHunkResponse, error)
+	DiscardHunk(context.Context, *DiscardHunkRequest) (*DiscardHunkResponse, error)
+	// File-level discard; the only discard that accepts untracked paths.
+	Discard(context.Context, *DiscardRequest) (*DiscardResponse, error)
+	// Reset soft/mixed/hard (ADR-0021).
+	Reset(context.Context, *ResetRequest) (*ResetResponse, error)
+	// Commit change-size gauge (ADR-0023).
+	GetCommitStats(context.Context, *GetCommitStatsRequest) (*GetCommitStatsResponse, error)
 	Commit(context.Context, *CommitRequest) (*Commit, error)
 	Checkout(context.Context, *CheckoutRequest) (*CheckoutResponse, error)
 	// StashPush saves working-tree changes to a new stash entry (git stash push)
 	// so a subsequent checkout can proceed cleanly.
 	StashPush(context.Context, *StashPushRequest) (*StashPushResponse, error)
+	// Advanced-git mutations (ADR-028): branch CRUD, merge, tag CRUD and stash
+	// apply/pop/drop. The renderer addresses by name/ref/index only; the core
+	// constructs and runs the git commands.
+	CreateBranch(context.Context, *CreateBranchRequest) (*Branch, error)
+	RenameBranch(context.Context, *RenameBranchRequest) (*Branch, error)
+	DeleteBranch(context.Context, *DeleteBranchRequest) (*DeleteBranchResponse, error)
+	Merge(context.Context, *MergeRequest) (*MergeResponse, error)
+	CreateTag(context.Context, *CreateTagRequest) (*Tag, error)
+	DeleteTag(context.Context, *DeleteTagRequest) (*DeleteTagResponse, error)
+	StashApply(context.Context, *StashApplyRequest) (*StashApplyResponse, error)
+	StashPop(context.Context, *StashPopRequest) (*StashPopResponse, error)
+	StashDrop(context.Context, *StashDropRequest) (*StashDropResponse, error)
 	Fetch(*FetchRequest, grpc.ServerStreamingServer[Progress]) error
 	Push(*PushRequest, grpc.ServerStreamingServer[Progress]) error
 	Pull(*PullRequest, grpc.ServerStreamingServer[Progress]) error
 	Watch(*WatchRequest, grpc.ServerStreamingServer[FsChangedEvent]) error
+	// Cross-repo local commit search over the SQLite metadata cache (ADR-026).
+	// The core owns the query; the backing store holds commit metadata only,
+	// never Git objects. Results are best-effort over what is cached plus a
+	// bounded per-repo backfill.
+	SearchCommits(context.Context, *SearchCommitsRequest) (*SearchCommitsResponse, error)
+	// git-flow workflow presets (ADR-027), built on the ADR-028 operations. The
+	// core owns the branch/merge/tag sequence; the renderer addresses by
+	// kind/name only.
+	GetGitFlowConfig(context.Context, *GetGitFlowConfigRequest) (*GitFlowConfig, error)
+	SetGitFlowConfig(context.Context, *SetGitFlowConfigRequest) (*GitFlowConfig, error)
+	StartGitFlow(context.Context, *StartGitFlowRequest) (*GitFlowResult, error)
+	FinishGitFlow(context.Context, *FinishGitFlowRequest) (*GitFlowResult, error)
 	mustEmbedUnimplementedGitCoreServer()
 }
 
@@ -453,6 +743,24 @@ func (UnimplementedGitCoreServer) Stage(context.Context, *StageRequest) (*StageR
 func (UnimplementedGitCoreServer) Unstage(context.Context, *UnstageRequest) (*UnstageResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Unstage not implemented")
 }
+func (UnimplementedGitCoreServer) StageHunk(context.Context, *StageHunkRequest) (*StageHunkResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method StageHunk not implemented")
+}
+func (UnimplementedGitCoreServer) UnstageHunk(context.Context, *UnstageHunkRequest) (*UnstageHunkResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UnstageHunk not implemented")
+}
+func (UnimplementedGitCoreServer) DiscardHunk(context.Context, *DiscardHunkRequest) (*DiscardHunkResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DiscardHunk not implemented")
+}
+func (UnimplementedGitCoreServer) Discard(context.Context, *DiscardRequest) (*DiscardResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Discard not implemented")
+}
+func (UnimplementedGitCoreServer) Reset(context.Context, *ResetRequest) (*ResetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Reset not implemented")
+}
+func (UnimplementedGitCoreServer) GetCommitStats(context.Context, *GetCommitStatsRequest) (*GetCommitStatsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetCommitStats not implemented")
+}
 func (UnimplementedGitCoreServer) Commit(context.Context, *CommitRequest) (*Commit, error) {
 	return nil, status.Error(codes.Unimplemented, "method Commit not implemented")
 }
@@ -461,6 +769,33 @@ func (UnimplementedGitCoreServer) Checkout(context.Context, *CheckoutRequest) (*
 }
 func (UnimplementedGitCoreServer) StashPush(context.Context, *StashPushRequest) (*StashPushResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method StashPush not implemented")
+}
+func (UnimplementedGitCoreServer) CreateBranch(context.Context, *CreateBranchRequest) (*Branch, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateBranch not implemented")
+}
+func (UnimplementedGitCoreServer) RenameBranch(context.Context, *RenameBranchRequest) (*Branch, error) {
+	return nil, status.Error(codes.Unimplemented, "method RenameBranch not implemented")
+}
+func (UnimplementedGitCoreServer) DeleteBranch(context.Context, *DeleteBranchRequest) (*DeleteBranchResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteBranch not implemented")
+}
+func (UnimplementedGitCoreServer) Merge(context.Context, *MergeRequest) (*MergeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Merge not implemented")
+}
+func (UnimplementedGitCoreServer) CreateTag(context.Context, *CreateTagRequest) (*Tag, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateTag not implemented")
+}
+func (UnimplementedGitCoreServer) DeleteTag(context.Context, *DeleteTagRequest) (*DeleteTagResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteTag not implemented")
+}
+func (UnimplementedGitCoreServer) StashApply(context.Context, *StashApplyRequest) (*StashApplyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method StashApply not implemented")
+}
+func (UnimplementedGitCoreServer) StashPop(context.Context, *StashPopRequest) (*StashPopResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method StashPop not implemented")
+}
+func (UnimplementedGitCoreServer) StashDrop(context.Context, *StashDropRequest) (*StashDropResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method StashDrop not implemented")
 }
 func (UnimplementedGitCoreServer) Fetch(*FetchRequest, grpc.ServerStreamingServer[Progress]) error {
 	return status.Error(codes.Unimplemented, "method Fetch not implemented")
@@ -473,6 +808,21 @@ func (UnimplementedGitCoreServer) Pull(*PullRequest, grpc.ServerStreamingServer[
 }
 func (UnimplementedGitCoreServer) Watch(*WatchRequest, grpc.ServerStreamingServer[FsChangedEvent]) error {
 	return status.Error(codes.Unimplemented, "method Watch not implemented")
+}
+func (UnimplementedGitCoreServer) SearchCommits(context.Context, *SearchCommitsRequest) (*SearchCommitsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SearchCommits not implemented")
+}
+func (UnimplementedGitCoreServer) GetGitFlowConfig(context.Context, *GetGitFlowConfigRequest) (*GitFlowConfig, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetGitFlowConfig not implemented")
+}
+func (UnimplementedGitCoreServer) SetGitFlowConfig(context.Context, *SetGitFlowConfigRequest) (*GitFlowConfig, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetGitFlowConfig not implemented")
+}
+func (UnimplementedGitCoreServer) StartGitFlow(context.Context, *StartGitFlowRequest) (*GitFlowResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method StartGitFlow not implemented")
+}
+func (UnimplementedGitCoreServer) FinishGitFlow(context.Context, *FinishGitFlowRequest) (*GitFlowResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method FinishGitFlow not implemented")
 }
 func (UnimplementedGitCoreServer) mustEmbedUnimplementedGitCoreServer() {}
 func (UnimplementedGitCoreServer) testEmbeddedByValue()                 {}
@@ -776,6 +1126,114 @@ func _GitCore_Unstage_Handler(srv interface{}, ctx context.Context, dec func(int
 	return interceptor(ctx, in, info, handler)
 }
 
+func _GitCore_StageHunk_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StageHunkRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).StageHunk(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_StageHunk_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).StageHunk(ctx, req.(*StageHunkRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GitCore_UnstageHunk_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UnstageHunkRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).UnstageHunk(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_UnstageHunk_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).UnstageHunk(ctx, req.(*UnstageHunkRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GitCore_DiscardHunk_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DiscardHunkRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).DiscardHunk(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_DiscardHunk_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).DiscardHunk(ctx, req.(*DiscardHunkRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GitCore_Discard_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DiscardRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).Discard(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_Discard_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).Discard(ctx, req.(*DiscardRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GitCore_Reset_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).Reset(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_Reset_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).Reset(ctx, req.(*ResetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GitCore_GetCommitStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetCommitStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).GetCommitStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_GetCommitStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).GetCommitStats(ctx, req.(*GetCommitStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _GitCore_Commit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CommitRequest)
 	if err := dec(in); err != nil {
@@ -830,6 +1288,168 @@ func _GitCore_StashPush_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _GitCore_CreateBranch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateBranchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).CreateBranch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_CreateBranch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).CreateBranch(ctx, req.(*CreateBranchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GitCore_RenameBranch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RenameBranchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).RenameBranch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_RenameBranch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).RenameBranch(ctx, req.(*RenameBranchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GitCore_DeleteBranch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteBranchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).DeleteBranch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_DeleteBranch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).DeleteBranch(ctx, req.(*DeleteBranchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GitCore_Merge_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MergeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).Merge(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_Merge_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).Merge(ctx, req.(*MergeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GitCore_CreateTag_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateTagRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).CreateTag(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_CreateTag_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).CreateTag(ctx, req.(*CreateTagRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GitCore_DeleteTag_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteTagRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).DeleteTag(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_DeleteTag_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).DeleteTag(ctx, req.(*DeleteTagRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GitCore_StashApply_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StashApplyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).StashApply(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_StashApply_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).StashApply(ctx, req.(*StashApplyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GitCore_StashPop_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StashPopRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).StashPop(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_StashPop_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).StashPop(ctx, req.(*StashPopRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GitCore_StashDrop_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StashDropRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).StashDrop(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_StashDrop_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).StashDrop(ctx, req.(*StashDropRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _GitCore_Fetch_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(FetchRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -873,6 +1493,96 @@ func _GitCore_Watch_Handler(srv interface{}, stream grpc.ServerStream) error {
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type GitCore_WatchServer = grpc.ServerStreamingServer[FsChangedEvent]
+
+func _GitCore_SearchCommits_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SearchCommitsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).SearchCommits(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_SearchCommits_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).SearchCommits(ctx, req.(*SearchCommitsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GitCore_GetGitFlowConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetGitFlowConfigRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).GetGitFlowConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_GetGitFlowConfig_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).GetGitFlowConfig(ctx, req.(*GetGitFlowConfigRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GitCore_SetGitFlowConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetGitFlowConfigRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).SetGitFlowConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_SetGitFlowConfig_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).SetGitFlowConfig(ctx, req.(*SetGitFlowConfigRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GitCore_StartGitFlow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StartGitFlowRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).StartGitFlow(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_StartGitFlow_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).StartGitFlow(ctx, req.(*StartGitFlowRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GitCore_FinishGitFlow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FinishGitFlowRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).FinishGitFlow(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_FinishGitFlow_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).FinishGitFlow(ctx, req.(*FinishGitFlowRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
 
 // GitCore_ServiceDesc is the grpc.ServiceDesc for GitCore service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -942,6 +1652,30 @@ var GitCore_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _GitCore_Unstage_Handler,
 		},
 		{
+			MethodName: "StageHunk",
+			Handler:    _GitCore_StageHunk_Handler,
+		},
+		{
+			MethodName: "UnstageHunk",
+			Handler:    _GitCore_UnstageHunk_Handler,
+		},
+		{
+			MethodName: "DiscardHunk",
+			Handler:    _GitCore_DiscardHunk_Handler,
+		},
+		{
+			MethodName: "Discard",
+			Handler:    _GitCore_Discard_Handler,
+		},
+		{
+			MethodName: "Reset",
+			Handler:    _GitCore_Reset_Handler,
+		},
+		{
+			MethodName: "GetCommitStats",
+			Handler:    _GitCore_GetCommitStats_Handler,
+		},
+		{
 			MethodName: "Commit",
 			Handler:    _GitCore_Commit_Handler,
 		},
@@ -952,6 +1686,62 @@ var GitCore_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "StashPush",
 			Handler:    _GitCore_StashPush_Handler,
+		},
+		{
+			MethodName: "CreateBranch",
+			Handler:    _GitCore_CreateBranch_Handler,
+		},
+		{
+			MethodName: "RenameBranch",
+			Handler:    _GitCore_RenameBranch_Handler,
+		},
+		{
+			MethodName: "DeleteBranch",
+			Handler:    _GitCore_DeleteBranch_Handler,
+		},
+		{
+			MethodName: "Merge",
+			Handler:    _GitCore_Merge_Handler,
+		},
+		{
+			MethodName: "CreateTag",
+			Handler:    _GitCore_CreateTag_Handler,
+		},
+		{
+			MethodName: "DeleteTag",
+			Handler:    _GitCore_DeleteTag_Handler,
+		},
+		{
+			MethodName: "StashApply",
+			Handler:    _GitCore_StashApply_Handler,
+		},
+		{
+			MethodName: "StashPop",
+			Handler:    _GitCore_StashPop_Handler,
+		},
+		{
+			MethodName: "StashDrop",
+			Handler:    _GitCore_StashDrop_Handler,
+		},
+		{
+			MethodName: "SearchCommits",
+			Handler:    _GitCore_SearchCommits_Handler,
+		},
+		{
+			MethodName: "GetGitFlowConfig",
+			Handler:    _GitCore_GetGitFlowConfig_Handler,
+		},
+		{
+			MethodName: "SetGitFlowConfig",
+			Handler:    _GitCore_SetGitFlowConfig_Handler,
+		},
+		{
+			MethodName: "StartGitFlow",
+			Handler:    _GitCore_StartGitFlow_Handler,
+		},
+		{
+			MethodName: "FinishGitFlow",
+			Handler:    _GitCore_FinishGitFlow_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

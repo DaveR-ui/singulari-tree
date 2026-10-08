@@ -5,9 +5,54 @@
 // source: gitcore.proto
 
 /* eslint-disable */
-import type { Branch, Commit, FileStatus, Lane, Remote, Repository, Signature, Stash, Tag, Worktree } from "./domain";
+import type {
+  Branch,
+  Commit,
+  CommitStats,
+  FileStatus,
+  Lane,
+  Remote,
+  Repository,
+  Signature,
+  Stash,
+  Tag,
+  Worktree,
+} from "./domain";
 
 export const protobufPackage = "singularitree.v1";
+
+/**
+ * Advanced-git mutations (ADR-028). All field numbers are append-only; the
+ * renderer addresses by name/ref/index and the core constructs the git command.
+ */
+export enum MergeStrategy {
+  MERGE_STRATEGY_UNSPECIFIED = 0,
+  MERGE = 1,
+  NO_FF = 2,
+  FF_ONLY = 3,
+  SQUASH = 4,
+  UNRECOGNIZED = -1,
+}
+
+export enum ResetMode {
+  RESET_MODE_UNSPECIFIED = 0,
+  SOFT = 1,
+  MIXED = 2,
+  HARD = 3,
+  UNRECOGNIZED = -1,
+}
+
+/**
+ * git-flow presets (ADR-027). Configuration is SQLite metadata (never Git
+ * data); GetGitFlowConfig on an unset repository returns the defaults below.
+ */
+export enum GitFlowKind {
+  GIT_FLOW_KIND_UNSPECIFIED = 0,
+  FEATURE = 1,
+  RELEASE = 2,
+  HOTFIX = 3,
+  UNRECOGNIZED = -1,
+}
 
 /** Health */
 export interface PingRequest {
@@ -106,6 +151,83 @@ export interface GetWorktreesResponse {
   worktrees: Worktree[];
 }
 
+export interface CreateBranchRequest {
+  repoId: string;
+  name: string;
+  startPoint: string;
+  checkout: boolean;
+}
+
+export interface RenameBranchRequest {
+  repoId: string;
+  oldName: string;
+  newName: string;
+}
+
+export interface DeleteBranchRequest {
+  repoId: string;
+  name: string;
+  force: boolean;
+}
+
+export interface DeleteBranchResponse {
+}
+
+export interface MergeRequest {
+  repoId: string;
+  ref: string;
+  strategy: MergeStrategy;
+  noCommit: boolean;
+  message: string;
+}
+
+export interface MergeResponse {
+  hasConflict: boolean;
+  oid: string;
+}
+
+export interface CreateTagRequest {
+  repoId: string;
+  name: string;
+  target: string;
+  annotated: boolean;
+  message: string;
+  force: boolean;
+}
+
+export interface DeleteTagRequest {
+  repoId: string;
+  name: string;
+}
+
+export interface DeleteTagResponse {
+}
+
+export interface StashApplyRequest {
+  repoId: string;
+  index: number;
+  restoreIndex: boolean;
+}
+
+export interface StashApplyResponse {
+}
+
+export interface StashPopRequest {
+  repoId: string;
+  index: number;
+}
+
+export interface StashPopResponse {
+}
+
+export interface StashDropRequest {
+  repoId: string;
+  index: number;
+}
+
+export interface StashDropResponse {
+}
+
 /** Status & diff */
 export interface GetStatusRequest {
   repoId: string;
@@ -121,6 +243,13 @@ export interface GetDiffRequest {
   from: string;
   /** Oid hex */
   to: string;
+  /**
+   * Per-file selector (ADR-0020). Empty means "all changed files"; a non-empty
+   * value restricts the diff to that path.
+   */
+  path: string;
+  /** HEAD->index instead of HEAD->worktree (maps to `git diff --cached`). */
+  staged: boolean;
 }
 
 /** Stage */
@@ -138,6 +267,89 @@ export interface UnstageRequest {
 }
 
 export interface UnstageResponse {
+}
+
+/**
+ * Hunk/line staging and discard (ADR-0020).
+ *
+ * Addressing model: the renderer sends indices only; the core re-derives the
+ * diff and constructs the minimal patch (SSOT in core). `hunk_index` is the
+ * 0-based index into the addressed file's hunks. `line_indices` selects
+ * individual changed lines by their 0-based index into the addressed hunk's
+ * line list; an empty list means "the whole hunk". Untracked files are
+ * file-level only — `git diff` never shows them, so hunk/line operations do not
+ * apply to them.
+ */
+export interface StageHunkRequest {
+  repoId: string;
+  path: string;
+  hunkIndex: number;
+  /** empty = whole hunk */
+  lineIndices: number[];
+}
+
+export interface StageHunkResponse {
+}
+
+export interface UnstageHunkRequest {
+  repoId: string;
+  path: string;
+  hunkIndex: number;
+  /** empty = whole hunk */
+  lineIndices: number[];
+}
+
+export interface UnstageHunkResponse {
+}
+
+export interface DiscardHunkRequest {
+  repoId: string;
+  path: string;
+  hunkIndex: number;
+  /** empty = whole hunk */
+  lineIndices: number[];
+}
+
+export interface DiscardHunkResponse {
+}
+
+/**
+ * File-level discard (ADR-0020). The ADR left the exact shape at decision level;
+ * this minimal `{repo_id, paths}` form is chosen. Tracked paths are restored
+ * from HEAD/index; untracked paths are removed. Hunk-level discard never
+ * accepts untracked paths, so this is their only discard path.
+ */
+export interface DiscardRequest {
+  repoId: string;
+  paths: string[];
+}
+
+export interface DiscardResponse {
+}
+
+/**
+ * Reset soft/mixed/hard (ADR-0021). `to` is an oid hex or a ref, resolved to an
+ * oid in core. The mode is mandatory: RESET_MODE_UNSPECIFIED is rejected.
+ * HARD is destructive; the renderer must confirm before calling.
+ */
+export interface ResetRequest {
+  repoId: string;
+  /** oid hex or ref */
+  to: string;
+  mode: ResetMode;
+}
+
+export interface ResetResponse {
+}
+
+/** Commit change-size gauge (ADR-0023). Counts only; cached in SQLite. */
+export interface GetCommitStatsRequest {
+  repoId: string;
+  oids: string[];
+}
+
+export interface GetCommitStatsResponse {
+  stats: CommitStats[];
 }
 
 /** Commit */
@@ -247,4 +459,84 @@ export interface WatchRequest {
 export interface FsChangedEvent {
   repoId: string;
   paths: string[];
+}
+
+/**
+ * Cross-repo local commit search (ADR-026). `query` matches message, author
+ * name/email and oid substring, case-insensitively; `repo_ids` scopes the
+ * search and an empty list matches no repositories.
+ */
+export interface SearchCommitsRequest {
+  query: string;
+  repoIds: string[];
+  limit: number;
+}
+
+/** One search hit. Metadata only (never Git objects/blobs). */
+export interface CommitSearchHit {
+  repoId: string;
+  oid: string;
+  message: string;
+  authorName: string;
+  authorEmail: string;
+  /** unix seconds (converted from the stored RFC3339) */
+  committedAt: number;
+}
+
+export interface SearchCommitsResponse {
+  hits: CommitSearchHit[];
+}
+
+export interface GitFlowConfig {
+  /** default "main" */
+  mainBranch: string;
+  /** default "develop" */
+  developBranch: string;
+  /** default "feature/" */
+  featurePrefix: string;
+  /** default "release/" */
+  releasePrefix: string;
+  /** default "hotfix/" */
+  hotfixPrefix: string;
+  /** default "v" */
+  versionTagPrefix: string;
+}
+
+export interface GetGitFlowConfigRequest {
+  repoId: string;
+}
+
+export interface SetGitFlowConfigRequest {
+  repoId: string;
+  config: GitFlowConfig | undefined;
+}
+
+export interface StartGitFlowRequest {
+  repoId: string;
+  kind: GitFlowKind;
+  name: string;
+  /**
+   * Optional override for the branch start point; empty uses the kind's base
+   * (develop for feature/release, main for hotfix).
+   */
+  base: string;
+}
+
+export interface FinishGitFlowRequest {
+  repoId: string;
+  kind: GitFlowKind;
+  name: string;
+  deleteBranch: boolean;
+}
+
+/**
+ * Result of a git-flow start/finish. `branch` is the workflow branch that was
+ * created or finished; `steps` lists the operations performed, in order; on a
+ * merge conflict the sequence stops, the tree is left conflicted and
+ * `has_conflict` is true (the MERGE_CONFLICT code travels in the trailer).
+ */
+export interface GitFlowResult {
+  branch: string;
+  steps: string[];
+  hasConflict: boolean;
 }

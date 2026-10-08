@@ -7,6 +7,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 
+	singularitreev1 "github.com/SingulariTree/go-core/gen/go/singularitree/v1"
 	"github.com/SingulariTree/go-core/internal/domain"
 )
 
@@ -184,5 +185,169 @@ func TestStashToProtoNoOptional(t *testing.T) {
 func TestGRPCCodeForStashFailed(t *testing.T) {
 	if got := grpcCodeFor(domain.ErrCodeStashFailed); got != codes.InvalidArgument {
 		t.Errorf("grpcCodeFor(%s) = %v, want InvalidArgument", domain.ErrCodeStashFailed, got)
+	}
+}
+
+func TestFileStatusToProto(t *testing.T) {
+	got := fileStatusToProto(domain.FileStatus{
+		Path:         "src/main.go",
+		Staged:       "M",
+		Unstaged:     "M",
+		IsStaged:     true,
+		IsConflicted: true,
+	})
+	if got.GetPath() != "src/main.go" || got.GetStaged() != "M" || got.GetUnstaged() != "M" {
+		t.Errorf("fileStatusToProto = %+v, want path/staged/unstaged carried through", got)
+	}
+	if !got.GetIsStaged() || !got.GetIsConflicted() {
+		t.Errorf("flags = staged:%v conflicted:%v, want true/true", got.GetIsStaged(), got.GetIsConflicted())
+	}
+}
+
+func TestDiffLineToProto(t *testing.T) {
+	got := diffLineToProto(domain.DiffLine{Kind: "added", Text: "+hello", NoNewline: true})
+	if got.GetKind() != "added" || got.GetText() != "+hello" || !got.GetNoNewline() {
+		t.Errorf("diffLineToProto = %+v, want {added +hello true}", got)
+	}
+}
+
+func TestHunkToProto(t *testing.T) {
+	got := hunkToProto(domain.Hunk{
+		FromStart: 1,
+		FromLines: 3,
+		ToStart:   1,
+		ToLines:   4,
+		Lines: []domain.DiffLine{
+			{Kind: "context", Text: " same"},
+			{Kind: "removed", Text: "-old"},
+			{Kind: "added", Text: "+new"},
+		},
+	})
+	if got.GetFromStart() != 1 || got.GetFromLines() != 3 || got.GetToStart() != 1 || got.GetToLines() != 4 {
+		t.Errorf("hunk header = {%d,%d,%d,%d}, want {1,3,1,4}",
+			got.GetFromStart(), got.GetFromLines(), got.GetToStart(), got.GetToLines())
+	}
+	if len(got.GetLines()) != 3 {
+		t.Fatalf("lines len = %d, want 3", len(got.GetLines()))
+	}
+	if got.GetLines()[1].GetKind() != "removed" || got.GetLines()[2].GetKind() != "added" {
+		t.Errorf("line kinds = %q/%q, want removed/added",
+			got.GetLines()[1].GetKind(), got.GetLines()[2].GetKind())
+	}
+}
+
+func TestHunkToProtoEmptyLinesNonNil(t *testing.T) {
+	got := hunkToProto(domain.Hunk{FromStart: 0, FromLines: 0, ToStart: 0, ToLines: 0})
+	if got.GetLines() == nil {
+		t.Error("empty hunk lines should be non-nil, got nil")
+	}
+}
+
+func TestDiffToProtoMapsMetaAndOids(t *testing.T) {
+	from := strings.Repeat("a", 40)
+	to := strings.Repeat("b", 40)
+	got := diffToProto(&domain.Diff{
+		From:               domain.Oid{Hex: from, Kind: "SHA1"},
+		To:                 domain.Oid{Hex: to, Kind: "SHA1"},
+		Additions:          5,
+		Deletions:          2,
+		IsBinary:           true,
+		HasConflictMarkers: true,
+		Hunks: []domain.Hunk{
+			{FromStart: 1, FromLines: 1, ToStart: 1, ToLines: 1,
+				Lines: []domain.DiffLine{{Kind: "added", Text: "+x"}}},
+		},
+	})
+	if got.GetFrom().GetHex() != from || got.GetTo().GetHex() != to {
+		t.Errorf("oids = %q/%q, want %q/%q", got.GetFrom().GetHex(), got.GetTo().GetHex(), from, to)
+	}
+	if got.GetFrom().GetKind() != "SHA1" {
+		t.Errorf("from kind = %q, want SHA1", got.GetFrom().GetKind())
+	}
+	if got.GetAdditions() != 5 || got.GetDeletions() != 2 {
+		t.Errorf("counts = +%d/-%d, want +5/-2", got.GetAdditions(), got.GetDeletions())
+	}
+	if !got.GetIsBinary() || !got.GetHasConflictMarkers() {
+		t.Errorf("flags = binary:%v conflict:%v, want true/true", got.GetIsBinary(), got.GetHasConflictMarkers())
+	}
+	if len(got.GetHunks()) != 1 || len(got.GetHunks()[0].GetLines()) != 1 {
+		t.Fatalf("hunks = %+v, want one hunk with one line", got.GetHunks())
+	}
+}
+
+func TestDiffToProtoOmitsZeroOids(t *testing.T) {
+	got := diffToProto(&domain.Diff{})
+	if got.GetFrom() != nil || got.GetTo() != nil {
+		t.Errorf("zero oids should stay unset, got from=%+v to=%+v", got.GetFrom(), got.GetTo())
+	}
+	if got.GetHunks() == nil {
+		t.Error("hunks should be non-nil, got nil")
+	}
+	if diffToProto(nil) != nil {
+		t.Error("diffToProto(nil) = non-nil, want nil")
+	}
+}
+
+// TestDiffToProtoMapsFilesAndTruncated proves the per-file sections and the
+// truncated flag survive the wire mapping (ADR-0020).
+func TestDiffToProtoMapsFilesAndTruncated(t *testing.T) {
+	got := diffToProto(&domain.Diff{
+		Truncated: true,
+		Files: []domain.FileDiff{{
+			Path:               "a.txt",
+			OldPath:            "old.txt",
+			Status:             "R",
+			Additions:          1,
+			Deletions:          2,
+			IsBinary:           true,
+			HasConflictMarkers: true,
+			Hunks: []domain.Hunk{{FromStart: 1, FromLines: 1, ToStart: 1, ToLines: 1,
+				Lines: []domain.DiffLine{{Kind: "added", Text: "x"}}}},
+		}},
+	})
+	if !got.GetTruncated() {
+		t.Error("Truncated = false, want true")
+	}
+	files := got.GetFiles()
+	if len(files) != 1 {
+		t.Fatalf("files = %+v, want 1", files)
+	}
+	f := files[0]
+	if f.GetPath() != "a.txt" || f.GetOldPath() != "old.txt" || f.GetStatus() != "R" {
+		t.Errorf("file path/old/status = %q/%q/%q, want a.txt/old.txt/R", f.GetPath(), f.GetOldPath(), f.GetStatus())
+	}
+	if f.GetAdditions() != 1 || f.GetDeletions() != 2 || !f.GetIsBinary() || !f.GetHasConflictMarkers() {
+		t.Errorf("file counts/flags = %+v", f)
+	}
+	if len(f.GetHunks()) != 1 || len(f.GetHunks()[0].GetLines()) != 1 {
+		t.Errorf("file hunks = %+v, want one hunk with one line", f.GetHunks())
+	}
+}
+
+// TestCommitStatsToProto proves the change-size gauge maps to the wire form.
+func TestCommitStatsToProto(t *testing.T) {
+	got := commitStatsToProto(domain.CommitStats{Oid: "abc", Additions: 1, Deletions: 2, FilesChanged: 3})
+	if got.GetOid() != "abc" || got.GetAdditions() != 1 || got.GetDeletions() != 2 || got.GetFilesChanged() != 3 {
+		t.Errorf("commitStatsToProto = %+v", got)
+	}
+}
+
+// TestResetModeToDomain proves the reset mode mapping rejects unspecified.
+func TestResetModeToDomain(t *testing.T) {
+	cases := []struct {
+		in   singularitreev1.ResetMode
+		want domain.ResetMode
+		ok   bool
+	}{
+		{singularitreev1.ResetMode_SOFT, domain.ResetModeSoft, true},
+		{singularitreev1.ResetMode_MIXED, domain.ResetModeMixed, true},
+		{singularitreev1.ResetMode_HARD, domain.ResetModeHard, true},
+		{singularitreev1.ResetMode_RESET_MODE_UNSPECIFIED, domain.ResetModeUnspecified, false},
+	}
+	for _, tc := range cases {
+		got, ok := resetModeToDomain(tc.in)
+		if ok != tc.ok || got != tc.want {
+			t.Errorf("resetModeToDomain(%v) = (%v, %v), want (%v, %v)", tc.in, got, ok, tc.want, tc.ok)
+		}
 	}
 }

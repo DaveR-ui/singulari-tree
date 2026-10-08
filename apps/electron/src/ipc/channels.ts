@@ -12,12 +12,35 @@ export const CHANNELS = {
   getDiff: 'git:getDiff',
   stage: 'git:stage',
   unstage: 'git:unstage',
+  stageHunk: 'git:stageHunk',
+  unstageHunk: 'git:unstageHunk',
+  discardHunk: 'git:discardHunk',
+  discard: 'git:discard',
+  reset: 'git:reset',
+  getCommitStats: 'git:getCommitStats',
   commit: 'git:commit',
   checkout: 'git:checkout',
   stashPush: 'git:stashPush',
+  // Advanced-git mutations (ADR-028): branch CRUD, merge, tag CRUD, stash ops.
+  createBranch: 'git:createBranch',
+  renameBranch: 'git:renameBranch',
+  deleteBranch: 'git:deleteBranch',
+  merge: 'git:merge',
+  createTag: 'git:createTag',
+  deleteTag: 'git:deleteTag',
+  stashApply: 'git:stashApply',
+  stashPop: 'git:stashPop',
+  stashDrop: 'git:stashDrop',
   fetch: 'git:fetch',
   pull: 'git:pull',
   push: 'git:push',
+  watch: 'git:watch',
+  // Cross-repo commit search (ADR-026) + git-flow presets (ADR-027).
+  searchCommits: 'git:searchCommits',
+  getGitFlowConfig: 'git:getGitFlowConfig',
+  setGitFlowConfig: 'git:setGitFlowConfig',
+  startGitFlow: 'git:startGitFlow',
+  finishGitFlow: 'git:finishGitFlow',
   openRepository: 'git:openRepository',
   listRepositories: 'git:listRepositories',
   removeRepository: 'git:removeRepository',
@@ -58,6 +81,17 @@ export const MENU_CHANNELS = {
 export type MenuChannelName = (typeof MENU_CHANNELS)[keyof typeof MENU_CHANNELS];
 
 /**
+ * Renderer → main readiness ack for deep-link delivery (ADR-025).
+ *
+ * A one-way, non-RPC signal (never an `ipcMain.handle` target), so it stays
+ * outside `CHANNELS`/`CHANNEL_TO_RPC` and does not alter the frozen 43-channel
+ * RPC surface. The renderer sends it once its Angular bootstrap has subscribed
+ * to the `deeplink:open` event, letting the shell drain its queued links in
+ * order without racing `did-finish-load`.
+ */
+export const DEEP_LINK_READY_CHANNEL = 'deeplink:ready';
+
+/**
  * IPC channel → owning service RPC method (`git:*` → `singularitree.v1.GitCore`,
  * `auth:*` → `singularitree.v1.Auth`; see `AUTH_CHANNELS`).
  *
@@ -75,12 +109,33 @@ export const CHANNEL_TO_RPC = {
   [CHANNELS.getDiff]: 'GetDiff',
   [CHANNELS.stage]: 'Stage',
   [CHANNELS.unstage]: 'Unstage',
+  [CHANNELS.stageHunk]: 'StageHunk',
+  [CHANNELS.unstageHunk]: 'UnstageHunk',
+  [CHANNELS.discardHunk]: 'DiscardHunk',
+  [CHANNELS.discard]: 'Discard',
+  [CHANNELS.reset]: 'Reset',
+  [CHANNELS.getCommitStats]: 'GetCommitStats',
   [CHANNELS.commit]: 'Commit',
   [CHANNELS.checkout]: 'Checkout',
   [CHANNELS.stashPush]: 'StashPush',
+  [CHANNELS.createBranch]: 'CreateBranch',
+  [CHANNELS.renameBranch]: 'RenameBranch',
+  [CHANNELS.deleteBranch]: 'DeleteBranch',
+  [CHANNELS.merge]: 'Merge',
+  [CHANNELS.createTag]: 'CreateTag',
+  [CHANNELS.deleteTag]: 'DeleteTag',
+  [CHANNELS.stashApply]: 'StashApply',
+  [CHANNELS.stashPop]: 'StashPop',
+  [CHANNELS.stashDrop]: 'StashDrop',
   [CHANNELS.fetch]: 'Fetch',
   [CHANNELS.pull]: 'Pull',
   [CHANNELS.push]: 'Push',
+  [CHANNELS.watch]: 'Watch',
+  [CHANNELS.searchCommits]: 'SearchCommits',
+  [CHANNELS.getGitFlowConfig]: 'GetGitFlowConfig',
+  [CHANNELS.setGitFlowConfig]: 'SetGitFlowConfig',
+  [CHANNELS.startGitFlow]: 'StartGitFlow',
+  [CHANNELS.finishGitFlow]: 'FinishGitFlow',
   [CHANNELS.openRepository]: 'OpenRepository',
   [CHANNELS.listRepositories]: 'ListRepositories',
   [CHANNELS.removeRepository]: 'RemoveRepository',
@@ -113,10 +168,19 @@ export const AUTH_CHANNELS: ReadonlySet<string> = new Set<string>([
  * the supervisor forwards each `Progress` message to the renderer over the
  * `git:progress` event, and the invoke promise settles at stream EOF / error.
  *
- * `StreamCommits` and `Watch` are still not wired over IPC (see
- * `UNIMPLEMENTED_STREAMING_RPCS`); the unary callback path cannot drive them
- * because its callback never settles, so `invoke()` rejects them promptly
- * rather than hanging forever.
+ * `Watch` is a server-stream too, but a **background, never-ending** one. It is
+ * started by the supervisor via `GoCoreClient.openStream` on the `git:watch`
+ * channel and each `FsChangedEvent` is pushed to the renderer over the
+ * `fs:changed` event; the `git:watch` invoke resolves with an ack immediately
+ * and MUST NOT await the stream (see `Supervisor.startWatch`). A new
+ * `git:watch` replaces any previous stream (replace-any-existing), and the
+ * previous stream is also cancelled by `Supervisor.stop()` (and on child loss);
+ * closing the gRPC client cancels its streams too.
+ *
+ * `StreamCommits` is still not wired over IPC (see
+ * `UNIMPLEMENTED_STREAMING_RPCS`); the unary callback path cannot drive it
+ * because its callback never settles, so `invoke()` rejects it promptly rather
+ * than hanging forever.
  */
 export const STREAMING_RPCS = new Set<string>([
   'StreamCommits',
@@ -130,10 +194,7 @@ export const STREAMING_RPCS = new Set<string>([
  * Server-streaming RPCs with no IPC wiring yet. `GoCoreClient.invoke` rejects
  * these with `NOT_IMPLEMENTED` instead of hanging on the unary callback path.
  */
-export const UNIMPLEMENTED_STREAMING_RPCS = new Set<string>([
-  'StreamCommits',
-  'Watch',
-]);
+export const UNIMPLEMENTED_STREAMING_RPCS = new Set<string>(['StreamCommits']);
 
 /** True when `rpc` is a server-streaming GitCore method. */
 export function isStreamingRpc(rpc: string): boolean {

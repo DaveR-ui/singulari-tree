@@ -1,19 +1,32 @@
 # SingulariTree — Tag index
 
 <!-- BEGIN GENERATED: tags -->
-<!-- snapshot: 2026-10-05 -->
+<!-- snapshot: 2026-10-07 -->
 ## Generated tag index
 
-- **adr** — adr-0014-docs-corpus-layout, adr-0015-docs-validator-generated-index, adr-0016-lane-state-and-graph-dod, adr-0017-docs-language-en, adr-0018-renderer-i18n-locale-switch, adr-0019-adr-translation-authorization, adr-index
+- **adr** — adr-0014-docs-corpus-layout, adr-0015-docs-validator-generated-index, adr-0016-lane-state-and-graph-dod, adr-0017-docs-language-en, adr-0018-renderer-i18n-locale-switch, adr-0019-adr-translation-authorization, adr-0020-diff-per-file-and-hunk-staging, adr-0021-reset-modes, adr-0022-graph-context-menu-shell, adr-0023-commit-change-size-gauge, adr-024-multi-repo-workspaces, adr-025-deep-links-and-clipboard-clone, adr-026-cross-repo-commit-search, adr-027-git-flow-presets, adr-028-advanced-git-rpcs, adr-index
 - **bootstrap** — bootstrap-protocol
+- **branch** — adr-028-advanced-git-rpcs
+- **cache** — adr-0023-commit-change-size-gauge, adr-026-cross-repo-commit-search
+- **clipboard** — adr-025-deep-links-and-clipboard-clone
+- **context-menu** — adr-0022-graph-context-menu-shell
 - **contract** — documentation-system, new-note-protocol
+- **contracts** — adr-0020-diff-per-file-and-hunk-staging, adr-028-advanced-git-rpcs
+- **core** — adr-0021-reset-modes, adr-0023-commit-change-size-gauge, adr-026-cross-repo-commit-search, adr-027-git-flow-presets, adr-028-advanced-git-rpcs
 - **debt** — accepted-debt
+- **deep-link** — adr-025-deep-links-and-clipboard-clone
+- **desktop-shell** — adr-025-deep-links-and-clipboard-clone
+- **destructive** — adr-0021-reset-modes
+- **diff** — adr-0020-diff-per-file-and-hunk-staging
 - **documentation** — accepted-debt, adr-0014-docs-corpus-layout, adr-0015-docs-validator-generated-index, adr-0017-docs-language-en, adr-0019-adr-translation-authorization, documentation-system
 - **dod** — adr-0016-lane-state-and-graph-dod
 - **entry-point** — project
+- **feature-gap** — feature-gap-analysis
 - **generality** — contracts-slice, core-slice, desktop-shell-slice, docs-slice, renderer-slice, tooling-slice
 - **generated** — adr-0015-docs-validator-generated-index
-- **graph** — adr-0016-lane-state-and-graph-dod
+- **git-client** — feature-gap-analysis
+- **git-flow** — adr-027-git-flow-presets
+- **graph** — adr-0016-lane-state-and-graph-dod, adr-0022-graph-context-menu-shell
 - **hub** — adr-index, slices-index
 - **i18n** — adr-0018-renderer-i18n-locale-switch
 - **index** — adr-index, slices-index
@@ -22,16 +35,29 @@
 - **layout** — adr-0014-docs-corpus-layout
 - **legacy** — accepted-debt
 - **lifecycle** — adr-0019-adr-translation-authorization
+- **m2** — adr-0020-diff-per-file-and-hunk-staging, adr-0021-reset-modes, adr-0022-graph-context-menu-shell, adr-0023-commit-change-size-gauge
+- **m3** — adr-024-multi-repo-workspaces, adr-025-deep-links-and-clipboard-clone, adr-026-cross-repo-commit-search, adr-027-git-flow-presets, adr-028-advanced-git-rpcs
+- **merge** — adr-028-advanced-git-rpcs
+- **multi-repo** — adr-024-multi-repo-workspaces
 - **onrails** — adr-0014-docs-corpus-layout, adr-0016-lane-state-and-graph-dod, documentation-system
 - **project** — project
 - **protocol** — bootstrap-protocol, docs-review-protocol, new-note-protocol
 - **ratchet** — accepted-debt
-- **renderer** — adr-0018-renderer-i18n-locale-switch
+- **renderer** — adr-0018-renderer-i18n-locale-switch, adr-0022-graph-context-menu-shell, adr-024-multi-repo-workspaces
+- **reset** — adr-0021-reset-modes
 - **review** — docs-review-protocol
+- **roadmap** — feature-gap-analysis
+- **search** — adr-026-cross-repo-commit-search
 - **singularitree** — project
 - **slice** — contracts-slice, core-slice, desktop-shell-slice, docs-slice, renderer-slice, tooling-slice
 - **slices** — slices-index
+- **staging** — adr-0020-diff-per-file-and-hunk-staging
+- **stash** — adr-028-advanced-git-rpcs
+- **stats** — adr-0023-commit-change-size-gauge
 - **structure** — documentation-system
+- **tag** — adr-028-advanced-git-rpcs
 - **validation** — docs-review-protocol
 - **validator** — adr-0015-docs-validator-generated-index
+- **workflow** — adr-027-git-flow-presets
+- **workspaces** — adr-024-multi-repo-workspaces
 <!-- END GENERATED: tags -->

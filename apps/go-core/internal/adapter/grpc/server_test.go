@@ -88,12 +88,17 @@ func startServer(t *testing.T) string {
 	repoStore := repository.NewRepoStore(db)
 	gitAdapter := gitadapter.NewAdapter(repoStore)
 	repoSvc := service.NewRepoService(repoStore, gitAdapter)
-	cacheSvc := service.NewCacheService(10)
+	commitCache := repository.NewCommitCache(db)
+	cacheSvc := service.NewCacheServiceWithStore(10, commitCache)
 	graphSvc := service.NewGraphService(gitAdapter, cacheSvc)
-	watcherSvc := service.NewWatcherService(watcher.NewFsnotifyAdapter())
+	// The watcher is not exercised by the unary/streaming RPCs here; a nil
+	// resolver is the documented no-op (no filesystem watches attached).
+	watcherSvc := service.NewWatcherService(watcher.NewFsnotifyAdapter(nil))
 	gitSvc := service.NewGitService(gitAdapter, cacheSvc, watcherSvc)
+	searchSvc := service.NewSearchService(commitCache, gitAdapter, commitCache)
+	gitflowSvc := service.NewGitFlowService(gitAdapter, repository.NewGitFlowStore(db))
 
-	grpcSrv := grpcadapter.NewServer(repoSvc, gitSvc, graphSvc, watcherSvc, cacheSvc, testToken)
+	grpcSrv := grpcadapter.NewServer(repoSvc, gitSvc, graphSvc, watcherSvc, cacheSvc, searchSvc, gitflowSvc, testToken)
 	gs := googlegrpc.NewServer(
 		googlegrpc.UnaryInterceptor(grpcadapter.UnaryAuthInterceptor(testToken)),
 		googlegrpc.StreamInterceptor(grpcadapter.StreamAuthInterceptor(testToken)),
@@ -555,7 +560,7 @@ func TestGetBranchesRemotesTagsUnbornRepo(t *testing.T) {
 // TestCheckoutNilGitService asserts the handler fails fast with
 // FailedPrecondition when no git service is wired, instead of panicking.
 func TestCheckoutNilGitService(t *testing.T) {
-	srv := grpcadapter.NewServer(nil, nil, nil, nil, nil, "")
+	srv := grpcadapter.NewServer(nil, nil, nil, nil, nil, nil, nil, "")
 	_, err := srv.Checkout(context.Background(), &singularitreev1.CheckoutRequest{RepoId: "repo-1", RefName: "main"})
 	if status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("Checkout(nil gitSvc) code = %v, want FailedPrecondition (err=%v)", status.Code(err), err)

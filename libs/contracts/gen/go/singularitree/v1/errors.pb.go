@@ -54,6 +54,18 @@ const (
 	ErrorCode_PULL_FAILED ErrorCode = 24
 	// Additive: stash push (save changes before switching branch).
 	ErrorCode_STASH_FAILED ErrorCode = 25
+	// Additive: reset soft/mixed/hard (ADR-0021; next free number after 25).
+	ErrorCode_RESET_FAILED ErrorCode = 26
+	// Additive: file/hunk discard (ADR-0020). The ADR left the code at decision
+	// level; the next free number (27) is used.
+	ErrorCode_DISCARD_FAILED ErrorCode = 27
+	// Additive: advanced-git mutations (ADR-028), next free numbers after 27.
+	ErrorCode_MERGE_CONFLICT ErrorCode = 28
+	ErrorCode_MERGE_FAILED   ErrorCode = 29
+	ErrorCode_TAG_EXISTS     ErrorCode = 30
+	ErrorCode_TAG_NOT_FOUND  ErrorCode = 31
+	// Additive: git-flow presets (ADR-027), next free number after 31.
+	ErrorCode_GIT_FLOW_FAILED ErrorCode = 32
 )
 
 // Enum value maps for ErrorCode.
@@ -85,6 +97,13 @@ var (
 		23: "GITHUB_TOKEN_INVALID",
 		24: "PULL_FAILED",
 		25: "STASH_FAILED",
+		26: "RESET_FAILED",
+		27: "DISCARD_FAILED",
+		28: "MERGE_CONFLICT",
+		29: "MERGE_FAILED",
+		30: "TAG_EXISTS",
+		31: "TAG_NOT_FOUND",
+		32: "GIT_FLOW_FAILED",
 	}
 	ErrorCode_value = map[string]int32{
 		"ERROR_CODE_UNSPECIFIED": 0,
@@ -113,6 +132,13 @@ var (
 		"GITHUB_TOKEN_INVALID":   23,
 		"PULL_FAILED":            24,
 		"STASH_FAILED":           25,
+		"RESET_FAILED":           26,
+		"DISCARD_FAILED":         27,
+		"MERGE_CONFLICT":         28,
+		"MERGE_FAILED":           29,
+		"TAG_EXISTS":             30,
+		"TAG_NOT_FOUND":          31,
+		"GIT_FLOW_FAILED":        32,
 	}
 )
 
@@ -215,7 +241,7 @@ const file_errors_proto_rawDesc = "" +
 	"\adetails\x18\x03 \x03(\v2'.singularitree.v1.AppError.DetailsEntryR\adetails\x1a:\n" +
 	"\fDetailsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*\xa3\x04\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*\xa7\x05\n" +
 	"\tErrorCode\x12\x1a\n" +
 	"\x16ERROR_CODE_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eREPO_NOT_FOUND\x10\x01\x12\x12\n" +
@@ -244,7 +270,15 @@ const file_errors_proto_rawDesc = "" +
 	"\x10GITHUB_API_ERROR\x10\x16\x12\x18\n" +
 	"\x14GITHUB_TOKEN_INVALID\x10\x17\x12\x0f\n" +
 	"\vPULL_FAILED\x10\x18\x12\x10\n" +
-	"\fSTASH_FAILED\x10\x19BJZHgithub.com/SingulariTree/go-core/gen/go/singularitree/v1;singularitreev1b\x06proto3"
+	"\fSTASH_FAILED\x10\x19\x12\x10\n" +
+	"\fRESET_FAILED\x10\x1a\x12\x12\n" +
+	"\x0eDISCARD_FAILED\x10\x1b\x12\x12\n" +
+	"\x0eMERGE_CONFLICT\x10\x1c\x12\x10\n" +
+	"\fMERGE_FAILED\x10\x1d\x12\x0e\n" +
+	"\n" +
+	"TAG_EXISTS\x10\x1e\x12\x11\n" +
+	"\rTAG_NOT_FOUND\x10\x1f\x12\x13\n" +
+	"\x0fGIT_FLOW_FAILED\x10 BJZHgithub.com/SingulariTree/go-core/gen/go/singularitree/v1;singularitreev1b\x06proto3"
 
 var (
 	file_errors_proto_rawDescOnce sync.Once

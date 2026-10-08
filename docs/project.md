@@ -1,12 +1,12 @@
 ---
-last_updated: 2026-10-05
+last_updated: 2026-10-07
 status: active
 description: Agent-facing entry point of SingulariTree — Angular + Electron + Go core monorepo; stack, slices, commands and corpus navigation.
 tags:
 - project
 - entry-point
 - singularitree
-version: 1.1.1
+version: 1.3.0
 doc_language: en
 ---
 
@@ -112,7 +112,7 @@ SingulariTree/
 - SQLite per user (WAL, `foreign_keys=ON`) and **NEVER** stores Git objects.
 - Necomat `frontend/`/`backend/` remain intact.
 - Tests/builds from the package directory (never the root, except Go via `go.work`).
-- ADRs are append-only; numbering continues from ADR-013.
+- ADRs are append-only; numbering continues at ADR-020.
 
 ## Domain Entities
 
@@ -124,6 +124,7 @@ SingulariTree/
 
 - [`docs/context/documentation-system.md`](context/documentation-system.md) — corpus contract, layers, naming and generated indexes.
 - [`docs/context/accepted-debt.md`](context/accepted-debt.md) — explicit accepted debt and the ratchet criterion.
+- [`docs/context/feature-gap-analysis.md`](context/feature-gap-analysis.md) — feature-gap analysis vs SourceTree/GitKraken plus a prioritized, anti-goal-checked continuation recommendation.
 - [`docs/context/git-client/INDEX.md`](context/git-client/INDEX.md) — legacy design corpus, under ratchet.
 - [`docs/slices/slices-index.md`](slices/slices-index.md) — slices hub; routes each change to its primary slice.
 - [`docs/protocols/bootstrap-protocol.md`](protocols/bootstrap-protocol.md) — corpus start-up and initialization.

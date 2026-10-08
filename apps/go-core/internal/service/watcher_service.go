@@ -98,14 +98,52 @@ func (s *WatcherService) OnChange(fn func(domain.FsChangedEvent)) {
 	s.callbacks = append(s.callbacks, fn)
 }
 
-// Watch subscribes to FsChanged events for a repository.
+// Watch subscribes to FsChanged events for a repository. The returned channel
+// carries the same events as the underlying port, but each event is also fed
+// into Emit so the registered OnChange callbacks (graph/cache invalidation)
+// fire for externally-driven filesystem changes. It returns a channel closed
+// immediately when no watcher port is configured.
 func (s *WatcherService) Watch(ctx context.Context, repoID domain.RepositoryId) (<-chan domain.FsChangedEvent, error) {
 	if s.port == nil {
 		ch := make(chan domain.FsChangedEvent)
 		close(ch)
 		return ch, nil
 	}
-	return s.port.Watch(ctx, repoID)
+	portCh, err := s.port.Watch(ctx, repoID)
+	if err != nil {
+		return nil, err
+	}
+	out := make(chan domain.FsChangedEvent)
+	go s.pump(ctx, portCh, out)
+	return out, nil
+}
+
+// pump tees port events into Emit (so debounced OnChange callbacks fire) and
+// forwards each one to the caller's channel. It owns out and closes it exactly
+// once on exit. It exits when ctx is cancelled or the port channel closes, and
+// never sends on a closed channel: the port channel is closed by the port and
+// out solely by this goroutine.
+func (s *WatcherService) pump(ctx context.Context, in <-chan domain.FsChangedEvent, out chan<- domain.FsChangedEvent) {
+	defer close(out)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case ev, ok := <-in:
+			if !ok {
+				return
+			}
+			// Emit never blocks: it only (re)arms the per-repo debounce timer.
+			s.Emit(ev)
+			// Blocking here applies backpressure to the port (which drops when
+			// full) rather than to the caller; ctx cancellation still unblocks.
+			select {
+			case out <- ev:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}
 }
 
 // Unwatch removes a subscription.

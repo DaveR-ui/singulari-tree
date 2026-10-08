@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import type { Commit, Lane } from '@singularitree/contracts/domain';
+import type { Commit, CommitStats, Lane } from '@singularitree/contracts/domain';
 import { laneColor } from './lane-palette';
 import { authorName, firstLine, formatShortDate, normalizeRefKind, shortOidHex } from './graph-row.utils';
 
@@ -65,6 +65,19 @@ export const LANE_COLUMN_WIDTH = 14;
         message()
       }}</span>
       <span class="st-graph-row__author" data-testid="graph-row-author">{{ author() }}</span>
+      @if (stats(); as gauge) {
+        <span class="st-graph-row__stats" data-testid="graph-row-stats" [title]="statsTitle()">
+          <span class="st-graph-row__additions" data-testid="graph-row-additions"
+            >+{{ gauge.additions }}</span
+          >
+          <span class="st-graph-row__deletions" data-testid="graph-row-deletions"
+            >−{{ gauge.deletions }}</span
+          >
+          <span class="st-graph-row__files" data-testid="graph-row-files"
+            >{{ gauge.filesChanged }}f</span
+          >
+        </span>
+      }
       <span class="st-graph-row__date" data-testid="graph-row-date">{{ date() }}</span>
     </div>
   `,
@@ -163,6 +176,28 @@ export const LANE_COLUMN_WIDTH = 14;
       white-space: nowrap;
     }
 
+    .st-graph-row__stats {
+      flex: none;
+      display: inline-flex;
+      align-items: baseline;
+      gap: 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .st-graph-row__additions {
+      color: #30d158;
+    }
+
+    .st-graph-row__deletions {
+      color: #ff6b6b;
+    }
+
+    .st-graph-row__files {
+      opacity: 0.5;
+    }
+
     .st-graph-row__date {
       flex: none;
       opacity: 0.5;
@@ -176,12 +211,22 @@ export class GraphRow {
   readonly selected = input(false);
   /** Highest lane index currently in the viewport; keeps every row's graph column aligned. */
   readonly maxLane = input(0);
+  /**
+   * Lazily-measured change-size counts for this commit (ADR-0023). Null/absent
+   * means "not measured yet": the gauge is omitted rather than zeroed.
+   */
+  readonly stats = input<CommitStats | null>(null);
 
   readonly picked = output<void>();
 
   readonly rowHeight = GRAPH_ROW_HEIGHT;
 
   readonly refs = computed(() => this.commit().refs ?? []);
+  readonly statsTitle = computed(() => {
+    const gauge = this.stats();
+    if (!gauge) return '';
+    return `${gauge.additions} additions, ${gauge.deletions} deletions, ${gauge.filesChanged} files changed`;
+  });
   readonly shortOid = computed(() => shortOidHex(this.commit().oid?.hex));
   readonly message = computed(() => firstLine(this.commit().message));
   readonly author = computed(() =>

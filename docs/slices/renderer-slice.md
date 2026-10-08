@@ -8,7 +8,7 @@ aliases:
 - Renderer slice
 related:
 - slices-index
-version: 1.0.2
+version: 1.3.0
 status: active
 ---
 
@@ -51,5 +51,7 @@ Angular 22 SPA (zoneless, standalone, signals) with vertical features and stores
 
 ## Known gaps & accepted debt
 
-- Minimal features with mock data.
-- Diff viewer (Monaco) and performance with large repos pending.
+- M1 landed: repos list, virtualized graph + filter + commit details + WIP row, sidebar branches/tags/remotes, `StatusStore` + changes/commit panel, a lazy-loaded Monaco `DiffViewer`, and settings (theme, en/es).
+- M2 landed: graph right-click context-menu shell (Checkout / Compare / Copy SHA, plus Reset) — [[adr-0022-graph-context-menu-shell]] — hunk/line staging & discard UI (Commit Composer), and the commit change-size gauge from `GetCommitStats`.
+- M3 landed: branch/merge/tag/stash UI plus the graph context-menu "Create branch here" / "Tag this commit" and a merge-conflict banner; multi-repo Workspaces / repo tabs (renderer-only UI-state) with renderer-orchestrated multi-repo fetch-all; the cross-repo search view (sidebar WORKSPACE `search`); a git-flow panel; and deep-link routing plus clipboard clone / copy-repo-URL (clone prefill only, V1.4) — [[adr-024-multi-repo-workspaces]], [[adr-025-deep-links-and-clipboard-clone]], [[adr-026-cross-repo-commit-search]], [[adr-027-git-flow-presets]], [[adr-028-advanced-git-rpcs]].
+- Performance with large repos remains under watch.

@@ -127,10 +127,27 @@ func main() {
 	repoStore := repository.NewRepoStore(db)
 	gitAdapter := git.NewAdapter(repoStore)
 	repoSvc := service.NewRepoService(repoStore, gitAdapter)
-	cacheSvc := service.NewCacheServiceWithStore(service.DefaultLRUCapacity, repository.NewCommitCache(db))
+	commitCache := repository.NewCommitCache(db)
+	cacheSvc := service.NewCacheServiceWithStore(service.DefaultLRUCapacity, commitCache)
 	graphSvc := service.NewGraphService(gitAdapter, cacheSvc)
-	watcherSvc := service.NewWatcherService(watcher.NewFsnotifyAdapter())
+	watcherSvc := service.NewWatcherService(watcher.NewFsnotifyAdapter(
+		func(id domain.RepositoryId) (string, bool) {
+			r, err := repoStore.Get(context.Background(), id)
+			if err != nil || r == nil {
+				return "", false
+			}
+			return r.FsPath, true
+		},
+	))
 	gitSvc := service.NewGitService(gitAdapter, cacheSvc, watcherSvc)
+
+	// Cross-repo commit search over the SQLite metadata cache (ADR-026): the
+	// persistent commit cache is both the search store and the backfill sink, so
+	// occupancy is checked against real rows (L2) rather than the empty L1.
+	searchSvc := service.NewSearchService(commitCache, gitAdapter, commitCache)
+	// git-flow presets (ADR-027): workflow semantics over the ADR-028 Git ops,
+	// with per-repo config persisted as SQLite metadata.
+	gitflowSvc := service.NewGitFlowService(gitAdapter, repository.NewGitFlowStore(db))
 
 	// GitHub real-data vertical: token from `gh` CLI, REST over api.github.com.
 	githubAdapter := github.NewAdapter(&http.Client{Timeout: 15 * time.Second})
@@ -171,7 +188,7 @@ func main() {
 	}()
 
 	// gRPC server with token interceptors.
-	grpcSrv := grpcadapter.NewServer(repoSvc, gitSvc, graphSvc, watcherSvc, cacheSvc, token)
+	grpcSrv := grpcadapter.NewServer(repoSvc, gitSvc, graphSvc, watcherSvc, cacheSvc, searchSvc, gitflowSvc, token)
 	gs := googlegrpc.NewServer(
 		googlegrpc.UnaryInterceptor(grpcadapter.UnaryAuthInterceptor(token)),
 		googlegrpc.StreamInterceptor(grpcadapter.StreamAuthInterceptor(token)),

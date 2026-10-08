@@ -42,8 +42,14 @@ type Branch struct {
 // BranchPort is the Git port for branches.
 type BranchPort interface {
 	List(ctx context.Context, repoID RepositoryId) ([]Branch, error)
-	Create(ctx context.Context, repoID RepositoryId, name string, from Oid) (*Branch, error)
-	Delete(ctx context.Context, repoID RepositoryId, ref RefName) error
+	// Create creates a local branch from startPoint (empty means HEAD). When
+	// checkout is true the new branch is switched to. Maps to
+	// `git branch <name> [<startPoint>]` (+ `git checkout <name>`).
+	Create(ctx context.Context, repoID RepositoryId, name, startPoint string, checkout bool) (*Branch, error)
+	// Rename maps to `git branch -m <oldName> <newName>`.
+	Rename(ctx context.Context, repoID RepositoryId, oldName, newName string) (*Branch, error)
+	// Delete maps to `git branch -d|-D <name>`; force selects -D.
+	Delete(ctx context.Context, repoID RepositoryId, ref RefName, force bool) error
 	Checkout(ctx context.Context, repoID RepositoryId, ref RefName) error
 }
 

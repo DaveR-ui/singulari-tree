@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/SingulariTree/go-core/gen v0.0.0
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/google/uuid v1.6.0
 	google.golang.org/grpc v1.84.0
 	modernc.org/sqlite v1.57.0
