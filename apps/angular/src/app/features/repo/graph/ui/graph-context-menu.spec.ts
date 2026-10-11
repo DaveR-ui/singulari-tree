@@ -178,7 +178,7 @@ describe('GraphContextMenu', () => {
     expect(emitted?.label).toBe(oid.slice(0, 7));
   });
 
-  it('disables Compare without a distinct selected base and enables it with one', () => {
+  it('drives the Compare item disabled state from the canCompare input', () => {
     const withoutBase = render({ canCompare: false });
     expect(query(withoutBase, 'ctx-compare')?.hasAttribute('disabled')).toBe(true);
 

@@ -1,11 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import type { Commit, CommitStats, Diff, Lane, Repository } from '@contracts/domain';
-import type {
-  GetCommitsRequest,
-  GetCommitsResponse,
-  GetDiffRequest,
-  ResetRequest,
-} from '@contracts/gitcore';
+import type { Commit, CommitStats, Lane, Repository } from '@contracts/domain';
+import type { GetCommitsRequest, GetCommitsResponse, ResetRequest } from '@contracts/gitcore';
 import { IpcBridge, toAppError, type AppError } from '@core/services/ipc-bridge.service';
 import type { CommitRow } from '../repo-models';
 import { filterRows, joinRows, mapPageLanes, maxLaneIndex } from '../repo-mappers';
@@ -83,13 +78,6 @@ export class GraphStore {
   /** Last reset failure, or null when idle/successful. */
   readonly resetError = signal<AppError | null>(null);
 
-  // -- compare (ADR-0022) --------------------------------------------------
-  /** The commit pair currently being compared, or null when closed. */
-  readonly compare = signal<{ from: string; to: string } | null>(null);
-  readonly compareDiff = signal<Diff | null>(null);
-  readonly compareLoading = signal(false);
-  readonly compareError = signal<AppError | null>(null);
-
   // -- derived -------------------------------------------------------------
   readonly rows = computed<CommitRow[]>(() => joinRows(this.commits(), this.lanes()));
   readonly filteredRows = computed<CommitRow[]>(() => filterRows(this.rows(), this.filter()));
@@ -135,6 +123,10 @@ export class GraphStore {
       await this.loadWindow(0);
       // Refresh the picker's recents now that this repo is the most recent.
       await this.loadRecentRepos();
+      // Start the repository-scoped background watch: `fs:changed` drives the
+      // graph/status refresh both repo screens subscribe to. Fire-and-forget — a
+      // missing bridge or a failing watch can never fail the open.
+      this.startWatch(repo.id);
       return repo;
     } catch (err) {
       if (isIpcUnavailable(err)) {
@@ -212,6 +204,21 @@ export class GraphStore {
   }
 
   /**
+   * Ask the shell to start the background `Watch` stream for `repoId`.
+   * Fire-and-forget: the ack resolves immediately and a missing bridge or a
+   * failing watch degrades to this store's own offline/error state, so it can
+   * never fail the repository open. Relocated from `StatusWorkspace` when
+   * ADR-0030 removed the band `RepoPage` no longer mounts.
+   */
+  private startWatch(repoId: string): void {
+    try {
+      void this.bridge.invoke('watch', { repoId }).catch(() => {});
+    } catch {
+      // Intentionally ignored: the open already recorded the failure.
+    }
+  }
+
+  /**
    * Lazily measure the change-size gauge for a batch of oids (ADR-0023).
    *
    * Only oids absent from the cache are requested, in one `getCommitStats`
@@ -274,43 +281,6 @@ export class GraphStore {
     } finally {
       this.resetRunning.set(false);
     }
-  }
-
-  /**
-   * Diff two commits (`getDiff` with `from`/`to`, ADR-0022) and publish the
-   * result for the shared `DiffViewer`. No new RPC: Compare reuses `GetDiff`.
-   */
-  async compareCommits(from: string, to: string): Promise<void> {
-    const id = this.repoId();
-    if (!id || !from || !to) return;
-
-    this.compare.set({ from, to });
-    this.compareLoading.set(true);
-    this.compareError.set(null);
-    this.compareDiff.set(null);
-
-    const req: GetDiffRequest = { repoId: id, from, to, path: '', staged: false };
-    try {
-      const diff = await this.bridge.invoke('getDiff', req);
-      this.offline.set(false);
-      this.compareDiff.set(diff);
-    } catch (err) {
-      if (isIpcUnavailable(err)) {
-        this.offline.set(true);
-        this.compareDiff.set(null);
-      } else {
-        this.compareError.set(toAppError(err));
-      }
-    } finally {
-      this.compareLoading.set(false);
-    }
-  }
-
-  /** Close the compare view and drop its transient diff state. */
-  clearCompare(): void {
-    this.compare.set(null);
-    this.compareDiff.set(null);
-    this.compareError.set(null);
   }
 
   select(oid: string | null): void {

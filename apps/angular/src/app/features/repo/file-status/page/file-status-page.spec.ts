@@ -1,4 +1,4 @@
-import { provideZonelessChangeDetection, signal } from '@angular/core';
+import { provideZonelessChangeDetection, signal, type WritableSignal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -111,11 +111,17 @@ const BRANCHES: Branch[] = [
   branch('develop', 'develop-oid', { isCurrent: true }),
 ];
 
+interface RepoStateStub {
+  activeRepo: WritableSignal<Repository | null>;
+  statusRefreshRequested: WritableSignal<number>;
+}
+
 interface Harness {
   fixture: ComponentFixture<FileStatusPage>;
   fs: FileStatusStore;
   status: StatusStore;
   graph: GraphStore;
+  repoState: RepoStateStub;
   getDiff: ReturnType<typeof vi.fn>;
   stageHunk: ReturnType<typeof vi.fn>;
   unstageHunk: ReturnType<typeof vi.fn>;
@@ -163,7 +169,10 @@ async function setup(
   graph.commits.set([commit(HEAD_HEX, [OTHER_HEX]), commit(OTHER_HEX)]);
   if (options.selection !== null) graph.select(options.selection ?? HEAD_HEX);
 
-  const repoState = { activeRepo: signal<Repository | null>(null) };
+  const repoState: RepoStateStub = {
+    activeRepo: signal<Repository | null>(null),
+    statusRefreshRequested: signal(0),
+  };
 
   await TestBed.configureTestingModule({
     providers: [
@@ -184,6 +193,7 @@ async function setup(
     fs,
     status,
     graph,
+    repoState,
     getDiff,
     stageHunk,
     unstageHunk,
@@ -619,13 +629,65 @@ describe('FileStatusPage', () => {
     reload.mockClear();
 
     emitFsChanged();
-    // The fs:changed handler calls graph.reload() synchronously (same as
-    // StatusWorkspace), so HEAD/the graph window do not go stale on screen.
+    // The fs:changed handler calls graph.reload() synchronously, so HEAD/the
+    // graph window do not go stale on screen.
     expect(reload).toHaveBeenCalledTimes(1);
 
     fixture.detectChanges();
     await fixture.whenStable();
     expect(fs.variant()).toBe('local');
+  });
+
+  it('refreshes the working tree on a status refresh, keeping the selected file', async () => {
+    const { fixture, fs, reload, repoState } = await setup({ selection: WIP_OID });
+    await waitForDiff(fixture, fs);
+    all(fixture, 'status-file')[0].click();
+    expect(fs.selectedPath()).toBe('a.ts');
+    reload.mockClear();
+
+    repoState.statusRefreshRequested.set(1);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+
+    expect(fs.variant()).toBe('local');
+    // The local variant re-opens asynchronously and restores the selection.
+    await vi.waitFor(() => expect(fs.selectedPath()).toBe('a.ts'));
+  });
+
+  it('reloads the graph on a status refresh but never clobbers an open commit diff', async () => {
+    const { fixture, fs, reload, repoState, getDiff } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+    const before = getDiff.mock.calls.length;
+    reload.mockClear();
+
+    repoState.statusRefreshRequested.set(1);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(reload).toHaveBeenCalledTimes(1);
+    // The commit comparison is immutable: it is not reopened into the working tree.
+    expect(fs.variant()).toBe('commit');
+    expect(fs.activeCommit()?.oid?.hex).toBe(HEAD_HEX);
+    expect(getDiff.mock.calls.length).toBe(before);
+  });
+
+  it('does nothing when the status token is re-set to the same value', async () => {
+    const { fixture, fs, reload, repoState } = await setup({ selection: WIP_OID });
+    await waitForDiff(fixture, fs);
+
+    repoState.statusRefreshRequested.set(1);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(reload).toHaveBeenCalledTimes(1);
+
+    reload.mockClear();
+    repoState.statusRefreshRequested.set(1);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(reload).not.toHaveBeenCalled();
   });
 
   it('projects a conflicted file with hasConflictMarkers to the viewer', async () => {

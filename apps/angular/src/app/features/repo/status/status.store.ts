@@ -287,7 +287,14 @@ export class StatusStore {
     );
   }
 
-  /** Diff the commit against its first parent (or the empty tree for a root). */
+  /**
+   * Diff the commit against its first parent (or the empty tree for a root).
+   *
+   * Kept as a store capability after ADR-0030 removed the graph-route panel
+   * that used to drive it: the coupling is gone on purpose, and the file-status
+   * screen diffs commits through its own `loadOwnDiff`. Only a working-tree
+   * consumer (never the History screen, per ADR-0030) may use it again.
+   */
   async loadCommitDiff(commit: Commit): Promise<void> {
     const id = this.repoId();
     if (!id) return;

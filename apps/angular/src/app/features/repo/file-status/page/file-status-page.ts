@@ -178,6 +178,9 @@ export class FileStatusPage {
   private readonly bridge = inject(IpcBridge);
   private readonly destroyRef = inject(DestroyRef);
 
+  /** Last observed `RepoState.statusRefreshRequested` token (dedupes the effect). */
+  private lastStatusRefresh = this.repoState.statusRefreshRequested();
+
   /**
    * The single-file `Diff` fed to the viewer: a pure projection of the currently
    * selected file, never the whole diff (`DiffViewer` reads only the deprecated
@@ -239,22 +242,38 @@ export class FileStatusPage {
       if (this.fs.graphReloadRequested() > 0) this.graph.reload();
     });
 
-    // External file changes may have moved HEAD or dirtied the window: reload
-    // the graph cache too (the same cheap cache-backed reload `StatusWorkspace`
-    // fires on `fs:changed`), so the graph/HEAD are not left stale. A commit/PR
-    // diff is an immutable historical comparison and must not be clobbered into
-    // the working tree — only the local variant re-opens the working tree below.
-    const unsubscribe = this.bridge.onFsChanged(() => {
-      this.graph.reload();
-      if (!this.fs.isLocal()) return;
-      const selected = this.fs.selectedPath();
-      void this.fs.openLocal().then(() => {
-        // Keep the user's file selection across the refresh.
-        if (selected) this.fs.selectFile(selected);
-      });
+    // A ref mutation that may have moved HEAD or dirtied the tree (ADR-028) used
+    // to be observed by `StatusWorkspace`, the band ADR-0030 item 1 removed. Its
+    // working-tree half lives here: File status is now the single inspection
+    // surface.
+    effect(() => {
+      const token = this.repoState.statusRefreshRequested();
+      if (token === this.lastStatusRefresh) return;
+      this.lastStatusRefresh = token;
+      this.refreshForExternalChange();
     });
+
+    // External file changes may have moved HEAD or dirtied the window: refresh
+    // through the same path.
+    const unsubscribe = this.bridge.onFsChanged(() => this.refreshForExternalChange());
     this.destroyRef.onDestroy(unsubscribe);
     this.destroyRef.onDestroy(() => this.fs.clearVariant());
+  }
+
+  /**
+   * Reload the graph window and, while the working tree is on screen, re-open
+   * the local variant — keeping the user's file selection across the refresh.
+   * A commit/PR diff is an immutable historical comparison and must not be
+   * clobbered into the working tree, so only the local variant re-opens.
+   */
+  private refreshForExternalChange(): void {
+    this.graph.reload();
+    if (!this.fs.isLocal()) return;
+    const selected = this.fs.selectedPath();
+    void this.fs.openLocal().then(() => {
+      // Keep the user's file selection across the refresh.
+      if (selected) this.fs.selectFile(selected);
+    });
   }
 
   /** Switch variant through the store; only the store owns the variant state. */

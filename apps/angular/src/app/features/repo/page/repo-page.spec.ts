@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Repository } from '@contracts/domain';
 import { CommitFocusService } from '@core/services/commit-focus.service';
+import { IpcBridge } from '@core/services/ipc-bridge.service';
 import { RepoState } from '@core/services/repo-state.service';
 import { GraphStore } from '../graph/graph.store';
 import { RepoPage } from './repo-page';
@@ -32,11 +33,14 @@ const ALL_REPOS = [REPO_A, REPO_B];
 function makeRepoState(initial: Repository | null) {
   const repos = signal<Repository[]>(initial ? [initial] : []);
   const activeId = signal<string | null>(initial?.id ?? null);
+  const statusRefreshRequested = signal(0);
   return {
     activeRepo: computed<Repository | null>(() => {
       const id = activeId();
       return id ? (repos().find((repo) => repo.id === id) ?? null) : null;
     }),
+    // Token the route-scoped consumers observe after a ref mutation (ADR-028).
+    statusRefreshRequested,
     setActive(repo: Repository): void {
       repos.update((prev) => [...prev.filter((r) => r.id !== repo.id), repo]);
       activeId.set(repo.id);
@@ -59,18 +63,36 @@ function makeGraphStore() {
     return repo;
   });
   const focusCommit = vi.fn(async (_oid: string) => {});
-  return { repoId, openRepository, focusCommit };
+  const reload = vi.fn();
+  return { repoId, openRepository, focusCommit, reload };
+}
+
+/**
+ * Minimal `IpcBridge` stand-in: `onFsChanged` records the callback so the test
+ * can emit an external change and observes the returned unsubscribe handle.
+ */
+function makeBridge() {
+  let fsChanged: (() => void) | null = null;
+  return {
+    onFsChanged: vi.fn((cb: () => void) => {
+      fsChanged = cb;
+      return vi.fn();
+    }),
+    emitFsChanged: (): void => fsChanged?.(),
+  };
 }
 
 async function setup(initial: Repository | null = REPO_A) {
   const repoState = makeRepoState(initial);
   const graphStore = makeGraphStore();
+  const bridge = makeBridge();
 
   await TestBed.configureTestingModule({
     providers: [
       provideZonelessChangeDetection(),
       { provide: RepoState, useValue: repoState },
       { provide: GraphStore, useValue: graphStore },
+      { provide: IpcBridge, useValue: bridge },
     ],
   }).compileComponents();
 
@@ -79,7 +101,7 @@ async function setup(initial: Repository | null = REPO_A) {
   TestBed.runInInjectionContext(() => new RepoPage());
   TestBed.tick();
   await Promise.resolve();
-  return { repoState, graphStore };
+  return { repoState, graphStore, bridge };
 }
 
 describe('RepoPage hydration', () => {
@@ -158,5 +180,39 @@ describe('RepoPage hydration', () => {
 
     await vi.waitFor(() => expect(graphStore.focusCommit).toHaveBeenCalledWith('def456'));
     expect(focus.pending()).toBeNull();
+  });
+
+  // -- re-homed graph refresh triggers (ADR-0030) --------------------------
+
+  it('reloads the graph window when the working tree changes externally', async () => {
+    const { bridge, graphStore } = await setup(REPO_A);
+    graphStore.reload.mockClear();
+
+    bridge.emitFsChanged();
+
+    expect(graphStore.reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('reloads the graph window when a status refresh is requested', async () => {
+    const { repoState, graphStore } = await setup(REPO_A);
+    graphStore.reload.mockClear();
+
+    repoState.statusRefreshRequested.set(1);
+    TestBed.tick();
+
+    expect(graphStore.reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reload again when the status token is re-set to the same value', async () => {
+    const { repoState, graphStore } = await setup(REPO_A);
+    repoState.statusRefreshRequested.set(1);
+    TestBed.tick();
+    expect(graphStore.reload).toHaveBeenCalledTimes(1);
+
+    graphStore.reload.mockClear();
+    repoState.statusRefreshRequested.set(1);
+    TestBed.tick();
+
+    expect(graphStore.reload).not.toHaveBeenCalled();
   });
 });

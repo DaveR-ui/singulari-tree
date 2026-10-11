@@ -134,7 +134,9 @@ export class RepoState {
   /**
    * Monotonic token bumped whenever a ref mutation may have changed the working
    * tree or HEAD (a checkout-on-create or a merge). Route-scoped consumers
-   * (`StatusWorkspace`) observe it to refresh status/diffs.
+   * observe it to refresh: `RepoPage` reloads the graph window and
+   * `FileStatusPage` refreshes the working tree — both relocated when ADR-0030
+   * removed the band that used to own them.
    */
   private readonly statusRefreshState = signal(0);
   readonly statusRefreshRequested = this.statusRefreshState.asReadonly();

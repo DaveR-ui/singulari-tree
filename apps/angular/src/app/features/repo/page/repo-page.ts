@@ -1,9 +1,9 @@
-import { ChangeDetectionStrategy, Component, effect, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject } from '@angular/core';
 import { CommitFocusService } from '@core/services/commit-focus.service';
+import { IpcBridge } from '@core/services/ipc-bridge.service';
 import { RepoState } from '@core/services/repo-state.service';
 import { GraphStore } from '../graph/graph.store';
 import { GraphPage } from '../graph/page/graph-page';
-import { StatusWorkspace } from '../status/status-workspace';
 import { RepoPicker } from '../ui/repo-picker';
 
 /**
@@ -17,7 +17,7 @@ import { RepoPicker } from '../ui/repo-picker';
 @Component({
   selector: 'st-repo-page',
   standalone: true,
-  imports: [RepoPicker, GraphPage, StatusWorkspace],
+  imports: [RepoPicker, GraphPage],
   template: `
     <section class="st-repo-page">
       <header class="st-repo-page__head">
@@ -26,9 +26,6 @@ import { RepoPicker } from '../ui/repo-picker';
       <st-repo-picker />
       <div class="st-repo-page__graph">
         <st-graph-page />
-      </div>
-      <div class="st-repo-page__status" data-testid="repo-status-workspace">
-        <st-status-workspace />
       </div>
     </section>
   `,
@@ -70,13 +67,6 @@ import { RepoPicker } from '../ui/repo-picker';
       flex: 1 1 auto;
       min-height: 0;
     }
-
-    .st-repo-page__status {
-      flex: 0 0 260px;
-      min-height: 0;
-      border-top: 1px solid var(--st-color-border, #2f2f44);
-      overflow: hidden;
-    }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -84,6 +74,11 @@ export class RepoPage {
   private readonly repoState = inject(RepoState);
   private readonly graphStore = inject(GraphStore);
   private readonly commitFocus = inject(CommitFocusService);
+  private readonly bridge = inject(IpcBridge);
+  private readonly destroyRef = inject(DestroyRef);
+
+  /** Last observed `RepoState.statusRefreshRequested` token (dedupes the effect). */
+  private lastStatusRefresh = this.repoState.statusRefreshRequested();
 
   constructor() {
     // Sync the active repo into the route-scoped graph. `openRepository` is not
@@ -111,5 +106,22 @@ export class RepoPage {
         if (oid) void this.graphStore.focusCommit(oid);
       });
     });
+
+    // A ref mutation that may have moved HEAD or dirtied the tree (a checkout on
+    // branch create, a merge — ADR-028) used to be observed by `StatusWorkspace`,
+    // the band ADR-0030 item 1 removed. Its graph half lives here now: the
+    // History screen must not show a stale window after HEAD moves. The
+    // working-tree half of the same token is owned by `FileStatusPage`.
+    effect(() => {
+      const token = this.repoState.statusRefreshRequested();
+      if (token === this.lastStatusRefresh) return;
+      this.lastStatusRefresh = token;
+      this.graphStore.reload();
+    });
+
+    // External file changes invalidate the graph window — the reload
+    // `StatusWorkspace` fired on `fs:changed` before the band was removed.
+    const unsubscribe = this.bridge.onFsChanged(() => this.graphStore.reload());
+    this.destroyRef.onDestroy(unsubscribe);
   }
 }

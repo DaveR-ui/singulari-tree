@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Commit, Diff, Lane, Repository } from '@contracts/domain';
+import type { Commit, Lane, Repository } from '@contracts/domain';
 import type { GetCommitsResponse } from '@contracts/gitcore';
 import { IpcBridge } from '@core/services/ipc-bridge.service';
 import { COMMIT_FOCUS_MAX_LOADS, GRAPH_WINDOW_SIZE, GraphStore, WIP_OID } from './graph.store';
@@ -40,7 +40,7 @@ function makePage(count: number, startIndex = 0, total = count): GetCommitsRespo
 type Handler = (req: unknown) => unknown;
 type Handlers = Partial<
   Record<
-    'getCommits' | 'openRepository' | 'listRepositories' | 'getCommitStats' | 'reset' | 'getDiff',
+    'getCommits' | 'openRepository' | 'listRepositories' | 'getCommitStats' | 'reset' | 'watch',
     Handler
   >
 >;
@@ -59,18 +59,6 @@ function makeBridge(handlers: Handlers): IpcBridge {
     }),
   } as unknown as IpcBridge;
 }
-
-const EMPTY_DIFF: Diff = {
-  from: undefined,
-  to: undefined,
-  hunks: [],
-  additions: 0,
-  deletions: 0,
-  isBinary: false,
-  hasConflictMarkers: false,
-  files: [],
-  truncated: false,
-};
 
 /** Install a mocked `window.gitClientApi` and return the IpcBridge over it. */
 function installApi(impl: Record<string, (req: unknown) => unknown>): IpcBridge {
@@ -262,6 +250,20 @@ describe('GraphStore', () => {
 
     expect(listRepositories).toHaveBeenCalledWith({});
     expect(store.recentRepos()).toEqual([REPO]);
+  });
+
+  it('kicks off the repository-scoped watch when a repository opens', async () => {
+    const getCommits = vi.fn(() => Promise.resolve(makePage(1, 0, 1)));
+    const openRepository = vi.fn(() => Promise.resolve(REPO));
+    const listRepositories = vi.fn(() => Promise.resolve({ repositories: [REPO] }));
+    const watch = vi.fn(() => Promise.resolve({}));
+    store = new GraphStore(makeBridge({ getCommits, openRepository, listRepositories, watch }));
+
+    await store.openRepository('/tmp/repo');
+
+    // ADR-0030: the watch kickoff relocated from StatusWorkspace to the store.
+    expect(watch).toHaveBeenCalledTimes(1);
+    expect(watch).toHaveBeenCalledWith({ repoId: REPO.id });
   });
 
   it('degrades openRepository to null when the bridge is unavailable', async () => {
@@ -646,80 +648,6 @@ describe('GraphStore', () => {
     await expect(store.reset('a'.repeat(40), 'SOFT')).resolves.toBe(false);
     expect(store.offline()).toBe(true);
     expect(store.resetError()).toBeNull();
-  });
-
-  // -- compare (ADR-0022) --------------------------------------------------
-
-  it('compares two commits via getDiff and publishes the diff', async () => {
-    const getDiff = vi.fn(() => Promise.resolve(EMPTY_DIFF));
-    store = new GraphStore(makeBridge({ getDiff }));
-    store.repoId.set(REPO.id);
-
-    await store.compareCommits('a'.repeat(40), 'b'.repeat(40));
-
-    expect(getDiff).toHaveBeenCalledWith({
-      repoId: REPO.id,
-      from: 'a'.repeat(40),
-      to: 'b'.repeat(40),
-      path: '',
-      staged: false,
-    });
-    expect(store.compare()).toEqual({ from: 'a'.repeat(40), to: 'b'.repeat(40) });
-    expect(store.compareDiff()).toEqual(EMPTY_DIFF);
-    expect(store.compareLoading()).toBe(false);
-    expect(store.compareError()).toBeNull();
-  });
-
-  it('no-ops compare without a repository or either side', async () => {
-    const getDiff = vi.fn(() => Promise.resolve(EMPTY_DIFF));
-    store = new GraphStore(makeBridge({ getDiff }));
-
-    await store.compareCommits('a'.repeat(40), 'b'.repeat(40));
-    store.repoId.set(REPO.id);
-    await store.compareCommits('', 'b'.repeat(40));
-    await store.compareCommits('a'.repeat(40), '');
-
-    expect(getDiff).not.toHaveBeenCalled();
-    expect(store.compare()).toBeNull();
-  });
-
-  it('records a compare failure and clears the transient diff', async () => {
-    const getDiff = vi.fn(() => Promise.reject({ code: 'DIFF_FAILED', message: 'boom' }));
-    store = new GraphStore(makeBridge({ getDiff }));
-    store.repoId.set(REPO.id);
-
-    await store.compareCommits('a'.repeat(40), 'b'.repeat(40));
-
-    expect(store.compareError()).toEqual({ code: 'DIFF_FAILED', message: 'boom', details: {} });
-    expect(store.compareDiff()).toBeNull();
-    expect(store.compareLoading()).toBe(false);
-  });
-
-  it('degrades compare to offline on IPC_UNAVAILABLE', async () => {
-    const getDiff = vi.fn(() => {
-      throw { code: 'IPC_UNAVAILABLE', message: 'offline' };
-    });
-    store = new GraphStore(makeBridge({ getDiff }));
-    store.repoId.set(REPO.id);
-
-    await store.compareCommits('a'.repeat(40), 'b'.repeat(40));
-
-    expect(store.offline()).toBe(true);
-    expect(store.compareDiff()).toBeNull();
-    expect(store.compareError()).toBeNull();
-  });
-
-  it('clearCompare drops the pair, the diff and any error', async () => {
-    const getDiff = vi.fn(() => Promise.resolve(EMPTY_DIFF));
-    store = new GraphStore(makeBridge({ getDiff }));
-    store.repoId.set(REPO.id);
-    await store.compareCommits('a'.repeat(40), 'b'.repeat(40));
-
-    store.clearCompare();
-
-    expect(store.compare()).toBeNull();
-    expect(store.compareDiff()).toBeNull();
-    expect(store.compareError()).toBeNull();
   });
 
   // -- focusCommit (ADR-026 search hand-off) -------------------------------

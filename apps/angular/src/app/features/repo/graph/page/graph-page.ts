@@ -10,8 +10,7 @@ import {
 } from '@angular/core';
 import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
 import { Router } from '@angular/router';
-import { DiffViewer, GRAPH_ROW_HEIGHT, GraphRow } from '@singularitree/ui-kit';
-import { ModalComponent } from '@shared/ui/modal/modal';
+import { GRAPH_ROW_HEIGHT, GraphRow } from '@singularitree/ui-kit';
 import { BranchCreateDialog } from '@shared/ui/ref-dialogs/branch-create-dialog';
 import type { BranchCreateValue, TagCreateValue } from '@shared/ui/ref-dialogs/ref-dialog.models';
 import { TagCreateDialog } from '@shared/ui/ref-dialogs/tag-create-dialog';
@@ -44,8 +43,6 @@ import { WipRow } from '../ui/wip-row';
     CommitDetailsPanel,
     GraphContextMenu,
     ResetConfirmDialog,
-    ModalComponent,
-    DiffViewer,
     BranchCreateDialog,
     TagCreateDialog,
   ],
@@ -158,32 +155,6 @@ import { WipRow } from '../ui/wip-row';
         (submitted)="onTagCreateSubmitted($event)"
         (cancelled)="onTagCreateCancelled()"
       />
-
-      <!-- Compare reuses the shared diff display path (GetDiff + DiffViewer). -->
-      <st-modal
-        [open]="store.compare() !== null"
-        title="Compare commits"
-        (closed)="store.clearCompare()"
-      >
-        <p class="st-graph-page__compare-range" data-testid="compare-range">
-          {{ store.compare()?.from }} → {{ store.compare()?.to }}
-        </p>
-        <div class="st-graph-page__compare-diff">
-          <st-diff-viewer
-            [diff]="store.compareDiff()"
-            [loading]="store.compareLoading()"
-            [errorMsg]="store.compareError()?.message ?? null"
-          />
-        </div>
-        <button
-          st-modal-footer
-          type="button"
-          data-testid="compare-close"
-          (click)="store.clearCompare()"
-        >
-          Close
-        </button>
-      </st-modal>
     </section>
   `,
   styles: `
@@ -265,22 +236,6 @@ import { WipRow } from '../ui/wip-row';
       border-left: 1px solid var(--st-color-border, #2f2f44);
       overflow: hidden;
     }
-
-    .st-graph-page__compare-range {
-      margin: 0 0 10px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 11px;
-      word-break: break-all;
-      opacity: 0.75;
-    }
-
-    .st-graph-page__compare-diff {
-      height: 360px;
-      min-height: 0;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      border-radius: 6px;
-      overflow: hidden;
-    }
   `,
 })
 export class GraphPage {
@@ -324,13 +279,14 @@ export class GraphPage {
   });
 
   /**
-   * Compare needs a distinct, real base: the currently selected commit. It is
-   * disabled for the WIP node and for the very commit the menu was opened on.
+   * "Compare with selected" is a navigation action to the File status screen
+   * (ADR-0030 item 4), so it is enabled exactly when its own target is a real
+   * commit — the same gate as "File status". The synthetic WIP row has no
+   * commit to open and stays disabled.
    */
   readonly canCompare = computed(() => {
-    const target = this.contextMenuTarget();
-    const selected = this.store.selectedOid();
-    return !!target && !!selected && selected !== WIP_OID && selected !== target.oid;
+    const oid = this.contextMenuTarget()?.oid ?? '';
+    return !!oid && oid !== WIP_OID;
   });
 
   /**
@@ -399,13 +355,16 @@ export class GraphPage {
     void this.repoState.checkoutBranch(target.refName, target.isRemote);
   }
 
-  /** Compare the selected commit (base) with the menu commit (target). */
+  /**
+   * "Compare with selected" (ADR-0030 item 4): no diff is rendered in History.
+   * The entry is a navigation shortcut that reuses the "File status" hand-off —
+   * select the menu commit in the shared store, then route to the screen whose
+   * `commit` variant diffs it against its first parent.
+   */
   onCompare(): void {
     const target = this.contextMenuTarget();
-    const base = this.store.selectedOid();
-    this.closeContextMenu();
-    if (!target || !base || base === WIP_OID || base === target.oid) return;
-    void this.store.compareCommits(base, target.oid);
+    if (!target) return;
+    this.onFileStatus(target.oid);
   }
 
   /**

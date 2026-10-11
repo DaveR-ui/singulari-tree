@@ -237,19 +237,23 @@ describe('GraphPage', () => {
     expect(page.contextMenu()).toBeNull();
   });
 
-  it('enables Compare only for a distinct, non-WIP selection', async () => {
+  it('enables Compare for a real non-WIP menu target, independent of the selection', async () => {
     const { store, page } = await setup(3);
-    page.onRowContextMenu(menuEvent(), makeRow(0));
+    // No menu target: nothing to open.
     expect(page.canCompare()).toBe(false);
 
+    // A real commit row: enabled even with no selection at all.
+    page.onRowContextMenu(menuEvent(), makeRow(1));
+    expect(page.canCompare()).toBe(true);
+
+    // Still enabled when the menu target is the selected commit: Compare is now
+    // its own navigation action, not a two-commit diff (ADR-0030 item 4).
     store.select(makeCommit(1).oid?.hex ?? '');
     expect(page.canCompare()).toBe(true);
 
+    // A different selection does not change the gate either.
     store.select(makeCommit(0).oid?.hex ?? '');
-    expect(page.canCompare()).toBe(false);
-
-    store.select(WIP_OID);
-    expect(page.canCompare()).toBe(false);
+    expect(page.canCompare()).toBe(true);
   });
 
   it('closes the menu explicitly', async () => {
@@ -271,34 +275,72 @@ describe('GraphPage', () => {
     expect(page.contextMenu()).toBeNull();
   });
 
-  it('compares the selected base with the menu target', async () => {
-    const { store, page, invoke } = await setup(3);
-    const base = makeCommit(2).oid?.hex ?? '';
-    store.select(base);
-    page.onRowContextMenu(menuEvent(), makeRow(0));
+  it('routes Compare to File status by selecting the menu target, never diffing in History', async () => {
+    const navigate = vi.fn(() => Promise.resolve(true));
+    const { store, page, invoke } = await setup(3, 3, { navigate });
+    store.select(makeCommit(2).oid?.hex ?? '');
+    const select = vi.spyOn(store, 'select');
+    const target = makeCommit(1).oid?.hex ?? '';
+    page.onRowContextMenu(menuEvent(), makeRow(1));
 
     page.onCompare();
 
-    await vi.waitFor(() =>
-      expect(invoke).toHaveBeenCalledWith('getDiff', {
-        repoId: 'repo-1',
-        from: base,
-        to: makeCommit(0).oid?.hex,
-        path: '',
-        staged: false,
-      }),
-    );
+    expect(select).toHaveBeenCalledWith(target);
+    expect(navigate).toHaveBeenCalledWith(['/repo', 'file-status']);
+    // ADR-0030 item 4: Compare renders no diff in History.
+    expect(invoke).not.toHaveBeenCalledWith('getDiff', expect.anything());
     expect(page.contextMenu()).toBeNull();
   });
 
-  it('does not compare when the base is the menu target', async () => {
-    const { store, page, invoke } = await setup(3);
-    store.select(makeCommit(0).oid?.hex ?? '');
-    page.onRowContextMenu(menuEvent(), makeRow(0));
+  it('routes Compare even when the menu target is the current selection', async () => {
+    const navigate = vi.fn(() => Promise.resolve(true));
+    const { store, page, invoke } = await setup(3, 3, { navigate });
+    const oid = makeCommit(1).oid?.hex ?? '';
+    store.select(oid);
+    const select = vi.spyOn(store, 'select');
+    page.onRowContextMenu(menuEvent(), makeRow(1));
+
+    page.onCompare();
+
+    // The target is its own action now: selecting it and routing is valid.
+    expect(select).toHaveBeenCalledWith(oid);
+    expect(navigate).toHaveBeenCalledWith(['/repo', 'file-status']);
+    expect(invoke).not.toHaveBeenCalledWith('getDiff', expect.anything());
+  });
+
+  it('ignores Compare with no menu target', async () => {
+    const navigate = vi.fn(() => Promise.resolve(true));
+    const { store, page, invoke } = await setup(3, 3, { navigate });
+    const select = vi.spyOn(store, 'select');
     invoke.mockClear();
 
     page.onCompare();
 
+    expect(select).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalledWith('getDiff', expect.anything());
+  });
+
+  it('disables Compare and never routes for the WIP pseudo-oid target', async () => {
+    const navigate = vi.fn(() => Promise.resolve(true));
+    const { store, page, invoke } = await setup(3, 3, { navigate });
+    const select = vi.spyOn(store, 'select');
+    // `contextMenuTarget` cannot be WIP in practice; drive the public path with
+    // a synthetic WIP row to pin the gate and the no-op.
+    const wipRow: CommitRow = {
+      ...makeRow(0),
+      commit: { ...makeCommit(0), oid: { hex: WIP_OID, kind: 'SHA1' } },
+    };
+    page.onRowContextMenu(menuEvent(), wipRow);
+    invoke.mockClear();
+
+    expect(page.contextMenuTarget()?.oid).toBe(WIP_OID);
+    expect(page.canCompare()).toBe(false);
+
+    page.onCompare();
+
+    expect(select).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
     expect(invoke).not.toHaveBeenCalledWith('getDiff', expect.anything());
   });
 

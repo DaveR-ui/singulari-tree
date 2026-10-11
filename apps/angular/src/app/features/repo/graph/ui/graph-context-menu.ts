@@ -22,9 +22,10 @@ import { WIP_OID } from '../graph.store';
  *
  * It renders Checkout / Compare / Copy SHA, the create-branch-here and
  * tag-this-commit entries (lit up in M3 once the ref RPCs landed, ADR-028),
- * the File status entry (routing to the repo's file-status screen, ADR-0029) and
- * the Reset submenu (soft/mixed/hard). Cherry-pick and revert remain out of
- * scope and are never rendered: no dead actions ship.
+ * the File status entry and the Reset submenu (soft/mixed/hard). Compare and
+ * File status are both navigation entries that emit for the page to select +
+ * route (ADR-0030 item 4); neither renders a diff here. Cherry-pick and revert
+ * remain out of scope and are never rendered: no dead actions ship.
  *
  * The component performs no RPC and touches no Git: it emits the chosen action
  * and the owning store/page decides what to do. It is dismissable via Escape,
@@ -247,12 +248,16 @@ export class GraphContextMenu {
   readonly x = input(0);
   readonly y = input(0);
   readonly target = input<GraphContextMenuTarget | null>(null);
-  /** True when a different commit is selected and can act as the compare base. */
+  /**
+   * True when the menu target can be opened in the File status screen. The
+   * owning page supplies the gate (ADR-0030 item 4).
+   */
   readonly canCompare = input(false);
   /** True while an owning store operation is in flight (disables every entry). */
   readonly busy = input(false);
 
   readonly checkout = output<CheckoutTarget>();
+  /** Emitted when the user picks "Compare with selected"; the page selects the commit and routes (ADR-0030). */
   readonly compare = output<void>();
   /** Open the File status screen for the menu commit; emits the full oid (ADR-0029). */
   readonly fileStatus = output<string>();
