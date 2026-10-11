@@ -8,7 +8,7 @@ aliases:
 - Tooling slice
 related:
 - slices-index
-version: 1.0.1
+version: 1.0.2
 status: active
 ---
 
@@ -49,5 +49,5 @@ Build and generation scripts, plus CI automation. It is the reproducible entry p
 
 ## Known gaps & accepted debt
 
-- There is no remote CI pipeline.
+- There is no remote CI pipeline. *Open documentation inconsistency (flagged, not adjudicated):* the frozen `docs/context/git-client/roadmap-mvp.md:104` records an e2e smoke "configured for 2 OSes via CI (`ubuntu-latest` + `windows-latest`, `.github/workflows/ci.yml`)", which contradicts this statement. Neither the pipeline's existence nor the workflow's effect has been verified here, and the frozen roadmap is not edited (ratchet). Resolve by verifying `.github/workflows/` and correcting whichever claim is wrong.
 - `verify-docs.sh` is new.

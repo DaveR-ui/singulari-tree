@@ -1,14 +1,15 @@
 # SingulariTree — Tag index
 
 <!-- BEGIN GENERATED: tags -->
-<!-- snapshot: 2026-10-09 -->
+<!-- snapshot: 2026-10-11 -->
 ## Generated tag index
 
-- **adr** — adr-0014-docs-corpus-layout, adr-0015-docs-validator-generated-index, adr-0016-lane-state-and-graph-dod, adr-0017-docs-language-en, adr-0018-renderer-i18n-locale-switch, adr-0019-adr-translation-authorization, adr-0020-diff-per-file-and-hunk-staging, adr-0021-reset-modes, adr-0022-graph-context-menu-shell, adr-0023-commit-change-size-gauge, adr-0029-file-status-screen, adr-024-multi-repo-workspaces, adr-025-deep-links-and-clipboard-clone, adr-026-cross-repo-commit-search, adr-027-git-flow-presets, adr-028-advanced-git-rpcs, adr-index
+- **adr** — adr-0014-docs-corpus-layout, adr-0015-docs-validator-generated-index, adr-0016-lane-state-and-graph-dod, adr-0017-docs-language-en, adr-0018-renderer-i18n-locale-switch, adr-0019-adr-translation-authorization, adr-0020-diff-per-file-and-hunk-staging, adr-0021-reset-modes, adr-0022-graph-context-menu-shell, adr-0023-commit-change-size-gauge, adr-0029-file-status-screen, adr-0030-history-screen-is-compare-free, adr-024-multi-repo-workspaces, adr-025-deep-links-and-clipboard-clone, adr-026-cross-repo-commit-search, adr-027-git-flow-presets, adr-028-advanced-git-rpcs, adr-index
 - **bootstrap** — bootstrap-protocol
 - **branch** — adr-028-advanced-git-rpcs
 - **cache** — adr-0023-commit-change-size-gauge, adr-026-cross-repo-commit-search
 - **clipboard** — adr-025-deep-links-and-clipboard-clone
+- **compare** — adr-0030-history-screen-is-compare-free
 - **context-menu** — adr-0022-graph-context-menu-shell
 - **contract** — documentation-system, new-note-protocol
 - **contracts** — adr-0020-diff-per-file-and-hunk-staging, adr-028-advanced-git-rpcs
@@ -17,7 +18,7 @@
 - **deep-link** — adr-025-deep-links-and-clipboard-clone
 - **desktop-shell** — adr-025-deep-links-and-clipboard-clone
 - **destructive** — adr-0021-reset-modes
-- **diff** — adr-0020-diff-per-file-and-hunk-staging, adr-0029-file-status-screen
+- **diff** — adr-0020-diff-per-file-and-hunk-staging, adr-0029-file-status-screen, adr-0030-history-screen-is-compare-free
 - **documentation** — accepted-debt, adr-0014-docs-corpus-layout, adr-0015-docs-validator-generated-index, adr-0017-docs-language-en, adr-0019-adr-translation-authorization, documentation-system
 - **dod** — adr-0016-lane-state-and-graph-dod
 - **entry-point** — project
@@ -26,7 +27,7 @@
 - **generated** — adr-0015-docs-validator-generated-index
 - **git-client** — feature-gap-analysis
 - **git-flow** — adr-027-git-flow-presets
-- **graph** — adr-0016-lane-state-and-graph-dod, adr-0022-graph-context-menu-shell, adr-0029-file-status-screen
+- **graph** — adr-0016-lane-state-and-graph-dod, adr-0022-graph-context-menu-shell, adr-0029-file-status-screen, adr-0030-history-screen-is-compare-free
 - **hub** — adr-index, slices-index
 - **i18n** — adr-0018-renderer-i18n-locale-switch
 - **index** — adr-index, slices-index
@@ -43,7 +44,7 @@
 - **project** — project
 - **protocol** — bootstrap-protocol, docs-review-protocol, new-note-protocol
 - **ratchet** — accepted-debt
-- **renderer** — adr-0018-renderer-i18n-locale-switch, adr-0022-graph-context-menu-shell, adr-0029-file-status-screen, adr-024-multi-repo-workspaces
+- **renderer** — adr-0018-renderer-i18n-locale-switch, adr-0022-graph-context-menu-shell, adr-0029-file-status-screen, adr-0030-history-screen-is-compare-free, adr-024-multi-repo-workspaces
 - **reset** — adr-0021-reset-modes
 - **review** — docs-review-protocol
 - **roadmap** — feature-gap-analysis
@@ -54,7 +55,7 @@
 - **staging** — adr-0020-diff-per-file-and-hunk-staging
 - **stash** — adr-028-advanced-git-rpcs
 - **stats** — adr-0023-commit-change-size-gauge
-- **status** — adr-0029-file-status-screen
+- **status** — adr-0029-file-status-screen, adr-0030-history-screen-is-compare-free
 - **structure** — documentation-system
 - **tag** — adr-028-advanced-git-rpcs
 - **validation** — docs-review-protocol

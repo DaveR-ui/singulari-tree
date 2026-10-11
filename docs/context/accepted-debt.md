@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-10-07
+last_updated: 2026-10-11
 status: active
 description: Accepted debt of the corpus — legacy documents not yet migrated and explicitly tolerated decisions, with the criterion to reduce it.
 tags:
@@ -7,7 +7,7 @@ tags:
 - debt
 - legacy
 - ratchet
-version: 1.7
+version: 1.7.1
 related:
 - documentation-system
 ---
@@ -26,7 +26,7 @@ Record here **every exception explicitly**, with its reason and the criterion to
 |---|---|---|
 | `docs/context/git-client/**` — 13 content docs (`architecture.md`, `decisions.md`, `module-diagram.md`, `service-design.md`, `domain-model.md`, `folder-structure.md`, `roadmap-mvp.md`, `roadmap-v1.md`, `risks.md`, `ipc-strategy.md`, `testing-strategy.md`, `github-oauth-guide.md`, `github-real-data-guide.md`) + non-kebab hub `INDEX.md` + `README.md` alias | No frontmatter and a non-`kebab-case` hub; **EXCLUDED from the validator** (`docs/context/git-client/**` frozen). `roadmap-mvp.md` was already **migrated by ratchet on touch** (`context-doc` frontmatter), but the rest of the tree remains frozen and outside the scan. | Ratchet: migrate each file only when touched (frontmatter + rename hub when applicable); `roadmap-mvp.md` is already migrated. A pure translation is a content transform and does not by itself trigger the ratchet's contract-migration obligation — it changes prose, not shape (no frontmatter, no hub rename) — so the frozen tree remains excluded from the validator. |
 | Lane edge visual parity (diagonals/crossings) vs `git log --graph` — Week 1-2 DoD bounded (ADR-0016) | The `Lane{index,color,continues}` wire contract does not carry edge geometry; only **vertical columns** are contracted (correct and continuous across windows). No contract change — deliberate decision (Option B). | Future addition of a `LaneRow`/segment contract + SVG diagonals in the renderer, **behind an ADR** that supersedes [[adr-0016-lane-state-and-graph-dod]]. |
-| ADR-001..ADR-013 embedded in `docs/context/git-client/decisions.md` | They are not extracted into `docs/adrs/` to avoid a 13-file big-bang. | Numbering continues at **ADR-020**; new ADRs are born in `docs/adrs/` with their hub. |
+| ADR-001..ADR-013 embedded in `docs/context/git-client/decisions.md` | They are not extracted into `docs/adrs/` to avoid a 13-file big-bang. | Numbering continues at **ADR-031**; new ADRs are born in `docs/adrs/` with their hub. |
 | `README.md` (root) | Human README, **no frontmatter**, OUTSIDE the corpus. | Kept as a pointer to the entry point ([`docs/project.md`](../project.md)); it is not migrated. |
 | `docs/context/git-client/README.md` | Alias of the legacy hub `INDEX.md`. | Disappears when the legacy hub is migrated/normalized on touch. |
 | UNSIGNED package (no signing/notarization/auto-update) | Explicit MVP scope: signing and `electron-updater` are V1 (`roadmap-v1.md` §V1.4). | V1.4 phase: macOS notarization, Windows signing, signed flatpak/AppImage, auto-update. |

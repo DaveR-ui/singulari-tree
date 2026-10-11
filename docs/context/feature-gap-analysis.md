@@ -1,12 +1,12 @@
 ---
-last_updated: 2026-10-07
+last_updated: 2026-10-11
 status: active
 description: Feature-gap analysis of SingulariTree against SourceTree and GitKraken (REA-assisted), with a prioritized, anti-goal-checked development-continuation recommendation.
 tags:
 - roadmap
 - feature-gap
 - git-client
-version: 1.4.0
+version: 1.5.0
 related:
 - accepted-debt
 - documentation-system
@@ -30,7 +30,7 @@ REA v5.0.0 runs on Node 26 here. REA is a local, read-only static-inspection too
 ### (b) Current implemented baseline (verified in code)
 
 - **Implemented:** RepoService Open / List / Remove; GetCommits; GetBranches; GetRemotes; GetTags; Checkout; StashPush; Fetch / Push / Pull (streaming); GraphService lanes; CacheService; AuthService (GitHub via `gh` CLI); GetStatus; per-file `Diff` (`FileDiff files` + `truncated`, `GetDiffRequest.path` / `staged`); Stage / Unstage / Commit; hunk- and line-level staging / unstaging / discarding plus file-level discard (Commit Composer); Reset soft / mixed / hard (`Reset` RPC, `RESET_FAILED`); `GetCommitStats` numstat counts cached in SQLite `commit_stats` (migration `002_commit_stats.sql`, lazily per visible window); real `fsnotify` watcher (`repo:changed` / `fs:changed`, `.git`-as-gitfile aware) and the `Watch` → `git:watch` → renderer `fs:changed` stream. Renderer: virtualized graph + filter + commit details + WIP row; repos list; fetch / pull / push; sidebar branches / tags / remotes; StatusStore + changes/commit panel; hunk/line staging Composer; graph right-click context-menu shell (Checkout / Compare / Copy SHA, plus Reset); commit change-size gauge; real Monaco `DiffViewer` (lazy-loaded); settings (theme, en/es). M3 landed: branch CRUD (`CreateBranch` / `RenameBranch` / `DeleteBranch`), `Merge` (MERGE / NO_FF / FF_ONLY / SQUASH; conflicts surfaced, not resolved — no 3-way editor), tag CRUD (`CreateTag` / `DeleteTag`), `GetStashes` un-stubbed plus `StashApply` / `StashPop` / `StashDrop`, and the append-only error codes `MERGE_CONFLICT=28`, `MERGE_FAILED=29`, `TAG_EXISTS=30`, `TAG_NOT_FOUND=31`, `GIT_FLOW_FAILED=32`; renderer UI for all of these plus the graph context-menu "Create branch here" / "Tag this commit" and a merge-conflict banner; multi-repo Workspaces / repo tabs (renderer-only UI-state) with renderer-orchestrated multi-repo fetch-all; cross-repo `SearchCommits` over the SQLite `commit_cache` metadata only plus the renderer WORKSPACE `search` view; git-flow presets (`GetGitFlowConfig` / `SetGitFlowConfig` / `StartGitFlow` / `FinishGitFlow`, migration `003_git_flow_config.sql`) plus a git-flow panel; and deep links (`singularitree://`) with the shell single-instance/protocol client, the `deeplink:open` event, renderer routing (open repo / commit / branch / clone-prefill) and clipboard clone / copy-repo-URL (clone itself is prefill-only, V1.4) — [[adr-024-multi-repo-workspaces]], [[adr-025-deep-links-and-clipboard-clone]], [[adr-026-cross-repo-commit-search]], [[adr-027-git-flow-presets]], [[adr-028-advanced-git-rpcs]].
-- **NOT implemented (stubs / Unimplemented):** `GetWorktrees` (stub); `StreamCommits` IPC streaming; worktrees; GitHub OAuth; the 3-way conflict editor (M3 surfaces conflicts only); clone/onboarding (V1.4).
+- **NOT implemented (stubs / Unimplemented):** `GetWorktrees` (stub); `StreamCommits` IPC streaming; worktrees; GitHub OAuth; the 3-way conflict editor (M3 surfaces conflicts only); clone/onboarding (V1.4); and the [[adr-0030-history-screen-is-compare-free]] History refactor — the graph screen still mounts `st-status-workspace` beneath it (`repo-page.ts:30-32`) and still opens the inline compare modal (`graph-page.ts:162-186`), so the requirement below is pending, not implemented.
 
 ### (c) Gap analysis
 
@@ -50,7 +50,7 @@ SourceTree — `In SingulariTree?` ∈ {Have, Planned MVP-V1, Missing}.
 | Multi-host account manager | Missing | new candidate |
 | Periodic background remote refresh | Missing | new candidate |
 | Global / custom gitignore | Missing | new candidate |
-| Discard at hunk / line granularity | Missing | new candidate |
+| Discard at hunk / line granularity | Missing | new candidate (landed in M2 — see (f)) |
 
 GitKraken — same columns.
 
@@ -59,8 +59,8 @@ GitKraken — same columns.
 | Solo/focus view (⊂ V1.2 filter), dim merge commits (⊂ V1.2) | Planned MVP-V1 | drop-as-planned |
 | Interactive rebase, blame/file history, bisect, reflog | Planned MVP-V1 | drop-as-planned |
 | Keyboard nav, zoom/minimap, signed commits | Planned MVP-V1 | drop-as-planned |
-| Commit change-size gauge ("changes" column) | Missing | new candidate |
-| Graph right-click context menu shell (reset soft/mixed/hard, compare two refs, copy SHA/link) — only the shell and reset/compare/copy-SHA are new; the menu's cherry-pick/revert/tag entries are V1.1-planned | Missing | new candidate (shell + reset/compare/copy-SHA) |
+| Commit change-size gauge ("changes" column) | Missing | new candidate (landed in M2 — see (f)) |
+| Graph right-click context menu shell (reset soft/mixed/hard, compare two refs, copy SHA/link) — only the shell and reset/compare/copy-SHA are new; the menu's cherry-pick/revert/tag entries are V1.1-planned | Missing | new candidate (shell + reset/compare/copy-SHA) (landed in M2 — see (f)) |
 | Customizable graph columns | Missing | new candidate |
 | Multi-repo Workspaces + multi-repo fetch | Missing | new candidate |
 | Launchpad PR/issue inbox | Missing | new candidate |
@@ -71,12 +71,15 @@ GitKraken — same columns.
 
 ### (d) Prioritized new feature ideas
 
+The four P1 rows marked *landed (M2)* below are the items §(f) records as delivered; their governing ADRs are [[adr-0020-diff-per-file-and-hunk-staging]], [[adr-0021-reset-modes]], [[adr-0022-graph-context-menu-shell]] and [[adr-0023-commit-change-size-gauge]]. They are kept here for traceability, not as open work.
+
 | Idea | Primary slice | Secondary slices | Anti-goal check | Depends on (unimplemented) | Priority |
 |---|---|---|---|---|---|
-| Discard at file/hunk/line granularity | core | contracts, renderer | none (Git stays in core) | GetStatus, GetDiff (MVP) | P1 |
-| Hunk/line staging (Commit Composer) | core | contracts, renderer | none | GetStatus, GetDiff, Monaco (MVP) | P1 |
-| Graph right-click context menu shell (checkout / compare / copy SHA now; create-branch-here / cherry-pick / revert / tag wire once V1.1 lands) | renderer | core, contracts | none (routes to IPC→core) | V1.1 ops + GetDiff | P1 |
-| Reset (soft/mixed/hard) | core | contracts, renderer | none | read path | P1 |
+| Discard at file/hunk/line granularity | core | contracts, renderer | none (Git stays in core) | GetStatus, GetDiff (MVP) | landed (M2) — see (f) |
+| Hunk/line staging (Commit Composer) | core | contracts, renderer | none | GetStatus, GetDiff, Monaco (MVP) | landed (M2) — see (f) |
+| Graph right-click context menu shell (checkout / compare / copy SHA now; create-branch-here / cherry-pick / revert / tag wire once V1.1 lands) | renderer | core, contracts | none (routes to IPC→core) | V1.1 ops + GetDiff | landed (M2) — see (f) |
+| Reset (soft/mixed/hard) | core | contracts, renderer | none | read path | landed (M2) — see (f) |
+| History screen is compare-free; comparison redirects to the File status screen (ADR-0030) | renderer | docs | none (renderer-only; reuses GetDiff/DiffViewer, no new RPC/IPC/Core) | none (ADR-0029 File status screen landed) | P1 |
 | Multi-repo Workspaces / repo tabs + multi-repo fetch | renderer | core, desktop-shell | none | Fetch (have); stable multi-repo state | P2 |
 | Cross-repo local commit search | core | renderer, contracts | metadata cache only, never Git objects (ADR-006 OK) | real fsnotify watcher | P2 |
 | Commit change-size gauge (numstat stats) | core | contracts, renderer, tooling | counts only, no blobs (ADR-006 OK) | GetCommits window + caching | P2 |
@@ -103,8 +106,9 @@ GitKraken — same columns.
 - **M1 (landed, P0): the MVP core flow is closed.** Core GetStatus → Stage/Unstage → Commit plus GetDiff (`apps/go-core/internal/adapter/git/adapter.go`) and the renderer StatusStore / commit box + lazy-loaded Monaco diff viewer + real fsnotify watcher (`apps/go-core/internal/adapter/watcher/watcher.go`) are implemented; the `stage → commit → diff` e2e `test.skip` was replaced by a real passing Playwright test and the two settled accepted-debt rows were removed. It was the MVP's own missing flow, a recorded accepted debt, and the prerequisite for nearly every new idea above (discard, reset, hunk staging, compare, undo/redo, change gauge). **M2 followed and has now landed (see below).** The remaining M1 limitation — a flattened `Diff` with no per-file/path addressing — is resolved by [[adr-0020-diff-per-file-and-hunk-staging]] (M2), and the corresponding accepted-debt row is removed.
 - **M2 (landed, P1): working-tree safety and graph actions.** Per-file `Diff` plus hunk/line stage + discard, Reset soft/mixed/hard, graph context-menu shell (checkout / compare / copy-SHA, plus Reset), and the commit change-size gauge — [[adr-0020-diff-per-file-and-hunk-staging]], [[adr-0021-reset-modes]], [[adr-0022-graph-context-menu-shell]], [[adr-0023-commit-change-size-gauge]]. The shell's create-branch-here / tag entries were to light up after the V1.1 ops; M2 shipped the shell with the checkout / compare / copy-SHA actions. **M3 followed and has now landed (see below).**
 - **M3 (landed, P2): multi-repo Workspaces/tabs + multi-repo fetch, cross-repo commit search, git-flow presets and deep links/clipboard clone, plus the V1.1 branch CRUD / merge / tag / stash the presets consume** — [[adr-024-multi-repo-workspaces]], [[adr-025-deep-links-and-clipboard-clone]], [[adr-026-cross-repo-commit-search]], [[adr-027-git-flow-presets]], [[adr-028-advanced-git-rpcs]]. The graph context-menu shell now lights up its create-branch-here / tag-this-commit entries; merge conflicts are surfaced (banner, `has_conflict`, `GetStatus.is_conflicted`), not resolved — the 3-way editor remains open. Deep links route to existing per-repo IPC and clone is prefill-only (V1.4).
+- **Pending (not yet scheduled, P1): the History screen becomes compare-free** ([[adr-0030-history-screen-is-compare-free]]). It is **not implemented**: the graph screen still mounts `st-status-workspace` (`repo-page.ts:30-32`, fixed 260px band `:74-79`) with its selection-coupled first-parent diff, and the inline compare modal (`graph-page.ts:162-186`) still exists. The requirement — panel removed, commit details pinned as the aside's contract, Compare repurposed as a navigation action to `/repo/file-status` — is recorded in §(b) and §(d).
 - **Next (not yet scheduled):** worktrees and `GetWorktrees`, `StreamCommits` IPC streaming, GitHub OAuth, the 3-way conflict editor, clone/onboarding (V1.4), and the P3 candidates above (undo/redo, Custom Actions, multi-host accounts, background refresh, gitignore, PR inbox, AI/MCP).
-- **Process:** do NOT hand-edit the frozen `docs/context/git-client/roadmap-mvp.md` / `roadmap-v1.md` (ratchet; touching forces migration). Record this analysis here. When the human blesses a direction, open append-only ADRs continuing at **ADR-020** for the structurally significant decisions (hunk staging & discard; operation journal/undo-redo; Custom Actions execution boundary; deep-link protocol routing; multi-repo workspaces; commit-stats metadata cache; multi-host account adapter) and register them in `docs/adrs/adr-index.md`. Expose each new mutation once as a core port/RPC, then as an MCP tool per ADR-013 (MCP-B) so AI/headless automation needs no bespoke cloud path.
+- **Process:** do NOT hand-edit the frozen `docs/context/git-client/roadmap-mvp.md` / `roadmap-v1.md` (ratchet; touching forces migration). Record this analysis here. When the human blesses a direction, open append-only ADRs continuing at **ADR-031** for the structurally significant decisions (hunk staging & discard; operation journal/undo-redo; Custom Actions execution boundary; deep-link protocol routing; multi-repo workspaces; commit-stats metadata cache; multi-host account adapter) and register them in `docs/adrs/adr-index.md`. Expose each new mutation once as a core port/RPC, then as an MCP tool per ADR-013 (MCP-B) so AI/headless automation needs no bespoke cloud path.
 
 ## When to use
 
@@ -122,6 +126,7 @@ GitKraken — same columns.
 - "Discard hunk" is admissible because it routes to a new core `GitPort.Discard` and never touches Git in the renderer.
 - "GitKraken Cloud Patches" is rejected because it needs an app-operated cloud backend, which the architecture forbids.
 - "Hunk staging" landed in M2 on the per-file `Diff` contract that [[adr-0020-diff-per-file-and-hunk-staging]] introduced.
+- The History-screen compare-free refactor ([[adr-0030-history-screen-is-compare-free]]) is admissible because it is renderer-only: it reuses `GetDiff` and only changes which screen renders the diff.
 
 ## Common mistakes
 
