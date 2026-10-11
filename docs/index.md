@@ -4,13 +4,13 @@
 # SingulariTree — Documentation index
 
 <!-- BEGIN GENERATED: index -->
-<!-- snapshot: 2026-10-07 -->
+<!-- snapshot: 2026-10-09 -->
 ## Generated index
 
 ### Overview
 
-- Markdown files: 32
-- Context docs: 4 | Notes: 6 | Hubs: 2 | adrs: 15 | templates: 0 | protocols: 3
+- Markdown files: 33
+- Context docs: 4 | Notes: 6 | Hubs: 2 | adrs: 16 | templates: 0 | protocols: 3
 
 ### Tree
 
@@ -27,6 +27,7 @@
   - adr-0021-reset-modes.md — adr, id: `adr-0021-reset-modes`
   - adr-0022-graph-context-menu-shell.md — adr, id: `adr-0022-graph-context-menu-shell`
   - adr-0023-commit-change-size-gauge.md — adr, id: `adr-0023-commit-change-size-gauge`
+  - adr-0029-file-status-screen.md — adr, id: `adr-0029-file-status-screen`
   - adr-024-multi-repo-workspaces.md — adr, id: `adr-024-multi-repo-workspaces`
   - adr-025-deep-links-and-clipboard-clone.md — adr, id: `adr-025-deep-links-and-clipboard-clone`
   - adr-026-cross-repo-commit-search.md — adr, id: `adr-026-cross-repo-commit-search`

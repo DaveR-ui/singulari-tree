@@ -28,6 +28,15 @@ export interface CheckoutTarget {
 }
 
 /**
+ * Repo screen the context menu can route to (ADR-0029).
+ *
+ * Additive union: every entry names a child route of the repo route. The menu
+ * emits the target and the owning page decides what to do with it, so the menu
+ * stays a dumb presentation component.
+ */
+export type GraphContextMenuScreenTarget = 'file-status';
+
+/**
  * Pick the ref to check out for a commit (ADR-0022):
  * a local branch (head/branch) wins, then a remote-tracking branch, and only
  * when neither exists does the commit itself become a detached-HEAD target.

@@ -61,7 +61,7 @@
       [offline]="repoState.refsOffline()"
       [error]="repoState.refsError()"
       (collapseToggle)="toggleLeft()"
-      (workspaceSelected)="activeWorkspace.set($event)"
+      (workspaceSelected)="onWorkspaceSelected($event)"
       (branchSelected)="onBranchSelected($event)"
       (remoteBranchSelected)="onRemoteBranchSelected($event)"
       (newBranchRequested)="onNewBranchRequested()"

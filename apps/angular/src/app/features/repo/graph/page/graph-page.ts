@@ -9,6 +9,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
+import { Router } from '@angular/router';
 import { DiffViewer, GRAPH_ROW_HEIGHT, GraphRow } from '@singularitree/ui-kit';
 import { ModalComponent } from '@shared/ui/modal/modal';
 import { BranchCreateDialog } from '@shared/ui/ref-dialogs/branch-create-dialog';
@@ -123,6 +124,7 @@ import { WipRow } from '../ui/wip-row';
         [busy]="store.resetRunning()"
         (checkout)="onCheckout($event)"
         (compare)="onCompare()"
+        (fileStatus)="onFileStatus($event)"
         (copySha)="onCopySha($event)"
         (createBranchHere)="onCreateBranchHere($event)"
         (tagCommit)="onTagCommit($event)"
@@ -292,6 +294,8 @@ export class GraphPage {
    * duplicating the flow (ADR-0022 item 1).
    */
   private readonly repoState = inject(RepoState);
+  /** Optional: the page is also constructed outside a router (unit spec). */
+  private readonly router = inject(Router, { optional: true });
 
   /** Must match `GRAPH_ROW_HEIGHT` so CDK virtualization delegates row height. */
   readonly rowHeight = GRAPH_ROW_HEIGHT;
@@ -402,6 +406,21 @@ export class GraphPage {
     this.closeContextMenu();
     if (!target || !base || base === WIP_OID || base === target.oid) return;
     void this.store.compareCommits(base, target.oid);
+  }
+
+  /**
+   * "File status" (ADR-0029): select the menu commit in the shared graph store,
+   * then route to the file-status screen, which reads that selection to choose
+   * its variant. The router is optional so the page also stays constructible
+   * outside a routing context (its unit spec drives the wiring through the
+   * component instance); with no router the commit is still selected and the
+   * navigation degrades to a no-op.
+   */
+  onFileStatus(oid: string): void {
+    this.closeContextMenu();
+    if (!oid || oid === WIP_OID) return;
+    this.store.select(oid);
+    void this.router?.navigate(['/repo', 'file-status']);
   }
 
   /** Copy SHA is renderer-only: no IPC round-trip (ADR-0022 item 2). */

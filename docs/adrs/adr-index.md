@@ -3,7 +3,7 @@ id: adr-index
 category: adrs
 tags: [adr, hub, index]
 aliases: [ADR Index, ADR List]
-related: [adr-0014-docs-corpus-layout, adr-0015-docs-validator-generated-index, adr-0016-lane-state-and-graph-dod, adr-0017-docs-language-en, adr-0018-renderer-i18n-locale-switch, adr-0019-adr-translation-authorization, adr-0020-diff-per-file-and-hunk-staging, adr-0021-reset-modes, adr-0022-graph-context-menu-shell, adr-0023-commit-change-size-gauge, adr-024-multi-repo-workspaces, adr-025-deep-links-and-clipboard-clone, adr-026-cross-repo-commit-search, adr-027-git-flow-presets, adr-028-advanced-git-rpcs]
+related: [adr-0014-docs-corpus-layout, adr-0015-docs-validator-generated-index, adr-0016-lane-state-and-graph-dod, adr-0017-docs-language-en, adr-0018-renderer-i18n-locale-switch, adr-0019-adr-translation-authorization, adr-0020-diff-per-file-and-hunk-staging, adr-0021-reset-modes, adr-0022-graph-context-menu-shell, adr-0023-commit-change-size-gauge, adr-024-multi-repo-workspaces, adr-025-deep-links-and-clipboard-clone, adr-026-cross-repo-commit-search, adr-027-git-flow-presets, adr-028-advanced-git-rpcs, adr-0029-file-status-screen]
 version: 1.4.0
 status: active
 ---
@@ -31,6 +31,7 @@ status: active
 - [[adr-026-cross-repo-commit-search]] — `SearchCommits` over an indexed SQLite metadata table only, never Git objects (M3).
 - [[adr-027-git-flow-presets]] — git-flow semantics live in core over the ADR-028 RPCs; config is SQLite metadata (M3).
 - [[adr-028-advanced-git-rpcs]] — V1.1 branch CRUD, merge, tag CRUD and stash apply/pop/drop as append-only RPCs (M3).
+- [[adr-0029-file-status-screen]] — renderer-only File Status screen (local / commit / PR variants) reusing GetDiff, GetBranches and the existing StatusStore; the diff is always on the right.
 
 ## Elsewhere
 

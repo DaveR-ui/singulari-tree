@@ -706,6 +706,23 @@ export class LayoutComponent implements OnInit {
   }
 
   /**
+   * Sidebar WORKSPACE selection (ADR-024 tabs, ADR-026 search, ADR-0029 file
+   * status). History is the routed repository screen and File status is a routed
+   * child of it, so both leave the center region to the `router-outlet`; Search
+   * stays an in-shell workspace rendered next to that outlet.
+   */
+  onWorkspaceSelected(kind: string): void {
+    this.activeWorkspace.set(kind);
+    if (kind === 'status') {
+      void this.router.navigate(['/repo', 'file-status']);
+      return;
+    }
+    if (kind === 'history') {
+      void this.router.navigate(['/repo']);
+    }
+  }
+
+  /**
    * Close a repo tab. Closing the active tab selects a neighbour; with no tabs
    * left the shell falls back to the repository manager.
    */

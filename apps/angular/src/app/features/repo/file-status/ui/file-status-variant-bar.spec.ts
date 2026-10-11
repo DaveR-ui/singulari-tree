@@ -1,0 +1,135 @@
+import { provideZonelessChangeDetection } from '@angular/core';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { beforeEach, describe, expect, it } from 'vitest';
+import type { FileStatusVariant } from '../file-status.models';
+import { FileStatusVariantBar } from './file-status-variant-bar';
+
+interface BarInputs {
+  variant?: FileStatusVariant;
+  branches?: string[];
+  baseRef?: string;
+  targetRef?: string;
+}
+
+function render(inputs: BarInputs = {}): ComponentFixture<FileStatusVariantBar> {
+  const fixture = TestBed.createComponent(FileStatusVariantBar);
+  const ref = fixture.componentRef;
+  ref.setInput('variant', inputs.variant ?? 'local');
+  ref.setInput('branches', inputs.branches ?? []);
+  ref.setInput('baseRef', inputs.baseRef ?? '');
+  ref.setInput('targetRef', inputs.targetRef ?? '');
+  fixture.detectChanges();
+  return fixture;
+}
+
+function query<T extends HTMLElement = HTMLElement>(
+  fixture: ComponentFixture<FileStatusVariantBar>,
+  testId: string,
+): T | null {
+  return (fixture.nativeElement as HTMLElement).querySelector<T>(
+    `[data-testid="${testId}"]`,
+  );
+}
+
+describe('FileStatusVariantBar', () => {
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      providers: [provideZonelessChangeDetection()],
+    }).compileComponents();
+  });
+
+  it('renders the three variant buttons', () => {
+    const fixture = render();
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect(query(fixture, 'variant-local')?.textContent?.trim()).toBe('Local');
+    expect(query(fixture, 'variant-commit')?.textContent?.trim()).toBe('Commit');
+    expect(query(fixture, 'variant-pr')?.textContent?.trim()).toBe('Pull request');
+    expect(el.querySelectorAll('[role="group"] [data-testid^="variant-"]')).toHaveLength(3);
+  });
+
+  it('emits the variant picked by the user', () => {
+    const fixture = render();
+    const emitted: FileStatusVariant[] = [];
+    fixture.componentInstance.variantChange.subscribe((variant) => emitted.push(variant));
+
+    query(fixture, 'variant-local')?.click();
+    query(fixture, 'variant-commit')?.click();
+    query(fixture, 'variant-pr')?.click();
+
+    expect(emitted).toEqual(['local', 'commit', 'pr']);
+  });
+
+  it('marks the active variant visually and for assistive tech', () => {
+    const fixture = render({ variant: 'pr' });
+
+    const pr = query(fixture, 'variant-pr');
+    const local = query(fixture, 'variant-local');
+    expect(pr?.classList.contains('st-file-status-variant__button--active')).toBe(true);
+    expect(pr?.getAttribute('aria-pressed')).toBe('true');
+    expect(local?.classList.contains('st-file-status-variant__button--active')).toBe(false);
+    expect(local?.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('renders the PR ref controls only in the PR variant', () => {
+    const local = render({ variant: 'local' });
+    expect(query(local, 'pr-base-input')).toBeNull();
+    expect(query(local, 'pr-target-select')).toBeNull();
+
+    const pr = render({ variant: 'pr' });
+    expect(query(pr, 'pr-base-input')).not.toBeNull();
+    expect(query(pr, 'pr-target-select')).not.toBeNull();
+  });
+
+  it('populates the PR ref controls from the branch names', () => {
+    const fixture = render({ variant: 'pr', branches: ['main', 'develop', 'origin/main'] });
+
+    const options = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLOptionElement>(
+      'select[data-testid="pr-target-select"] option',
+    );
+    expect(Array.from(options).map((option) => option.value)).toEqual([
+      'main',
+      'develop',
+      'origin/main',
+    ]);
+
+    // The base is an editable input: its datalist is fed by the same names.
+    const input = query<HTMLInputElement>(fixture, 'pr-base-input');
+    expect(input?.getAttribute('list')).toBe('st-file-status-variant__base-options');
+    const datalist = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLOptionElement>(
+      'datalist option',
+    );
+    expect(Array.from(datalist).map((option) => option.value)).toEqual([
+      'main',
+      'develop',
+      'origin/main',
+    ]);
+  });
+
+  it('reflects the current refs and emits their edits', () => {
+    const fixture = render({
+      variant: 'pr',
+      branches: ['main', 'develop'],
+      baseRef: 'main',
+      targetRef: 'develop',
+    });
+    const bases: string[] = [];
+    const targets: string[] = [];
+    fixture.componentInstance.baseRefChange.subscribe((value) => bases.push(value));
+    fixture.componentInstance.targetRefChange.subscribe((value) => targets.push(value));
+
+    const base = query<HTMLInputElement>(fixture, 'pr-base-input');
+    const target = query<HTMLSelectElement>(fixture, 'pr-target-select');
+    expect(base?.value).toBe('main');
+    expect(target?.value).toBe('develop');
+
+    // The base is freely editable: any ref name can be typed.
+    base!.value = 'release/1.0';
+    base!.dispatchEvent(new Event('input'));
+    target!.value = 'main';
+    target!.dispatchEvent(new Event('change'));
+
+    expect(bases).toEqual(['release/1.0']);
+    expect(targets).toEqual(['main']);
+  });
+});

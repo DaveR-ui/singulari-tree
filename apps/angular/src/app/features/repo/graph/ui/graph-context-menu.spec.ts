@@ -2,6 +2,7 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { RefLabel } from '@contracts/domain';
+import { WIP_OID } from '../graph.store';
 import {
   type CheckoutTarget,
   type GraphContextMenuTarget,
@@ -55,6 +56,7 @@ describe('GraphContextMenu', () => {
     expect(query(fixture, 'graph-context-menu')).not.toBeNull();
     expect(query(fixture, 'ctx-checkout')).not.toBeNull();
     expect(query(fixture, 'ctx-compare')).not.toBeNull();
+    expect(query(fixture, 'ctx-file-status')).not.toBeNull();
     expect(query(fixture, 'ctx-copy-sha')).not.toBeNull();
     expect(query(fixture, 'ctx-create-branch')).not.toBeNull();
     expect(query(fixture, 'ctx-tag')).not.toBeNull();
@@ -66,6 +68,51 @@ describe('GraphContextMenu', () => {
     expect(el.querySelector('[data-testid="ctx-cherry-pick"]')).toBeNull();
     expect(el.querySelector('[data-testid="ctx-revert"]')).toBeNull();
     expect(el.textContent ?? '').not.toMatch(/cherry|revert/i);
+  });
+
+  it('emits the full oid for File status and only for a real commit', () => {
+    const oid = 'f00d'.repeat(10);
+    const fixture = render({ target: makeTarget([], oid) });
+    const emitted: string[] = [];
+    fixture.componentInstance.fileStatus.subscribe((value) => emitted.push(value));
+
+    expect(query(fixture, 'ctx-file-status')?.textContent?.trim()).toBe('File status');
+    expect(query(fixture, 'ctx-file-status')?.hasAttribute('disabled')).toBe(false);
+
+    query(fixture, 'ctx-file-status')?.click();
+    expect(emitted).toEqual([oid]);
+  });
+
+  it('disables File status for the WIP row and never emits', () => {
+    const fixture = render({ target: makeTarget([], WIP_OID) });
+    const emitted: string[] = [];
+    fixture.componentInstance.fileStatus.subscribe((value) => emitted.push(value));
+
+    expect(query(fixture, 'ctx-file-status')?.hasAttribute('disabled')).toBe(true);
+    expect(fixture.componentInstance.canFileStatus()).toBe(false);
+
+    query(fixture, 'ctx-file-status')?.click();
+    expect(emitted).toEqual([]);
+  });
+
+  it('disables File status for a row without an oid', () => {
+    const fixture = render({ target: { oid: '', refs: [] } });
+    const emitted: string[] = [];
+    fixture.componentInstance.fileStatus.subscribe((value) => emitted.push(value));
+
+    expect(query(fixture, 'ctx-file-status')?.hasAttribute('disabled')).toBe(true);
+    query(fixture, 'ctx-file-status')?.click();
+    expect(emitted).toEqual([]);
+  });
+
+  it('does not emit File status while busy', () => {
+    const fixture = render({ busy: true });
+    const emitted: string[] = [];
+    fixture.componentInstance.fileStatus.subscribe((value) => emitted.push(value));
+
+    expect(query(fixture, 'ctx-file-status')?.hasAttribute('disabled')).toBe(true);
+    query(fixture, 'ctx-file-status')?.click();
+    expect(emitted).toEqual([]);
   });
 
   it('emits the full oid for Create branch here', () => {

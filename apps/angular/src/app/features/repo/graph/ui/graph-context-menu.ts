@@ -3,6 +3,7 @@ import {
   Component,
   ElementRef,
   HostListener,
+  computed,
   effect,
   inject,
   input,
@@ -14,12 +15,14 @@ import {
   type GraphContextMenuTarget,
   type ResetModeName,
 } from '../graph-menu.models';
+import { WIP_OID } from '../graph.store';
 
 /**
  * Dumb, positioned right-click menu for a commit row (ADR-0022, ADR-028).
  *
  * It renders Checkout / Compare / Copy SHA, the create-branch-here and
- * tag-this-commit entries (lit up in M3 once the ref RPCs landed, ADR-028), and
+ * tag-this-commit entries (lit up in M3 once the ref RPCs landed, ADR-028),
+ * the File status entry (routing to the repo's file-status screen, ADR-0029) and
  * the Reset submenu (soft/mixed/hard). Cherry-pick and revert remain out of
  * scope and are never rendered: no dead actions ship.
  *
@@ -72,6 +75,21 @@ import {
           (click)="onCompare()"
         >
           Compare with selected
+        </button>
+
+        <!-- File status routes to the repo's file-status screen (ADR-0029). The
+             WIP row is a synthetic node with no commit to diff, so the entry is
+             disabled there. -->
+        <button
+          type="button"
+          role="menuitem"
+          class="st-graph-context-menu__item"
+          data-testid="ctx-file-status"
+          [disabled]="!canFileStatus() || busy()"
+          (click)="onFileStatus(ctx)"
+          i18n
+        >
+          File status
         </button>
 
         <button
@@ -236,6 +254,8 @@ export class GraphContextMenu {
 
   readonly checkout = output<CheckoutTarget>();
   readonly compare = output<void>();
+  /** Open the File status screen for the menu commit; emits the full oid (ADR-0029). */
+  readonly fileStatus = output<string>();
   readonly copySha = output<string>();
   /** Create a branch at the menu commit; emits the full oid (ADR-028). */
   readonly createBranchHere = output<string>();
@@ -272,6 +292,21 @@ export class GraphContextMenu {
   onCompare(): void {
     if (!this.canCompare() || this.busy()) return;
     this.compare.emit();
+  }
+
+  /**
+   * True when the menu target is a real commit that can be diffed. The synthetic
+   * WIP row carries the `WIP_OID` pseudo-oid and no commit, so the entry is
+   * disabled for it (ADR-0029).
+   */
+  readonly canFileStatus = computed(() => {
+    const oid = this.target()?.oid ?? '';
+    return !!oid && oid !== WIP_OID;
+  });
+
+  onFileStatus(target: GraphContextMenuTarget): void {
+    if (!this.canFileStatus() || this.busy()) return;
+    this.fileStatus.emit(target.oid);
   }
 
   onCreateBranchHere(target: GraphContextMenuTarget): void {

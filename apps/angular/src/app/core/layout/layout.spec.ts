@@ -492,6 +492,42 @@ describe('LayoutComponent', () => {
     expect(items[2].classList.contains('st-left__item--active')).toBe(true);
   });
 
+  it('routes the WORKSPACE "File status" entry to /repo/file-status', async () => {
+    const { fixture } = await setup();
+    const el = fixture.nativeElement as HTMLElement;
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    const items = Array.from(el.querySelectorAll<HTMLElement>('.st-left__item'));
+    const fileStatus = items.find((item) => item.textContent?.includes('File status'));
+    expect(fileStatus).toBeDefined();
+    fileStatus!.click();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.activeWorkspace()).toBe('status');
+    expect(navigate).toHaveBeenCalledWith(['/repo', 'file-status']);
+    // The routed screen renders through the shared router outlet.
+    expect(el.querySelector('st-search-workspace')).toBeNull();
+  });
+
+  it('leaves the file-status screen when WORKSPACE "History" is picked', async () => {
+    const { fixture } = await setup();
+    const el = fixture.nativeElement as HTMLElement;
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    const items = Array.from(el.querySelectorAll<HTMLElement>('.st-left__item'));
+    items.find((item) => item.textContent?.includes('File status'))!.click();
+    fixture.detectChanges();
+    navigate.mockClear();
+
+    items.find((item) => item.textContent?.includes('History'))!.click();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.activeWorkspace()).toBe('history');
+    expect(navigate).toHaveBeenCalledWith(['/repo']);
+  });
+
   it('no longer renders the removed drawer pin/menu controls', async () => {
     const { fixture } = await setup({ repos: [makeRepository(1)] });
     const el = fixture.nativeElement as HTMLElement;

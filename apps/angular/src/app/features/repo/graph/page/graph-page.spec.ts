@@ -1,5 +1,6 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Commit, Diff } from '@contracts/domain';
 import type { GetCommitsResponse } from '@contracts/gitcore';
@@ -62,7 +63,7 @@ function makeShortcuts(): ShortcutStub {
   return { register: vi.fn((_key: string, _handler: ShortcutHandler) => vi.fn()) };
 }
 
-async function setup(commits = 3, total = commits) {
+async function setup(commits = 3, total = commits, router?: { navigate: ReturnType<typeof vi.fn> }) {
   const invoke = vi.fn((method: string) => {
     if (method === 'getCommits') return Promise.resolve(makePage(commits, total));
     if (method === 'getDiff') return Promise.resolve(EMPTY_DIFF);
@@ -88,6 +89,8 @@ async function setup(commits = 3, total = commits) {
       { provide: GraphStore, useValue: store },
       { provide: KeyboardShortcutService, useValue: shortcuts },
       { provide: RepoState, useValue: repoState },
+      // The page injects Router optionally; routing specs provide a navigate stub.
+      ...(router ? [{ provide: Router, useValue: router }] : []),
     ],
   }).compileComponents();
 
@@ -467,6 +470,42 @@ describe('GraphPage', () => {
 
     expect(page.tagDialog()).toBeNull();
     expect(repoState.clearRefOpError).toHaveBeenCalledTimes(1);
+  });
+
+  // -- File status hand-off (ADR-0029) --------------------------------------
+
+  it('selects the commit and routes File status to the shared screen', async () => {
+    const navigate = vi.fn(() => Promise.resolve(true));
+    const { store, page } = await setup(3, 3, { navigate });
+    const select = vi.spyOn(store, 'select');
+    const oid = makeCommit(1).oid?.hex ?? '';
+
+    page.onFileStatus(oid);
+
+    expect(select).toHaveBeenCalledWith(oid);
+    expect(navigate).toHaveBeenCalledWith(['/repo', 'file-status']);
+  });
+
+  it('treats the WIP pseudo-oid as a File status no-op', async () => {
+    const navigate = vi.fn(() => Promise.resolve(true));
+    const { store, page } = await setup(3, 3, { navigate });
+    const select = vi.spyOn(store, 'select');
+
+    page.onFileStatus(WIP_OID);
+
+    expect(select).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('ignores a File status request with no oid', async () => {
+    const navigate = vi.fn(() => Promise.resolve(true));
+    const { store, page } = await setup(3, 3, { navigate });
+    const select = vi.spyOn(store, 'select');
+
+    page.onFileStatus('');
+
+    expect(select).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   afterEach(() => {
