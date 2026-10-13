@@ -13,14 +13,48 @@ import { GoCoreClient } from '../src/main/go-core-client';
  *     GetBranches → GetRemotes → GetTags (refs read path) + domain error codes.
  *
  * Spawns `go run ./apps/go-core/cmd/go-core --headless ...` from the repo root
- * (or `dist/go-core` when already built). Skipped only if no Go toolchain.
+ * (or `dist/go-core[.exe]` when already built). Skipped only if no Go toolchain.
  */
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageDir = path.resolve(testDir, '..');
 const repoRoot = path.resolve(packageDir, '../..');
 const protoDir = path.join(repoRoot, 'libs/contracts/proto');
-const builtBinary = path.join(repoRoot, 'dist/go-core');
+// build-go-core.sh emits `dist/go-core.exe` on Windows, and Win32 has no
+// implicit-extension resolution for fs.existsSync — probing the extension-less
+// name always misses, so every Windows run would fall back to the slower `go
+// run` driver. That driver spawns an *extra* process that `child.kill()` on
+// Windows (TerminateProcess is single-PID) leaves alive holding cache.db open,
+// which is what made the afterAll fs.rmSync fail with EPERM.
+const builtBinary = path.join(
+  repoRoot,
+  'dist',
+  process.platform === 'win32' ? 'go-core.exe' : 'go-core',
+);
+
+/**
+ * Canonical temp base. `os.tmpdir()` is whatever TEMP/TMP point at, and on the
+ * GitHub Windows runner that is the 8.3 short form
+ * (`C:\Users\RUNNER~1\AppData\Local\Temp`). Temp roots must be created under
+ * the canonical form because the Go core echoes back the *long* form it gets
+ * from `git rev-parse --show-toplevel` (`C:\Users\runneradmin\…`), and a
+ * short-vs-long comparison fails on Windows only.
+ *
+ * `fs.realpathSync.native` is the libuv binding — GetFinalPathNameByHandleW on
+ * Windows (on-disk long name, 8.3 aliases expanded) and realpath(3) on POSIX.
+ * Plain `fs.realpathSync` walks path components in JS and resolves symlinks
+ * only, so it keeps `RUNNER~1` as written; that asymmetry is the bug.
+ */
+const tmpBase = fs.realpathSync.native(os.tmpdir());
+
+/**
+ * Canonical form of a filesystem path for comparison: resolves symlinks and,
+ * on Windows, expands 8.3 short aliases to the on-disk long name. Both operands
+ * must pass through it so `RUNNER~1` and `runneradmin` compare equal.
+ */
+function canonicalFsPath(fsPath: string): string {
+  return fs.realpathSync.native(path.resolve(fsPath));
+}
 
 const sdkBin = path.join(os.homedir(), 'sdk/go1.27.0/bin');
 const goEnv: NodeJS.ProcessEnv = {
@@ -51,7 +85,9 @@ function run(cmd: string, args: string[], cwd: string): string {
 }
 
 function createFixtureRepo(): Fixture {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'singularitree-e2e-')));
+  const dir = fs.realpathSync(
+    fs.mkdtempSync(path.join(tmpBase, 'singularitree-e2e-')),
+  );
   const git = (args: string[]) => run('git', args, dir);
   git(['init', '-q']);
   git(['config', 'user.email', 'e2e@singularitree.test']);
@@ -152,13 +188,24 @@ function awaitReady(
 
 function killProc(proc: ChildProcessWithoutNullStreams): Promise<void> {
   return new Promise((resolve) => {
-    if (proc.exitCode !== null || proc.signalCode !== null) {
-      resolve();
-      return;
-    }
-    const done = () => resolve();
-    proc.once('exit', done);
-    const signalTree = (signal: NodeJS.Signals) => {
+    // Windows has no POSIX process groups: Node maps `child.kill()` and
+    // `process.kill(-pid)` to TerminateProcess on a single PID, so killing the
+    // `go run` driver leaves the go-core binary it spawned running with
+    // cache.db still open → the afterAll fs.rmSync hits EPERM. `taskkill /T /F`
+    // walks the whole tree and ships as a built-in on every Windows runner.
+    const terminate = (force: boolean) => {
+      if (proc.pid && process.platform === 'win32') {
+        // spawnSync reports a missing binary as `{ status: null }` — it does not
+        // throw — and taskkill exits 128 when the /PID target is already gone.
+        // Any other outcome means the sweep did not happen, so fall through to
+        // the single-PID signal below.
+        const res = spawnSync('taskkill', ['/pid', String(proc.pid), '/t', '/f'], {
+          stdio: 'ignore',
+          windowsHide: true,
+        });
+        if (res.error == null && (res.status === 0 || res.status === 128)) return;
+      }
+      const signal = force ? ('SIGKILL' as const) : ('SIGTERM' as const);
       try {
         if (proc.pid && process.platform !== 'win32') {
           process.kill(-proc.pid, signal);
@@ -173,11 +220,50 @@ function killProc(proc: ChildProcessWithoutNullStreams): Promise<void> {
         }
       }
     };
-    signalTree('SIGTERM');
-    setTimeout(() => {
-      if (proc.exitCode === null && proc.signalCode === null) signalTree('SIGKILL');
+
+    if (proc.exitCode !== null || proc.signalCode !== null) {
+      // The direct child is already reaped. `go run` only exits after its own
+      // child does, so normally nothing survives it; on Win32 a `taskkill` here
+      // is a no-op (dead PID → 128) and would not reach a true orphan, which is
+      // why this branch is defensive rather than load-bearing.
+      terminate(false);
       resolve();
+      return;
+    }
+    const done = () => resolve();
+    proc.once('exit', () => {
+      // `taskkill /F` returns once termination has been *requested*, and this
+      // exit event only reports the direct (`go run`) child — the go-core
+      // grandchild may still be releasing cache.db when we start deleting.
+      // A short settle avoids that handle-release race; harmless on POSIX.
+      if (process.platform === 'win32') {
+        setTimeout(done, 500);
+      } else {
+        done();
+      }
+    });
+    terminate(false);
+    setTimeout(() => {
+      if (proc.exitCode === null && proc.signalCode === null) terminate(true);
+      done();
     }, 3000);
+  });
+}
+
+/**
+ * Deletes a temp tree, tolerating Windows' delayed handle release. The killed
+ * core has closed its SQLite handles (cache.db / -wal / -shm) by the time
+ * `killProc` resolves, but the OS may still be tearing those file objects down
+ * and real-time AV scanners race the unlink, surfacing as EPERM/EBUSY. Node's
+ * rimraf honours `maxRetries`/`retryDelay` (linear backoff) for exactly those
+ * errors, and `force` keeps a missing path a non-event.
+ */
+function rmTmpDir(target: string): void {
+  fs.rmSync(target, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 200,
   });
 }
 
@@ -185,7 +271,7 @@ describe.skipIf(!goAvailable)(
   `go-core GetCommits e2e [Go: ${goVersion}]`,
   () => {
     const tmpRoot = fs.mkdtempSync(
-      path.join(os.tmpdir(), 'singularitree-e2e-run-'),
+      path.join(tmpBase, 'singularitree-e2e-run-'),
     );
     let fixture: Fixture;
     let proc: ChildProcessWithoutNullStreams | null = null;
@@ -208,8 +294,8 @@ describe.skipIf(!goAvailable)(
       client?.close();
       authClient?.close();
       if (proc) await killProc(proc);
-      fs.rmSync(tmpRoot, { recursive: true, force: true });
-      if (fixture) fs.rmSync(fixture.dir, { recursive: true, force: true });
+      rmTmpDir(tmpRoot);
+      if (fixture) rmTmpDir(fixture.dir);
     });
 
     it('round-trips Ping → OpenRepository → GetCommits', async () => {
@@ -220,7 +306,12 @@ describe.skipIf(!goAvailable)(
 
       const repo = await client.openRepository({ fsPath: fixture.dir });
       expect(repo.id).toBeTruthy();
-      expect(fs.realpathSync(repo.fsPath)).toBe(fixture.dir);
+      // Both sides canonicalised: the core echoes the long-form path it gets
+      // from `git rev-parse --show-toplevel`, while the fixture is created from
+      // TEMP which the GitHub Windows runner publishes as the 8.3 short form
+      // (RUNNER~1). Comparing canonical vs canonical is stable on Windows and
+      // still an exact match on POSIX (realpath(3) both sides).
+      expect(canonicalFsPath(repo.fsPath)).toBe(canonicalFsPath(fixture.dir));
 
       const result = await client.getCommits({
         repoId: repo.id,
@@ -301,14 +392,14 @@ describe.skipIf(!goAvailable)(
       if (!client) throw new Error('client not initialised');
 
       const notARepo = fs.mkdtempSync(
-        path.join(os.tmpdir(), 'singularitree-nonrepo-'),
+        path.join(tmpBase, 'singularitree-nonrepo-'),
       );
       try {
         await expect(
           client.openRepository({ fsPath: notARepo }),
         ).rejects.toMatchObject({ code: 'NOT_A_GIT_REPO' });
       } finally {
-        fs.rmSync(notARepo, { recursive: true, force: true });
+        rmTmpDir(notARepo);
       }
     });
 
