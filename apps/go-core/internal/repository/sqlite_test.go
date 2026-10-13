@@ -23,6 +23,54 @@ func openTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
+// TestBuildDSN pins the path→DSN conversion, including the Windows drive-letter
+// case whose mishandling caused "invalid uri authority: C:\..." (see #windows).
+func TestBuildDSN(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{
+			name: "memory",
+			path: ":memory:",
+			want: "file::memory:?" + dsnPragmas,
+		},
+		{
+			name: "posix absolute",
+			path: "/tmp/singularitree/cache.db",
+			want: "file:///tmp/singularitree/cache.db?" + dsnPragmas,
+		},
+		{
+			name: "posix with spaces",
+			path: "/tmp/a b/cache.db",
+			want: "file:///tmp/a%20b/cache.db?" + dsnPragmas,
+		},
+		{
+			name: "windows backslashes",
+			path: `C:\Users\RUNNER~1\AppData\Local\Temp\sig\cache.db`,
+			want: "file:///C:/Users/RUNNER~1/AppData/Local/Temp/sig/cache.db?" + dsnPragmas,
+		},
+		{
+			name: "windows forward slashes",
+			path: "D:/tmp/singularitree/cache.db",
+			want: "file:///D:/tmp/singularitree/cache.db?" + dsnPragmas,
+		},
+		{
+			name: "already a file uri",
+			path: "file:/tmp/singularitree/cache.db",
+			want: "file:/tmp/singularitree/cache.db?" + dsnPragmas,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := buildDSN(tt.path); got != tt.want {
+				t.Errorf("buildDSN(%q) = %q, want %q", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestOpenSQLiteAndMigrations(t *testing.T) {
 	db := openTestDB(t)
 

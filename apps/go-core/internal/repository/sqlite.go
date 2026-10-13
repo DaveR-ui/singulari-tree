@@ -74,6 +74,41 @@ func buildDSN(path string) string {
 	if strings.HasPrefix(path, "file:") {
 		return path + "?" + dsnPragmas
 	}
-	u := url.URL{Scheme: "file", Path: path}
-	return u.String() + "?" + dsnPragmas
+	return fileURI(path) + "?" + dsnPragmas
+}
+
+// fileURI converts a filesystem path into a SQLite "file:" URI. SQLite (and
+// therefore modernc.org/sqlite, which opens the DSN with SQLITE_OPEN_URI)
+// requires forward slashes and a rooted path. A Windows drive path such as
+// C:\Users\me\cache.db must become file:///C:/Users/me/cache.db; passing it
+// straight through net/url yields file://C:%5CUsers%5C... where SQLite parses
+// "C:" as an (invalid) URI authority and fails with "invalid uri authority".
+//
+// Drive detection is host-independent so the conversion is deterministic when
+// cross-compiled and unit-tested on a non-Windows host. Path characters that
+// need escaping (spaces, '#', '?') are still handled by net/url.
+func fileURI(path string) string {
+	p := filepath.ToSlash(path)
+	if drive, ok := windowsDrivePath(p); ok {
+		p = "/" + drive
+	}
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	u := url.URL{Scheme: "file", Path: p}
+	return u.String()
+}
+
+// windowsDrivePath reports whether p is a Windows drive-absolute path (e.g.
+// "C:/dir/db" or "C:\dir\db") and returns it with backslashes normalized to
+// forward slashes.
+func windowsDrivePath(p string) (string, bool) {
+	if len(p) < 2 || p[1] != ':' {
+		return "", false
+	}
+	c := p[0]
+	if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') {
+		return strings.ReplaceAll(p, `\`, `/`), true
+	}
+	return "", false
 }
