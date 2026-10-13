@@ -385,8 +385,17 @@ func TestFetchContextCancellationClosesChannel(t *testing.T) {
 	gitRun(t, src, "branch", "-M", "main")
 	gitRun(t, src, "remote", "add", "origin", "ssh://git@example.invalid/repo.git")
 	// Git runs this instead of ssh; sleep keeps the fetch in flight until the
-	// context deadline kills the process.
-	t.Setenv("GIT_SSH_COMMAND", "sh -c 'exec sleep 5' --")
+	// context deadline kills the process. The shim changes out of the
+	// repository before sleeping: on cancellation exec.CommandContext kills
+	// only git, while the sleep child survives with the working directory git
+	// gave it (the repo, because the fetch runs as `git -C <repo>`). On Windows
+	// a live process whose current directory is a directory blocks that
+	// directory's removal, so t.TempDir's RemoveAll would fail with "being used
+	// by another process" for as long as the child lives; moving the child off
+	// the repo first avoids that. sleep outlasts the 300ms deadline, so the
+	// operation is still in flight when the context is cancelled and the
+	// assertion is unchanged.
+	t.Setenv("GIT_SSH_COMMAND", "sh -c 'cd / && exec sleep 5' --")
 
 	repoID := domain.RepositoryId("repo-1")
 	a := NewAdapter(&fakeRepoPort{fsPath: src})
