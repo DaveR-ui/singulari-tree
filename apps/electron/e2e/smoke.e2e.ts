@@ -15,19 +15,29 @@ import { _electron as electron, type ElectronApplication, type Page } from 'play
  *   1. open repo       — type the fixture path into the repo picker and open it.
  *   2. graph           — the routed graph page renders real commits from go-core
  *                        (gRPC round-trip through the Electron IPC bridge).
- *   3. select          — clicking a row shows its details (message/oid).
- *   4. WIP row         — the synthetic working-tree row + WIP details panel render.
- *   5. status / stage  — the status region lists the untracked fixture file and
+ *   3. select          — clicking a row shows its details (message/oid) in the
+ *                        read-only History aside (ADR-0030).
+ *   4. WIP row         — the synthetic working-tree row no longer renders a
+ *                        History placeholder: it routes to the File status screen
+ *                        (ADR-0030), whose `local` variant lists the dirty
+ *                        fixture file.
+ *   5. status / stage  — on File status, the untracked fixture file is listed and
  *                        stage → unstage round-trips through the real IPC path.
  *   6. commit          — committing the staged file moves HEAD, so the graph
- *                        reloads and shows the new commit row (IPC → gRPC → git).
- *   7. diff            — selecting that new commit renders its diff in the viewer.
+ *                        reloads; History is reached again through the sidebar
+ *                        WORKSPACE entry and shows the new commit row
+ *                        (IPC → gRPC → git).
+ *   7. diff            — re-selecting that commit and using the History toolbar
+ *                        "Changes" button opens the File status `commit` variant,
+ *                        whose changed-file list diffs the file in the viewer.
  *
  * WHAT IS ABSENT THIS ITERATION
- *   Nothing from the Week-3 bar item "open repo → graph → stage → commit → diff":
- *   the whole flow is now driven against the fixture repo. `GraphStore.diffIntent`
- *   (the space-to-diff intent signal) is still UI-only, but the diff viewer itself
- *   is wired through `StatusStore` and is covered by the last test below.
+ *   History (route `/repo`) is compare-free by design (ADR-0030): it owns the
+ *   graph + commit details aside only, so all status/stage/commit/diff work is
+ *   driven on the File status screen (route `/repo/file-status`, ADR-0029). The
+ *   `pr` variant and the hunk/line mutations (ADR-0020) are not exercised here
+ *   (they are covered by renderer unit specs); this smoke covers the local and
+ *   commit variants end-to-end against the real git core.
  *
  * PREREQUISITES (build from the repo root)
  *   ./tools/scripts/build-go-core.sh                 -> dist/go-core (posix) / dist/go-core.exe (win32)
@@ -253,31 +263,39 @@ test.describe('SingulariTree Electron smoke: open repo → graph → stage → c
     await expect(window.getByTestId('repo-picker-error')).toHaveCount(0);
   });
 
-  test('selects a commit and shows its details, then the WIP row', async () => {
+  test('selects a commit, then the WIP row routes to the File status screen', async () => {
     test.skip(missing.length > 0 && !requirePrereqs, `missing prerequisites: ${missing.join('; ')}`);
     if (!window || !fixture) throw new Error('e2e setup did not initialise');
 
-    // (c) selection → details panel (read-only history + details).
+    // (c) selection → details panel (read-only history + details, ADR-0030).
     await window.getByTestId('graph-row-message').first().click();
     const detailMessage = window.getByTestId('commit-details-message');
     await expect(detailMessage).toBeVisible();
     await expect(detailMessage).toContainText('second commit');
     await expect(window.getByTestId('commit-details-oid')).toBeVisible();
 
-    // (d) pinned synthetic WIP row → WIP placeholder details.
+    // (d) pinned synthetic WIP row → routes to the File status screen (ADR-0030).
+    // History no longer renders status details, so the dirty fixture file is
+    // listed by the `local` variant of `/repo/file-status`.
     await window.getByTestId('graph-wip').click();
-    await expect(window.getByTestId('commit-details-wip')).toBeVisible();
-    await expect(window.getByTestId('wip-row-label')).toContainText('Uncommitted changes');
+    await expect(window).toHaveURL(/\/repo\/file-status/);
+
+    const wipFile = window.getByTestId('status-file').filter({ hasText: 'wip.txt' });
+    await expect(wipFile).toHaveCount(1, { timeout: 30_000 });
+    await expect(wipFile).toBeVisible();
+    await expect(window.getByTestId('status-error')).toHaveCount(0);
+
+    // The History-only WIP placeholder is gone: History no longer owns status.
+    await expect(window.getByTestId('commit-details-wip')).toHaveCount(0);
   });
 
   test('stage → commit → diff against the real git core', async () => {
     test.skip(missing.length > 0 && !requirePrereqs, `missing prerequisites: ${missing.join('; ')}`);
     if (!window || !fixture) throw new Error('e2e setup did not initialise');
 
-    // (e) pinned WIP row -> real working-tree status (IPC → gRPC → git status).
-    // The fixture leaves an untracked `wip.txt`, so the status region must list it.
-    await window.getByTestId('graph-wip').click();
-
+    // (e) the WIP hand-off in the previous test left us on the File status `local`
+    // variant; the fixture's untracked `wip.txt` must be listed there
+    // (IPC → gRPC → git status).
     const wipFile = window.getByTestId('status-file').filter({ hasText: 'wip.txt' });
     await expect(wipFile).toHaveCount(1, { timeout: 30_000 });
     await expect(wipFile).toBeVisible();
@@ -313,18 +331,31 @@ test.describe('SingulariTree Electron smoke: open repo → graph → stage → c
     const commitButton = window.getByTestId('commit-button');
     await expect(commitButton).toBeEnabled();
     await commitButton.click();
+    await expect(window.getByTestId('commit-error')).toHaveCount(0);
 
-    // (i) a real commit exists: HEAD moved, the graph reloads and pins the new node.
+    // (i) a real commit exists: go back to History through the sidebar WORKSPACE
+    // entry, where the reloaded graph pins the new `wip commit` node.
+    await window.getByTestId('st-sidebar-workspace-history').click();
+    await expect(window).toHaveURL(/\/repo$/);
+
     const newCommitMessage = window.getByTestId('graph-row-message').filter({ hasText: 'wip commit' });
     await expect(newCommitMessage).toHaveCount(1, { timeout: 60_000 });
     await expect(newCommitMessage).toBeVisible();
-    await expect(window.getByTestId('commit-error')).toHaveCount(0);
     await expect(window.getByTestId('graph-error')).toHaveCount(0);
 
-    // (j) select the new commit -> the diff viewer renders its (non-empty) diff.
-    // Assert the viewer host, not Monaco internals: Monaco loads lazily and the
-    // plain unified fallback stands in until (and if) it does.
+    // (j) select the new commit, then open the File status `commit` variant via the
+    // History toolbar "Changes" button (the selection diff is the commit against
+    // its first parent). Assert the viewer host, not Monaco internals: Monaco
+    // loads lazily and the plain unified fallback stands in until (and if) it does.
     await newCommitMessage.click();
+    await window.getByTestId('graph-open-changes').click();
+    await expect(window).toHaveURL(/\/repo\/file-status/);
+
+    const changedRow = window.getByTestId('file-diff-row').filter({ hasText: 'wip.txt' });
+    await expect(changedRow).toHaveCount(1, { timeout: 30_000 });
+    await expect(changedRow).toBeVisible();
+    await changedRow.click();
+
     const diffViewer = window.locator('[data-testid="diff-viewer"]');
     await expect(diffViewer).toBeVisible();
     await expect(diffViewer.getByTestId('diff-empty')).toHaveCount(0);

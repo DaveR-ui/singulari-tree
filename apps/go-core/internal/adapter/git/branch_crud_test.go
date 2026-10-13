@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/SingulariTree/go-core/internal/domain"
@@ -181,4 +182,39 @@ func TestBranchDelete(t *testing.T) {
 	// Missing branch.
 	err = a.BranchDelete(ctx, repoID, domain.RefName{Raw: "ghost"}, true)
 	assertAppCode(t, err, domain.ErrCodeBranchNotFound)
+}
+
+// TestBranchDeleteCurrent covers the refusal to delete the branch that is
+// currently checked out: git refuses even with force (-D), and the adapter
+// surfaces it as the generic BRANCH_NOT_FOUND carrying the git refusal summary.
+func TestBranchDeleteCurrent(t *testing.T) {
+	dir := initRepo(t)
+	gitRun(t, dir, "branch", "-M", "main")
+
+	a := NewAdapter(&fakeRepoPort{fsPath: dir})
+	ctx := context.Background()
+	repoID := domain.RepositoryId("repo-1")
+
+	// Deleting the checked-out branch is refused by git even with force.
+	err := a.BranchDelete(ctx, repoID, domain.RefName{Raw: "main"}, true)
+	if err == nil {
+		t.Fatal("BranchDelete(current, force) succeeded, want error")
+	}
+	assertAppCode(t, err, domain.ErrCodeBranchNotFound)
+
+	var appErr domain.AppError
+	if !errors.As(err, &appErr) {
+		t.Fatalf("err = %v, want typed AppError", err)
+	}
+	if appErr.Message == "" {
+		t.Errorf("AppError.Message is empty, want the git refusal summary")
+	}
+
+	// The checked-out branch must survive the refused delete.
+	if got := gitRun(t, dir, "symbolic-ref", "--short", "HEAD"); got != "main" {
+		t.Errorf("HEAD = %q, want main", got)
+	}
+	if got := gitRun(t, dir, "for-each-ref", "--format=%(refname:short)", "refs/heads/main"); got != "main" {
+		t.Errorf("current branch gone after refused delete: %q", got)
+	}
 }

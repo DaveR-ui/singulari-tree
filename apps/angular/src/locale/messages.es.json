@@ -157,6 +157,9 @@
     "5323159974797114430": "Cargando diff…",
     "4312138688396754332": "Archivo binario — sin diff textual.",
     "241789004515431521": " Se detectaron marcadores de conflicto de fusión. ",
-    "4800537186689691502": "No hay cambios que mostrar."
+    "4800537186689691502": "No hay cambios que mostrar.",
+    "8005782380466806023": "No se puede eliminar la rama actual",
+    "1883225426863881427": " Archivo sin seguimiento — nada que comparar hasta que se prepare. ",
+    "2769043435631957955": " Cambios "
   }
 }

@@ -416,41 +416,6 @@ describe('GraphStore', () => {
     expect(store.selectedIndex()).toBe(-1);
   });
 
-  it('openDiff selects the first row when none is selected and records the intent', async () => {
-    store = new GraphStore(makeBridge({ getCommits: () => Promise.resolve(makePage(2)) }));
-    store.repoId.set(REPO.id);
-    await store.loadWindow(0);
-
-    expect(store.diffIntent()).toBeNull();
-
-    store.openDiff();
-
-    expect(store.selectedOid()).toBe(makeCommit(0).oid?.hex);
-    expect(store.diffIntent()).toEqual({ oid: makeCommit(0).oid?.hex });
-  });
-
-  it('openDiff records the already-selected row without moving it', async () => {
-    store = new GraphStore(makeBridge({ getCommits: () => Promise.resolve(makePage(3)) }));
-    store.repoId.set(REPO.id);
-    await store.loadWindow(0);
-
-    store.select(makeCommit(2).oid?.hex ?? '');
-    store.openDiff();
-
-    expect(store.selectedOid()).toBe(makeCommit(2).oid?.hex);
-    expect(store.diffIntent()).toEqual({ oid: makeCommit(2).oid?.hex });
-  });
-
-  it('openDiff is a no-op with no rows', () => {
-    store = new GraphStore(makeBridge({ getCommits: () => Promise.resolve(makePage(0)) }));
-    store.repoId.set(REPO.id);
-
-    store.openDiff();
-
-    expect(store.selectedOid()).toBeNull();
-    expect(store.diffIntent()).toBeNull();
-  });
-
   // -- commit change-size gauge (ADR-0023) ---------------------------------
 
   it('loads the gauge for the loaded window in one batched call and caches it', async () => {

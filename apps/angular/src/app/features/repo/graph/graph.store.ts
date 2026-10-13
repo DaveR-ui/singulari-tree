@@ -55,11 +55,6 @@ export class GraphStore {
   readonly loading = signal(false);
   readonly error = signal<AppError | null>(null);
   readonly selectedOid = signal<string | null>(null);
-  /**
-   * Intent-only signal for the (not-yet-implemented) diff viewer: carries the
-   * oid the user asked to diff. No IPC / panel is wired to it this iteration.
-   */
-  readonly diffIntent = signal<{ oid: string } | null>(null);
   readonly filter = signal('');
   /** Recently opened repositories (from `listRepositories`), newest first. */
   readonly recentRepos = signal<Repository[]>([]);
@@ -321,16 +316,6 @@ export class GraphStore {
   /** Move the selection up one visible row, clamping at the first row. */
   selectPrevious(): void {
     this.moveSelection(-1);
-  }
-
-  /**
-   * Intent-only "open diff" action: with no visible selection it first selects
-   * the first row, then publishes that oid on `diffIntent` for a future viewer.
-   */
-  openDiff(): void {
-    if (this.selectedIndex() < 0) this.selectNext();
-    const oid = this.selectedOid();
-    if (oid && oid !== WIP_OID) this.diffIntent.set({ oid });
   }
 
   private moveSelection(delta: number): void {

@@ -82,6 +82,9 @@ async function setup(commits = 3, total = commits, router?: { navigate: ReturnTy
     createBranch: vi.fn(async () => true),
     createTag: vi.fn(async () => true),
   };
+  // Always provide a Router stub: the test env exposes a route-less real Router,
+  // so WIP/toolbar navigation must never reach Angular's recognizer.
+  const routerStub = router ?? { navigate: vi.fn(() => Promise.resolve(true)) };
 
   await TestBed.configureTestingModule({
     providers: [
@@ -89,13 +92,12 @@ async function setup(commits = 3, total = commits, router?: { navigate: ReturnTy
       { provide: GraphStore, useValue: store },
       { provide: KeyboardShortcutService, useValue: shortcuts },
       { provide: RepoState, useValue: repoState },
-      // The page injects Router optionally; routing specs provide a navigate stub.
-      ...(router ? [{ provide: Router, useValue: router }] : []),
+      { provide: Router, useValue: routerStub },
     ],
   }).compileComponents();
 
   const page = TestBed.runInInjectionContext(() => new GraphPage());
-  return { store, page, shortcuts, repoState, invoke };
+  return { store, page, shortcuts, repoState, invoke, router: routerStub };
 }
 
 function makeRow(index: number): CommitRow {
@@ -173,6 +175,27 @@ describe('GraphPage', () => {
     expect(store.rows()).toHaveLength(3);
   });
 
+  it('routes the WIP row to the File status screen after selecting WIP', async () => {
+    const navigate = vi.fn(() => Promise.resolve(true));
+    const { store, page } = await setup(3, 3, { navigate });
+
+    page.selectWip();
+
+    expect(store.selectedOid()).toBe(WIP_OID);
+    expect(navigate).toHaveBeenCalledWith(['/repo', 'file-status']);
+  });
+
+  it('routes the toolbar Changes button to File status without selecting a commit', async () => {
+    const navigate = vi.fn(() => Promise.resolve(true));
+    const { store, page } = await setup(3, 3, { navigate });
+    const select = vi.spyOn(store, 'select');
+
+    page.openChanges();
+
+    expect(navigate).toHaveBeenCalledWith(['/repo', 'file-status']);
+    expect(select).not.toHaveBeenCalled();
+  });
+
   it('prefetches only when the rendered range approaches the loaded end', async () => {
     const { store, page } = await setup(300, 1000);
     const loadMore = vi.spyOn(store, 'loadMore');
@@ -184,14 +207,14 @@ describe('GraphPage', () => {
     expect(loadMore).toHaveBeenCalledTimes(1);
   });
 
-  it('registers arrow and space keyboard shortcuts on construction', async () => {
+  it('registers arrow keyboard shortcuts on construction', async () => {
     const { shortcuts } = await setup();
 
     const keys = shortcuts.register.mock.calls.map((call) => call[0]);
-    expect(keys).toEqual(['ArrowDown', 'ArrowUp', ' ']);
+    expect(keys).toEqual(['ArrowDown', 'ArrowUp']);
   });
 
-  it('routes keyboard handlers into the store (navigation + diff intent)', async () => {
+  it('routes keyboard handlers into the store navigation', async () => {
     const { store, shortcuts } = await setup(3);
 
     const handlerFor = (key: string): ShortcutHandler => {
@@ -209,9 +232,6 @@ describe('GraphPage', () => {
 
     handlerFor('ArrowUp')(event);
     expect(store.selectedIndex()).toBe(0);
-
-    handlerFor(' ')(new KeyboardEvent('keydown'));
-    expect(store.diffIntent()).toEqual({ oid: store.selectedOid() });
   });
 
   // -- context menu --------------------------------------------------------

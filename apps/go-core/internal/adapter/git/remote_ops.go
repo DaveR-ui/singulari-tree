@@ -304,6 +304,7 @@ func (a *Adapter) ensureRemote(ctx context.Context, fsPath, remote, code string)
 func streamGitProgress(ctx context.Context, dir string, op remoteOpKind, args []string) (<-chan domain.RemoteOpResult, error) {
 	full := append([]string{"-C", dir}, args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
+	cmd.Env = gitCommandEnv()
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return nil, domain.AppError{Code: op.errCode(), Message: err.Error()}

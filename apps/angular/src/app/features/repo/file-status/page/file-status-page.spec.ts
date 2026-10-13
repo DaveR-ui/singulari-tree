@@ -724,9 +724,63 @@ describe('FileStatusPage', () => {
     await settle(fixture);
 
     // No FileDiff section for the untracked path: the addressing substrate is
-    // null and the viewer projects nothing — both degrade without throwing.
+    // null and the viewer input stays null — both degrade without throwing.
     expect(fs.selectedUnstagedFile()).toBeNull();
     expect(viewer(fixture).diff()).toBeNull();
+    // The right pane explains the empty diff instead of rendering blank.
+    expect(fs.wholeDiff()?.files.some((f) => f.path === 'untracked.ts')).toBe(false);
+    const notice = query(fixture, 'file-status-untracked');
+    expect(notice).not.toBeNull();
+    expect(notice?.textContent).toContain('Untracked file');
+  });
+
+  it('hides the untracked notice once the file has a diff section', async () => {
+    const untracked: FileStatus = {
+      path: 'a.ts',
+      staged: ' ',
+      unstaged: '?',
+      isStaged: false,
+      isConflicted: false,
+    };
+    // `a.ts` is present in the status AND in the worktree diff: no notice.
+    const { fixture, fs } = await setup({ selection: WIP_OID, files: [untracked] });
+    await waitForDiff(fixture, fs);
+
+    fs.selectFile('a.ts');
+    await vi.waitFor(() => expect(fs.selectedPath()).toBe('a.ts'));
+    await settle(fixture);
+
+    expect(query(fixture, 'file-status-untracked')).toBeNull();
+  });
+
+  it('does not mislabel a tracked file omitted by a truncated diff as untracked', async () => {
+    const tracked: FileStatus = {
+      path: 'truncated.ts',
+      staged: ' ',
+      unstaged: 'M',
+      isStaged: false,
+      isConflicted: false,
+    };
+    // The core capped the diff (ADR-0020), so this tracked file's section is
+    // genuinely missing — it must NOT be reported as untracked.
+    const { fixture, fs } = await setup({
+      selection: WIP_OID,
+      files: [tracked],
+      diff: () => ({
+        ...wholeDiff(),
+        truncated: true,
+        files: [fileDiff('a.ts', 6, 2, 'a-line')],
+      }),
+    });
+    await waitForDiff(fixture, fs);
+
+    fs.selectFile('truncated.ts');
+    await vi.waitFor(() => expect(fs.selectedPath()).toBe('truncated.ts'));
+    await settle(fixture);
+
+    expect(fs.truncated()).toBe(true);
+    expect(fs.wholeDiff()?.files.some((f) => f.path === 'truncated.ts')).toBe(false);
+    expect(query(fixture, 'file-status-untracked')).toBeNull();
   });
 
   it('surfaces the truncated notice in the viewer when the diff is capped', async () => {

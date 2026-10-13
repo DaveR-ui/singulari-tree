@@ -53,6 +53,7 @@ interface RowMenu {
             @for (item of WORKSPACE; track item.kind) {
               <li
                 class="st-left__item"
+                [attr.data-testid]="'st-sidebar-workspace-' + item.kind"
                 [class.st-left__item--active]="activeWorkspace() === item.kind"
                 (click)="selectWorkspace(item.kind)"
               >
@@ -335,6 +336,8 @@ interface RowMenu {
             role="menuitem"
             class="st-left__menu-danger"
             data-testid="st-sidebar-menu-delete"
+            [disabled]="deleteBlockedFor(menu)"
+            [attr.title]="deleteBlockedFor(menu) ? deleteCurrentBranchTitle : null"
             (click)="menuDelete(menu)"
           >
             <span i18n>Delete…</span>
@@ -595,6 +598,15 @@ interface RowMenu {
       outline: none;
     }
 
+    .st-left__menu button:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    .st-left__menu button:disabled:hover {
+      background: transparent;
+    }
+
     .st-left__menu-danger {
       color: #ff6b6b;
     }
@@ -725,6 +737,9 @@ export class SidebarLeft {
     { kind: 'search', label: $localize`Search`, icon: '⌕' },
   ];
 
+  /** Explanatory tooltip shown when "Delete…" targets the current branch. */
+  readonly deleteCurrentBranchTitle = $localize`Cannot delete the current branch`;
+
   readonly workspaceExpanded = signal(true);
   readonly branchesExpanded = signal(true);
   readonly tagsExpanded = signal(false);
@@ -815,10 +830,20 @@ export class SidebarLeft {
 
   menuDelete(menu: RowMenu): void {
     this.closeRowMenu();
+    // Tags can always be deleted; a branch that is the current one cannot.
+    if (menu.kind === 'branch' && this.deleteBlockedFor(menu)) return;
     if (menu.kind === 'branch') {
       this.branchDeleteRequested.emit(menu.name);
     } else {
       this.tagDeleteRequested.emit(menu.name);
     }
+  }
+
+  /**
+   * True when the open menu's row is the current local branch, whose deletion is
+   * blocked (it must be switched away from first). Tags are never blocked.
+   */
+  deleteBlockedFor(menu: RowMenu): boolean {
+    return menu.kind === 'branch' && menu.name === this.currentBranch();
   }
 }

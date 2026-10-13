@@ -106,6 +106,11 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
 
       <!-- RIGHT: the selected file's diff, always -->
       <div class="st-file-status__right" data-testid="file-status-diff">
+        @if (untrackedSelected()) {
+          <p class="st-file-status__notice" data-testid="file-status-untracked" i18n>
+            Untracked file — nothing to diff until it is staged.
+          </p>
+        }
         <st-diff-viewer
           [diff]="rightFileDiff()"
           [loading]="fs.rightLoading()"
@@ -158,9 +163,18 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
 
     .st-file-status__right {
       display: flex;
+      flex-direction: column;
       flex: 1 1 auto;
       min-width: 0;
       min-height: 0;
+    }
+
+    .st-file-status__notice {
+      flex: none;
+      margin: 0;
+      padding: 12px;
+      font-size: 12px;
+      opacity: 0.75;
     }
 
     .st-file-status__right st-diff-viewer {
@@ -189,6 +203,31 @@ export class FileStatusPage {
   readonly rightFileDiff = computed<Diff | null>(() =>
     toSingleFileDiff(this.fs.wholeDiff(), this.fs.selectedPath()),
   );
+
+  /**
+   * True when the local variant has a selected status row that is genuinely
+   * untracked (porcelain `?` code), which `git diff HEAD` excludes until it is
+   * staged. The right pane then shows an explicit notice instead of the viewer
+   * silently projecting an empty diff (the viewer input stays null). Absence from
+   * `wholeDiff().files` is NOT sufficient: a truncated diff legitimately omits
+   * tracked files (ADR-0020 cap), so those must never be mislabeled as untracked.
+   */
+  readonly untrackedSelected = computed<boolean>(() => {
+    if (!this.fs.isLocal()) return false;
+    // A capped diff omits real files: never infer "untracked" from that.
+    if (this.fs.truncated()) return false;
+    const path = this.fs.selectedPath();
+    if (!path) return false;
+    const status = [...this.fs.stagedFiles(), ...this.fs.unstagedFiles()].find(
+      (file) => file.path === path,
+    );
+    // Only the porcelain `?` untracked code qualifies.
+    if (status?.unstaged !== '?') return false;
+    const diff = this.fs.wholeDiff();
+    if (!diff) return false;
+    // Untracked files have no `git diff HEAD` section.
+    return !diff.files.some((file) => file.path === path);
+  });
 
   /** Branch names offered by the PR base/target controls. */
   readonly branchNames = computed<string[]>(() => this.fs.branches().map((branch) => branch.name));

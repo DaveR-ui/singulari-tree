@@ -15,6 +15,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -69,6 +70,17 @@ const (
 	// defaultListLimit guards against unbounded reads when the caller omits a
 	// limit (the read path must always be paginated).
 	defaultListLimit = 200
+
+	// gitOptionalLocksEnv disables git's optional index lock for every command
+	// the adapter runs. Read-only commands (status, diff, log, …) would
+	// otherwise take the optional lock and rewrite .git/index during
+	// inspection; the fsnotify watcher reports that write as a change, the
+	// renderer reloads status/diff, and the core re-runs the read-only command,
+	// producing a self-sustaining reload storm. The variable is advisory: it
+	// only suppresses the optional lock, so mutating commands (add, commit,
+	// branch, checkout, merge, reset, stash, …) still take the mandatory lock
+	// and behave identically.
+	gitOptionalLocksEnv = "GIT_OPTIONAL_LOCKS=0"
 )
 
 // behindTrackRe extracts N from git's `%(upstream:track)` summary (e.g.
@@ -283,10 +295,20 @@ func (a *Adapter) resolvePath(ctx context.Context, repoID domain.RepositoryId) (
 	return repo.FsPath, nil
 }
 
+// gitCommandEnv returns the environment for an adapter git invocation: the
+// process environment plus GIT_OPTIONAL_LOCKS=0. Setting it here (rather than
+// on a single command) keeps every invocation through this adapter from taking
+// git's optional index lock and rewriting .git/index during read-only
+// inspection. See gitOptionalLocksEnv.
+func gitCommandEnv() []string {
+	return append(os.Environ(), gitOptionalLocksEnv)
+}
+
 // runGit executes `git -C <dir> <args...>` and returns trimmed stdout.
 func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 	full := append([]string{"-C", dir}, args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
+	cmd.Env = gitCommandEnv()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -303,6 +325,7 @@ func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 func runGitStdin(ctx context.Context, dir string, stdin []byte, args ...string) (string, error) {
 	full := append([]string{"-C", dir}, args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
+	cmd.Env = gitCommandEnv()
 	cmd.Stdin = bytes.NewReader(stdin)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -320,6 +343,7 @@ func runGitStdin(ctx context.Context, dir string, stdin []byte, args ...string) 
 func runGitAllowExit(ctx context.Context, dir string, args ...string) (stdout string, code int, err error) {
 	full := append([]string{"-C", dir}, args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
+	cmd.Env = gitCommandEnv()
 	var out, stderr bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &stderr

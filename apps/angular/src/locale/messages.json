@@ -157,6 +157,9 @@
     "5323159974797114430": "Loading diff…",
     "4312138688396754332": "Binary file — no textual diff.",
     "241789004515431521": " Merge conflict markers detected. ",
-    "4800537186689691502": "No changes to display."
+    "4800537186689691502": "No changes to display.",
+    "8005782380466806023": "Cannot delete the current branch",
+    "1883225426863881427": " Untracked file — nothing to diff until it is staged. ",
+    "2769043435631957955": " Changes "
   }
 }

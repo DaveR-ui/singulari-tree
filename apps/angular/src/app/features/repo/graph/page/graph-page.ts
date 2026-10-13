@@ -60,6 +60,15 @@ import { WipRow } from '../ui/wip-row';
           [value]="store.filter()"
           (input)="onFilter($event)"
         />
+        <button
+          type="button"
+          class="st-graph-page__changes"
+          data-testid="graph-open-changes"
+          i18n
+          (click)="openChanges()"
+        >
+          Changes
+        </button>
         @if (store.isLoading()) {
           <span class="st-graph-page__status" data-testid="graph-loading">Loading…</span>
         }
@@ -203,6 +212,22 @@ import { WipRow } from '../ui/wip-row';
       font-size: 12px;
     }
 
+    .st-graph-page__changes {
+      flex: none;
+      padding: 4px 10px;
+      border-radius: 4px;
+      border: 1px solid var(--st-color-border, #2f2f44);
+      background: var(--st-color-surface, #252536);
+      color: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .st-graph-page__changes:hover {
+      border-color: var(--st-color-accent, #0a84ff);
+      color: var(--st-color-accent, #0a84ff);
+    }
+
     .st-graph-page__error {
       margin: 0;
       padding: 6px 12px;
@@ -306,7 +331,6 @@ export class GraphPage {
     const unregister = [
       this.shortcuts.register('ArrowDown', () => store.selectNext()),
       this.shortcuts.register('ArrowUp', () => store.selectPrevious()),
-      this.shortcuts.register(' ', () => store.openDiff()),
     ];
     this.destroyRef.onDestroy(() => unregister.forEach((off) => off()));
 
@@ -323,8 +347,25 @@ export class GraphPage {
     this.store.setFilter((event.target as HTMLInputElement).value);
   }
 
+  /**
+   * WIP row activation: select the synthetic working-tree node AND hand off to
+   * the File status screen, whose `local` variant shows the changed-file list.
+   * Selecting WIP first makes that screen open the working tree (ADR-0029/0030);
+   * without a router (unit spec) the selection still applies and navigation
+   * degrades to a no-op.
+   */
   selectWip(): void {
     this.store.select(WIP_OID);
+    this.openChanges();
+  }
+
+  /**
+   * Always-visible toolbar entry: route to the File status screen with no commit
+   * selection, so it opens the `local` (working tree) variant — the same target
+   * as the sidebar WORKSPACE "File status" entry.
+   */
+  openChanges(): void {
+    void this.router?.navigate(['/repo', 'file-status']);
   }
 
   /** Infinite scroll: prefetch when the rendered range approaches the loaded end. */

@@ -343,6 +343,65 @@ describe('SidebarLeft', () => {
     expect(del).toEqual(['feature/x']);
   });
 
+  it('disables delete for the current branch with an explanatory title', async () => {
+    const fixture = await setup({ branches: ['main', 'feature/x'], currentBranch: 'main' });
+    const el = fixture.nativeElement as HTMLElement;
+    const del: string[] = [];
+    fixture.componentInstance.branchDeleteRequested.subscribe((v) => del.push(v));
+
+    const rows = all(fixture, 'st-sidebar-branch') as HTMLElement[];
+    rows[0].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+
+    const button = el.querySelector(
+      '[data-testid="st-sidebar-menu-delete"]',
+    ) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute('title')).toContain('Cannot delete the current branch');
+
+    button.click();
+    fixture.detectChanges();
+    expect(del).toEqual([]);
+  });
+
+  it('still deletes a non-current branch and any tag', async () => {
+    const fixture = await setup({
+      branches: ['main', 'feature/x'],
+      currentBranch: 'main',
+      tags: ['v1'],
+    });
+    const el = fixture.nativeElement as HTMLElement;
+    const branchDel: string[] = [];
+    const tagDel: string[] = [];
+    fixture.componentInstance.branchDeleteRequested.subscribe((v) => branchDel.push(v));
+    fixture.componentInstance.tagDeleteRequested.subscribe((v) => tagDel.push(v));
+
+    const rows = all(fixture, 'st-sidebar-branch') as HTMLElement[];
+    rows[1].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+    const branchButton = el.querySelector(
+      '[data-testid="st-sidebar-menu-delete"]',
+    ) as HTMLButtonElement;
+    expect(branchButton.disabled).toBe(false);
+    // No explanatory title on a deletable branch (FIX 4 nit).
+    expect(branchButton.hasAttribute('title')).toBe(false);
+    branchButton.click();
+    expect(branchDel).toEqual(['feature/x']);
+
+    expandTags(fixture);
+    (all(fixture, 'st-sidebar-tag')[0] as HTMLElement).dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+    );
+    fixture.detectChanges();
+    const tagButton = el.querySelector(
+      '[data-testid="st-sidebar-menu-delete"]',
+    ) as HTMLButtonElement;
+    expect(tagButton.disabled).toBe(false);
+    expect(tagButton.hasAttribute('title')).toBe(false);
+    tagButton.click();
+    expect(tagDel).toEqual(['v1']);
+  });
+
   it('opens a tag row menu that only offers deletion', async () => {
     const fixture = await setup({ tags: ['v1.0.0'] });
     const el = fixture.nativeElement as HTMLElement;
@@ -495,5 +554,33 @@ describe('SidebarLeft', () => {
     (all(fixture, 'st-sidebar-git-flow')[0] as HTMLElement).click();
 
     expect(requested).toBe(1);
+  });
+
+  // -- WORKSPACE entries ---------------------------------------------------
+
+  it('exposes each WORKSPACE entry with a stable kind-scoped test id', async () => {
+    const fixture = await setup();
+
+    const status = all(fixture, 'st-sidebar-workspace-status');
+    const history = all(fixture, 'st-sidebar-workspace-history');
+    const search = all(fixture, 'st-sidebar-workspace-search');
+
+    expect(status).toHaveLength(1);
+    expect(history).toHaveLength(1);
+    expect(search).toHaveLength(1);
+    expect(status[0].textContent).toContain('File status');
+    expect(history[0].textContent).toContain('History');
+    expect(search[0].textContent).toContain('Search');
+  });
+
+  it('emits the workspace kind when a WORKSPACE entry is clicked', async () => {
+    const fixture = await setup();
+    const emitted: string[] = [];
+    fixture.componentInstance.workspaceSelected.subscribe((kind) => emitted.push(kind));
+
+    (all(fixture, 'st-sidebar-workspace-history')[0] as HTMLElement).click();
+    (all(fixture, 'st-sidebar-workspace-status')[0] as HTMLElement).click();
+
+    expect(emitted).toEqual(['history', 'status']);
   });
 });

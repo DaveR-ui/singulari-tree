@@ -528,6 +528,29 @@ describe('LayoutComponent', () => {
     expect(navigate).toHaveBeenCalledWith(['/repo']);
   });
 
+  it('syncs the WORKSPACE highlight to the URL on navigation from outside the sidebar', async () => {
+    const { fixture } = await setup();
+    const router = TestBed.inject(Router);
+
+    // A graph hand-off navigates straight to File status, bypassing the sidebar.
+    await router.navigateByUrl('/repo/file-status');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.activeWorkspace()).toBe('status');
+
+    await router.navigateByUrl('/repo');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.activeWorkspace()).toBe('history');
+
+    // `/repos` also starts with `/repo` but has no WORKSPACE entry: it must clear
+    // the highlight rather than keep a stale one.
+    await router.navigateByUrl('/repos');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.activeWorkspace()).toBe('');
+  });
+
   it('no longer renders the removed drawer pin/menu controls', async () => {
     const { fixture } = await setup({ repos: [makeRepository(1)] });
     const el = fixture.nativeElement as HTMLElement;
@@ -1540,6 +1563,24 @@ describe('LayoutComponent', () => {
     fixture.detectChanges();
 
     expect(query(fixture, 'search-workspace')).not.toBeNull();
+  });
+
+  it('keeps the non-routed Search workspace highlighted (no navigation clobbers it)', async () => {
+    const { fixture } = await setup();
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate');
+    const el = fixture.nativeElement as HTMLElement;
+
+    // Selecting Search is an in-shell action: it must not route, so the new
+    // URL-driven effect has no NavigationEnd to re-derive the highlight from.
+    const items = Array.from(el.querySelectorAll<HTMLElement>('.st-left__item'));
+    items.find((item) => item.textContent?.includes('Search'))!.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(navigate).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.activeWorkspace()).toBe('search');
   });
 
   it('opens a search hit tab, queues the focus and routes to the graph', async () => {

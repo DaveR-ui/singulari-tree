@@ -10,7 +10,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { Router, RouterOutlet } from '@angular/router';
+import { Router, RouterOutlet, NavigationEnd } from '@angular/router';
 import type { RepoCardView } from '@singularitree/ui-kit';
 import type { Repository, Stash } from '@contracts/domain';
 import type { CommitSearchHit, GitFlowConfig } from '@contracts/gitcore';
@@ -112,6 +112,9 @@ export class LayoutComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
 
+  /** Current router URL, mirrored into a signal so the sidebar highlight can react. */
+  private readonly currentUrl = signal(this.router.url);
+
   /** Top-level routes the OS-native menu may request. */
   private static readonly MENU_ROUTES: ReadonlySet<string> = new Set([
     '/repo',
@@ -207,6 +210,25 @@ export class LayoutComponent implements OnInit {
       try {
         localStorage.setItem(this.LS_RIGHT_COL, String(c));
       } catch {}
+    });
+
+    // Keep the sidebar WORKSPACE highlight truthful when navigation originates
+    // outside the sidebar (e.g. the graph/WIP "Changes" hand-off to File status):
+    // mirror the router URL and derive the active workspace from it. This never
+    // touches `onWorkspaceSelected`, which still sets the highlight eagerly for
+    // the non-routed Search workspace.
+    const unsubscribeRoutes = this.router.events.subscribe((event) => {
+      if (event instanceof NavigationEnd) this.currentUrl.set(event.urlAfterRedirects);
+    });
+    this.destroyRef.onDestroy(() => unsubscribeRoutes.unsubscribe());
+
+    effect(() => {
+      const url = this.currentUrl();
+      if (url.startsWith('/repo/file-status')) this.activeWorkspace.set('status');
+      else if (url === '/repo' || url.startsWith('/repo?')) this.activeWorkspace.set('history');
+      // Every other route has no WORKSPACE entry (repos manager `/repos`, github
+      // account, settings, and the tab-close fallback): clear any stale highlight.
+      else this.activeWorkspace.set('');
     });
 
     // Take over from the fallback banner whenever a blocked checkout needs a
