@@ -22,6 +22,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/SingulariTree/go-core/internal/domain"
@@ -305,6 +306,12 @@ func streamGitProgress(ctx context.Context, dir string, op remoteOpKind, args []
 	full := append([]string{"-C", dir}, args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
 	cmd.Env = gitCommandEnv()
+	// Bound how long Wait may block on I/O. exec.CommandContext kills only git
+	// itself; a grandchild that inherited git's stderr write end (e.g. a
+	// GIT_SSH_COMMAND transport helper) can keep the pipe open after the kill,
+	// which would otherwise leave Wait pending well past the deadline. WaitDelay
+	// forces the process pipes closed shortly after cancellation (R12).
+	cmd.WaitDelay = 2 * time.Second
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return nil, domain.AppError{Code: op.errCode(), Message: err.Error()}
@@ -325,8 +332,10 @@ func streamGitProgress(ctx context.Context, dir string, op remoteOpKind, args []
 		}
 		// Drain stderr to EOF first (Wait must not race the pipe reader), then
 		// reap the process to obtain its exit status. readProgressLines returns
-		// the tail of git's stderr so a post-spawn failure can be reported.
-		tail := readProgressLines(ctx, stderr, ch)
+		// the tail of git's stderr so a post-spawn failure can be reported. The
+		// pipe is wrapped in a ctx-aware reader so a read blocked on an orphaned
+		// grandchild aborts as soon as the context is cancelled (R12).
+		tail := readProgressLines(ctx, &ctxReader{ctx: ctx, r: stderr}, ch)
 		waitErr := cmd.Wait()
 
 		// A killed process is a cancellation, not an operation failure: stop
@@ -346,6 +355,51 @@ func streamGitProgress(ctx context.Context, dir string, op remoteOpKind, args []
 		}
 	}()
 	return ch, nil
+}
+
+// ctxReader wraps the process's stderr pipe so that a Read blocked on an
+// orphaned writer is abandoned as soon as ctx is cancelled. exec.CommandContext
+// kills only git itself; a grandchild that inherited the pipe's write end (the
+// GIT_SSH_COMMAND transport helper, for instance) can keep it open past
+// cancellation, which previously left the progress goroutine blocked in Read
+// until that grandchild exited on its own (R12 — streaming cleanup).
+//
+// Each Read hands the underlying blocking read to a short-lived worker
+// goroutine that writes into a buffer it exclusively owns and delivers the
+// result over a channel buffered to capacity 1, so the worker can never block
+// the caller (and never races on the caller's buffer). On cancellation Read
+// returns ctx.Err() immediately and no further worker is spawned; the parked
+// worker stays bound to the pipe and exits once the pipe is closed, which
+// cmd.Wait always does after reaping the process (cmd.WaitDelay bounds that
+// wait), so the goroutine cannot leak.
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+// readResult carries one underlying read back to ctxReader.Read's caller.
+type readResult struct {
+	data []byte
+	err  error
+}
+
+// Read implements io.Reader for ctxReader.
+func (c *ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	done := make(chan readResult, 1) // buffered: the worker never blocks on send
+	go func() {
+		buf := make([]byte, len(p))
+		n, err := c.r.Read(buf)
+		done <- readResult{data: buf[:n], err: err}
+	}()
+	select {
+	case res := <-done:
+		return copy(p, res.data), res.err
+	case <-c.ctx.Done():
+		return 0, c.ctx.Err()
+	}
 }
 
 // readProgressLines decodes stderr incrementally, splitting on both '\n' and
@@ -382,6 +436,12 @@ func readProgressLines(ctx context.Context, r io.Reader, ch chan<- domain.Remote
 		return sendResult(ctx, ch, domain.RemoteOpResult{Progress: &p})
 	}
 	for {
+		// Abort promptly once the context is cancelled: the wrapped reader also
+		// unblocks a pending byte read, but checking here avoids emitting any
+		// further progress after cancellation (R12).
+		if ctx.Err() != nil {
+			return stderrTail(errLine, tail)
+		}
 		b, err := br.ReadByte()
 		if err != nil {
 			break

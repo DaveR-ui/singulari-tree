@@ -27,7 +27,11 @@ const testToken = "test-token-0123456789abcdef"
 
 func gitRun(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	full := append([]string{"-C", dir}, args...)
+	// `-c core.autocrlf=false` is belt-and-braces on top of pinNoAutocrlf: it
+	// pins line-ending policy for the fixture's own commands, while the env pin
+	// is what reaches the adapter's subprocesses (which never see this argv).
+	// Harmless and a no-op on Linux.
+	full := append([]string{"-c", "core.autocrlf=false", "-C", dir}, args...)
 	out, err := exec.Command("git", full...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
@@ -35,10 +39,54 @@ func gitRun(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// canonicalTempDir returns a fresh temp dir with symlinks resolved and, on
+// Windows, 8.3 short names expanded to their on-disk long form. The GitHub
+// Windows runner publishes TEMP in the 8.3 short form
+// (C:\Users\RUNNER~1\AppData\Local\Temp), so t.TempDir() yields the short path
+// while production persists the canonical long top-level it reads back from
+// `git rev-parse --show-toplevel` (C:\Users\runneradmin\...). Canonicalising the
+// fixture once, at the source, makes GetFsPath and the fixture comparable on
+// Windows; it is a no-op on Linux.
+//
+// Mirrors commit 947c552, which applied the identical fix to the Electron e2e
+// via fs.realpathSync.native (GetFinalPathNameByHandleW on Windows); the two
+// fixes are deliberately linked.
+func canonicalTempDir(t *testing.T) string {
+	t.Helper()
+	raw := t.TempDir()
+	dir, err := filepath.EvalSymlinks(raw)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(%s): %v", raw, err)
+	}
+	return dir
+}
+
+// pinNoAutocrlf forces LF line endings for every git process spawned by this
+// test binary: fixture gitRun calls and, crucially, the adapter's own
+// runGit/runGitAllowExit/streamGitProgress subprocesses.
+//
+// Git for Windows on the CI runner defaults to core.autocrlf=true, so a
+// stash/checkout materialises CRLF bytes and TestStashRPCs reads back
+// "modified\r\n" for a file it wrote as "modified\n".
+//
+// The pin MUST use git's environment-config form rather than a
+// `-c core.autocrlf=false` argv flag on the fixture's gitRun: the bytes are
+// produced by the *adapter's* subprocesses (internal/adapter/git/adapter.go),
+// which build their env from os.Environ() and never see an argv flag passed to
+// the fixture. Environment config is inherited by every git child instead,
+// while leaving production code and the developer's own config untouched.
+func pinNoAutocrlf(t *testing.T) {
+	t.Helper()
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "core.autocrlf")
+	t.Setenv("GIT_CONFIG_VALUE_0", "false")
+}
+
 // initFixtureRepo creates a real git repo with two commits.
 func initFixtureRepo(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
+	pinNoAutocrlf(t)
+	dir := canonicalTempDir(t)
 	gitRun(t, dir, "init", "-q")
 	gitRun(t, dir, "config", "user.email", "alice@example.com")
 	gitRun(t, dir, "config", "user.name", "Alice")
@@ -62,7 +110,8 @@ func initFixtureRepo(t *testing.T) string {
 // mirroring initFixtureRepo's setup but skipping the commit step.
 func initUnbornRepo(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
+	pinNoAutocrlf(t)
+	dir := canonicalTempDir(t)
 	gitRun(t, dir, "init", "-q")
 	gitRun(t, dir, "config", "user.email", "alice@example.com")
 	gitRun(t, dir, "config", "user.name", "Alice")

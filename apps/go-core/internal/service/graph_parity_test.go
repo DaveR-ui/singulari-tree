@@ -55,9 +55,27 @@ func parityGit(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// pinNoAutocrlf forces LF line endings for every git process spawned by this
+// test binary: parityGit's own commands and, through os.Environ(), the
+// production git adapter's subprocesses (internal/adapter/git/adapter.go). Git
+// for Windows defaults to core.autocrlf=true, so without this a
+// checkout/merge can materialise CRLF bytes and make byte-level fixtures
+// non-portable. The environment-config form is used rather than a
+// `-c core.autocrlf=false` argv flag because the adapter spawns its own git
+// with an env built from os.Environ(), which never sees a flag passed to
+// parityGit. Identical to the grpc package's fix and to commit 947c552's
+// fs.realpathSync.native precedent.
+func pinNoAutocrlf(t *testing.T) {
+	t.Helper()
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "core.autocrlf")
+	t.Setenv("GIT_CONFIG_VALUE_0", "false")
+}
+
 // parityInitRepo creates an empty repo whose initial branch is `main`.
 func parityInitRepo(t *testing.T) string {
 	t.Helper()
+	pinNoAutocrlf(t)
 	dir := t.TempDir()
 	parityGit(t, dir, "init", "-q")
 	parityGit(t, dir, "symbolic-ref", "HEAD", "refs/heads/main")

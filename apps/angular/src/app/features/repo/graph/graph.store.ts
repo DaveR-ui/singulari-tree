@@ -46,6 +46,21 @@ export class GraphStore {
   readonly prefetch = GRAPH_PREFETCH;
 
   // -- state ---------------------------------------------------------------
+  /**
+   * Monotonic request sequence for `loadWindow`.
+   *
+   * Overlapping reloads are normal: every working-tree mutation
+   * (stage/unstage/commit) fires `fs:changed`, coalesced by the core watcher's
+   * 150ms debounce into `FileStatusPage.refreshForExternalChange()`, and a
+   * successful commit additionally bumps `graphReloadRequested`; both call
+   * `reload()`. Without a guard the *last response to resolve* wins rather than
+   * the last request, so on a slow CI box an earlier `getCommits` — served from
+   * the pre-invalidation L1 cache window and thereby missing the new commit — can
+   * land after the post-commit one and install a stale page. Only the newest
+   * request is allowed to touch the state signals.
+   */
+  private loadSeq = 0;
+
   readonly repoId = signal<string | null>(null);
   readonly commits = signal<Commit[]>([]);
   /** Normalized to one entry per commit (index-aligned with `commits`). */
@@ -161,6 +176,10 @@ export class GraphStore {
     const id = this.repoId();
     if (!id) return;
 
+    // Claim the newest sequence before awaiting: a later loadWindow supersedes
+    // this one, and only the newest response may mutate state (see `loadSeq`).
+    const seq = ++this.loadSeq;
+
     this.loading.set(true);
     this.error.set(null);
 
@@ -172,9 +191,15 @@ export class GraphStore {
 
     try {
       const resp = await this.bridge.invoke('getCommits', req);
+      // Superseded while in flight: drop the stale page instead of clobbering
+      // the newer one.
+      if (seq !== this.loadSeq) return;
       this.offline.set(false);
       this.applyPage(offset, resp);
     } catch (err) {
+      // Superseded failure: it must not clobber the newer page's `error`, and an
+      // IPC_UNAVAILABLE must not blank the screen either.
+      if (seq !== this.loadSeq) return;
       if (isIpcUnavailable(err)) {
         // Degrade to an empty page instead of crashing a plain browser session.
         this.offline.set(true);
@@ -183,7 +208,10 @@ export class GraphStore {
         this.error.set(toAppError(err));
       }
     } finally {
-      this.loading.set(false);
+      // Only the newest request owns `loading`; a superseded one must not report
+      // completion while a newer window is still in flight. The newest request
+      // always reaches this branch, so `loading` can never stay stuck true.
+      if (seq === this.loadSeq) this.loading.set(false);
     }
   }
 

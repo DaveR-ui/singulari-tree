@@ -68,10 +68,19 @@ func (s *RepoStore) Open(ctx context.Context, fsPath string) (*domain.Repository
 }
 
 // List returns tracked repositories, most recently opened first.
+//
+// last_opened_at alone is not a deterministic total order: on Windows the wall
+// clock is read at the coarse system-timer granularity, so two rapid Open calls
+// can share the same RFC3339Nano timestamp and SQLite then returns the tied
+// rows in an unspecified order. The rowid DESC term breaks the tie towards the
+// later-inserted row; re-opening UPDATEs last_opened_at but not rowid, so on an
+// exact tie the later-inserted row wins (insertion order, not open order).
+// This mirrors the same-package precedent in commit_cache.go
+// (ORDER BY committed_at DESC, oid DESC).
 func (s *RepoStore) List(ctx context.Context) ([]domain.Repository, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, fs_path, common_dir, name, created_at, last_opened_at
-		 FROM repos ORDER BY last_opened_at DESC`)
+		 FROM repos ORDER BY last_opened_at DESC, rowid DESC`)
 	if err != nil {
 		return nil, err
 	}

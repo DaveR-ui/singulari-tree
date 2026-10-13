@@ -225,6 +225,43 @@ func TestRepoStoreRoundTrip(t *testing.T) {
 	}
 }
 
+// TestRepoStoreListTieBreaksByInsertionOrder pins the deterministic tiebreaker
+// for two repos sharing an identical last_opened_at (on Windows the wall clock
+// can be too coarse to distinguish two rapid opens): the later-inserted row must
+// sort first. Without the rowid DESC term SQLite leaves the order unspecified.
+func TestRepoStoreListTieBreaksByInsertionOrder(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	store := NewRepoStore(db)
+
+	repoA, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatalf("Open(A): %v", err)
+	}
+	repoB, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatalf("Open(B): %v", err)
+	}
+
+	// Force the exact tie a coarse clock would produce.
+	const tied = "2026-01-01T00:00:00Z"
+	if _, err := db.ExecContext(ctx, `UPDATE repos SET last_opened_at = ?`, tied); err != nil {
+		t.Fatalf("tie last_opened_at: %v", err)
+	}
+
+	list, err := store.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("List len = %d, want 2", len(list))
+	}
+	if list[0].ID != repoB.ID || list[1].ID != repoA.ID {
+		t.Errorf("List = [%q, %q], want later-inserted B first [%q, %q]",
+			list[0].ID, list[1].ID, repoB.ID, repoA.ID)
+	}
+}
+
 // TestRepoStoreRemoveCascades verifies that removing a repository also deletes
 // its child rows via ON DELETE CASCADE (PRAGMA foreign_keys=ON, ADR-006).
 func TestRepoStoreRemoveCascades(t *testing.T) {

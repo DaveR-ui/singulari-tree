@@ -64,6 +64,33 @@ func waitEvent(t *testing.T, ch <-chan domain.FsChangedEvent) domain.FsChangedEv
 	return domain.FsChangedEvent{}
 }
 
+// waitEventUntil reads events from ch until one satisfies pred, returning it. It
+// exists because delivery order is not portable: registering a watch on Windows
+// (ReadDirectoryChangesW) emits directory self-Write events, so the first batch
+// can be `.git` / `.git\refs` metadata noise rather than the change under test,
+// whereas on Linux (inotify) watch registration emits nothing. The predicate
+// therefore matches on event content, not on batch position. It is bounded by
+// eventTimeout so a genuinely missing event still fails.
+func waitEventUntil(t *testing.T, ch <-chan domain.FsChangedEvent, pred func(domain.FsChangedEvent) bool) domain.FsChangedEvent {
+	t.Helper()
+	deadline := time.After(eventTimeout)
+	for {
+		select {
+		case ev, ok := <-ch:
+			if !ok {
+				t.Fatal("event channel closed unexpectedly")
+			}
+			if pred(ev) {
+				return ev
+			}
+			// Unrelated platform noise (e.g. a Windows directory self-Write
+			// event): keep reading.
+		case <-deadline:
+			t.Fatal("timed out waiting for a matching filesystem change event")
+		}
+	}
+}
+
 func hasPath(ev domain.FsChangedEvent, want string) bool {
 	for _, p := range ev.Paths {
 		if p == want {
@@ -103,7 +130,11 @@ func TestAdapter_RealFsnotifyDetectsChange(t *testing.T) {
 		t.Fatalf("write file: %v", err)
 	}
 
-	ev := waitEvent(t, ch)
+	// Wait for a batch that actually contains the file. On Windows, watch
+	// registration emits .git / .git\refs directory self-Write events that can
+	// precede the real change, so asserting on the first delivered batch would
+	// be flaky; assert that an event containing the file eventually arrives.
+	ev := waitEventUntil(t, ch, func(ev domain.FsChangedEvent) bool { return hasPath(ev, file) })
 	if ev.RepoID != "repo-real" {
 		t.Errorf("event RepoID = %q, want repo-real", ev.RepoID)
 	}
@@ -160,6 +191,22 @@ func TestAdapter_UnwatchClosesOnceAndAllowsRewatch(t *testing.T) {
 	}
 	waitReady(t, a, "repo-uw")
 
+	// Drain events already buffered before unwatching. On Windows, registering
+	// the .git / .git\refs watches emits directory self-Write events
+	// (ReadDirectoryChangesW) that land in this buffered channel; Unwatch closes
+	// the channel without draining it, and a closed Go channel still yields any
+	// already-buffered values with ok == true, so without this drain the single
+	// receive below could read a stale self-event instead of observing the close.
+	// (TestAdapter_NilResolverIsNoOp drains for the same reason.)
+drain:
+	for {
+		select {
+		case <-ch:
+		default:
+			break drain
+		}
+	}
+
 	if err := a.Unwatch("repo-uw"); err != nil {
 		t.Fatalf("Unwatch: %v", err)
 	}
@@ -186,7 +233,7 @@ func TestAdapter_UnwatchClosesOnceAndAllowsRewatch(t *testing.T) {
 	if err := os.WriteFile(file, []byte("again"), 0o644); err != nil {
 		t.Fatalf("write file: %v", err)
 	}
-	if !hasPath(waitEvent(t, ch2), file) {
+	if !hasPath(waitEventUntil(t, ch2, func(ev domain.FsChangedEvent) bool { return hasPath(ev, file) }), file) {
 		t.Errorf("re-watch did not report %s", file)
 	}
 }

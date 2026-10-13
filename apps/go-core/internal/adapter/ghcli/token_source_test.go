@@ -186,3 +186,19 @@ func TestLookupPrefersSearchPathOverParentPath(t *testing.T) {
 		t.Errorf("Lookup = %q, want %q", got, want)
 	}
 }
+
+func TestLookupAbsolutePathReturnedAsIs(t *testing.T) {
+	searchDir := t.TempDir()
+	otherDir := t.TempDir()
+	absolute := writeExecutable(t, otherDir, "gh")
+	// A same-named binary in the search path must not shadow the absolute one.
+	writeExecutable(t, searchDir, "gh")
+
+	got, ok := ghcli.Lookup(searchDir, absolute)
+	if !ok {
+		t.Fatal("Lookup returned not found for an absolute executable path")
+	}
+	if got != absolute {
+		t.Errorf("Lookup = %q, want %q", got, absolute)
+	}
+}

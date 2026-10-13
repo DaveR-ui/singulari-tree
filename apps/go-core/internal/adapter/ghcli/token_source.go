@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -154,6 +155,17 @@ func isExecutable(path string) bool {
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() {
 		return false
+	}
+	// Windows has no POSIX execute bit: os.Stat reports mode 0666 for every
+	// regular file and sets 0111 only for directories (GOROOT/src/os/types_windows.go),
+	// so the Unix check below would reject every candidate on Windows. That
+	// silently demotes the search-path loop in Lookup and lets the exec.LookPath
+	// fallback resolve `gh` from the inherited PATH, inverting the documented
+	// search-path-first precedence (see NewTokenSource and Lookup). Mirror
+	// os/exec's own chkStat (lp_windows.go): any existing non-directory is a
+	// runnable candidate.
+	if runtime.GOOS == "windows" {
+		return true
 	}
 	return info.Mode().Perm()&0o111 != 0
 }

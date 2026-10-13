@@ -25,9 +25,25 @@ func (f *fakeRepoPort) Get(_ context.Context, id domain.RepositoryId) (*domain.R
 }
 
 // gitRun runs `git -C dir args...` and fails the test on error.
+//
+// Line-ending policy is pinned to core.autocrlf=false for the whole test
+// process and every git invocation it spawns. Git for Windows defaults
+// autocrlf=true (system/global config) on the windows-latest runner, which
+// materialises CRLF in the worktree while every assertion in this package
+// compares raw worktree bytes against LF; without the override the suite is
+// line-ending-dependent (R9). The override is exported through git's
+// environment-config mechanism (GIT_CONFIG_*) in addition to the explicit -c
+// flag, because the bytes under test are produced by the *adapter's* own git
+// commands (`runGit` etc.), which spawn their own processes from os.Environ()
+// and therefore never see a -c flag passed to gitRun. The production adapter
+// is untouched: it still honours the user's own git config, which exposes
+// core.autocrlf as a setting.
 func gitRun(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	full := append([]string{"-C", dir}, args...)
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "core.autocrlf")
+	t.Setenv("GIT_CONFIG_VALUE_0", "false")
+	full := append([]string{"-c", "core.autocrlf=false", "-C", dir}, args...)
 	cmd := exec.Command("git", full...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

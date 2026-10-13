@@ -1,12 +1,12 @@
 ---
-last_updated: 2026-10-11
+last_updated: 2026-10-13
 status: active
 description: Agent-facing entry point of SingulariTree — Angular + Electron + Go core monorepo; stack, slices, commands and corpus navigation.
 tags:
 - project
 - entry-point
 - singularitree
-version: 1.3.1
+version: 1.3.2
 doc_language: en
 ---
 
@@ -70,6 +70,7 @@ SingulariTree is a **monorepo** for a cross-platform desktop Git client. System 
 | `./tools/ci/verify-contracts.sh` | contracts breaking check |
 | `./tools/ci/verify-migrations.sh` | validates SQLite migrations |
 | `./tools/scripts/build-go-core.sh` | builds the core binary |
+| `./tools/scripts/run-tests-local.sh` | reproduce the CI suites locally (build + go test + Electron vitest + Playwright smoke); `--go-only`/`--ts-only`/`--e2e-only`/`--build-only` narrow it, `--windows-paths` adds a best-effort Wine run |
 | `node tools/docs/validate.js` | validates the corpus (exit 1 on errors) |
 | `node tools/docs/validate.js --write` | regenerates `docs/index.md` + `docs/tag-index.md` |
 | `./tools/ci/verify-docs.sh` | documentation CI hook |

@@ -145,6 +145,76 @@ describe('GraphStore', () => {
     expect(store.offset()).toBe(600);
   });
 
+  it('discards a superseded loadWindow response so a stale page cannot clobber the newest one', async () => {
+    let resolveStale: ((value: GetCommitsResponse) => void) | undefined;
+    let resolveFresh: ((value: GetCommitsResponse) => void) | undefined;
+    let calls = 0;
+    const getCommits = vi.fn(() => {
+      calls++;
+      return new Promise<GetCommitsResponse>((resolve) => {
+        if (calls === 1) resolveStale = resolve;
+        else resolveFresh = resolve;
+      });
+    });
+    store = new GraphStore(makeBridge({ getCommits }));
+    store.repoId.set(REPO.id);
+
+    // The first request predates the commit (2 rows, no `wip commit`); the second
+    // is the post-commit reload (3 rows). On CI the first can resolve last — its
+    // getCommits is served from the pre-invalidation L1 cache window — so the
+    // store must discard it and keep the newest page.
+    const stale = makePage(2, 0, 2);
+    const fresh = makePage(3, 0, 3);
+
+    const first = store.loadWindow(0);
+    const second = store.loadWindow(0);
+    expect(getCommits).toHaveBeenCalledTimes(2);
+
+    // Newest resolves first; the superseded request then resolves last.
+    resolveFresh?.(fresh);
+    await second;
+    resolveStale?.(stale);
+    await first;
+
+    expect(store.commits()).toHaveLength(3);
+    expect(store.commits().map((commit) => commit.oid?.hex)).toEqual(
+      fresh.commits.map((commit) => commit.oid?.hex),
+    );
+    expect(store.total()).toBe(3);
+    expect(store.isLoading()).toBe(false);
+  });
+
+  it('ignores a superseded loadWindow failure instead of blanking the newest page', async () => {
+    let rejectStale: ((reason?: unknown) => void) | undefined;
+    let resolveFresh: ((value: GetCommitsResponse) => void) | undefined;
+    let calls = 0;
+    const getCommits = vi.fn(() => {
+      calls++;
+      return new Promise<GetCommitsResponse>((resolve, reject) => {
+        if (calls === 1) rejectStale = reject;
+        else resolveFresh = resolve;
+      });
+    });
+    store = new GraphStore(makeBridge({ getCommits }));
+    store.repoId.set(REPO.id);
+
+    const fresh = makePage(3, 0, 3);
+    const first = store.loadWindow(0);
+    const second = store.loadWindow(0);
+
+    resolveFresh?.(fresh);
+    await second;
+    // A stale IPC_UNAVAILABLE used to degrade the store to an empty window,
+    // blanking the newer page; it must now be ignored entirely.
+    rejectStale?.({ code: 'IPC_UNAVAILABLE', message: 'offline' });
+    await first;
+
+    expect(store.commits()).toHaveLength(3);
+    expect(store.total()).toBe(3);
+    expect(store.offline()).toBe(false);
+    expect(store.isLoading()).toBe(false);
+  });
+
   it('tolerates a missing lanes array by defaulting neutral lanes', async () => {
     const getCommits = vi.fn(() =>
       Promise.resolve({ commits: [makeCommit(0), makeCommit(1)], total: 2 } as GetCommitsResponse),
