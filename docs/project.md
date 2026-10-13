@@ -32,7 +32,7 @@ SingulariTree is a **monorepo** for a cross-platform desktop Git client. System 
 
 | Area | Technology |
 |---|---|
-| JS runtime | Node >=20 (npm workspaces) |
+| JS runtime | Node >=22.22.3 (npm workspaces; CI pins 24 LTS) |
 | Renderer | Angular 22 (zoneless, standalone, signals) + TypeScript ~5.9 |
 | Shell | Electron ^32 with TypeScript |
 | Core | Go 1.25 (module `github.com/SingulariTree/go-core`) in a Go 1.26 workspace (`go.work`) |

@@ -78,7 +78,7 @@ This monorepo does not modify `frontend/` or `backend/`. Workspace routing (`doc
 
 ## Quick Start
 
-**Prerequisites:** Node >=20 (npm workspaces) · Go 1.25+ (the Go workspace targets 1.26) · `git` on `PATH`. Only for regenerating contracts: [`buf`](https://buf.build/docs/installation) — `./tools/scripts/gen-contracts.sh` fails fast if it is missing.
+**Prerequisites:** Node >=22.22.3 (npm workspaces) · Go 1.25+ (the Go workspace targets 1.26) · `git` on `PATH`. Only for regenerating contracts: [`buf`](https://buf.build/docs/installation) — `./tools/scripts/gen-contracts.sh` fails fast if it is missing.
 
 ```bash
 # 1. Install JS/TS dependencies (postinstall provisions the Electron binary)
