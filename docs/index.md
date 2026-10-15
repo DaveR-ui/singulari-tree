@@ -4,13 +4,13 @@
 # SingulariTree — Documentation index
 
 <!-- BEGIN GENERATED: index -->
-<!-- snapshot: 2026-10-14 -->
+<!-- snapshot: 2026-10-15 -->
 ## Generated index
 
 ### Overview
 
-- Markdown files: 35
-- Context docs: 5 | Notes: 6 | Hubs: 2 | adrs: 17 | templates: 0 | protocols: 3
+- Markdown files: 36
+- Context docs: 6 | Notes: 6 | Hubs: 2 | adrs: 17 | templates: 0 | protocols: 3
 
 ### Tree
 
@@ -37,6 +37,7 @@
   - adr-index.md — hub, id: `adr-index`
 - context/
   - accepted-debt.md — context-doc
+  - design-system.md — context-doc
   - documentation-system.md — context-doc
   - feature-gap-analysis.md — context-doc
   - renderer-redesign-plan.md — context-doc

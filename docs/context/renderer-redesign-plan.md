@@ -7,16 +7,17 @@ tags:
 - redesign
 - plan
 - git-client
-version: 1.2
+version: 1.3
 related:
 - renderer-slice
 - feature-gap-analysis
 - documentation-system
+- design-system
 ---
 
 # SingulariTree Renderer Facelift — Design Plan
 
-> **Status: P0 (token foundation), P1 (primitives), P2 (shell rebuild) and P3 (history workspace) SHIPPED as of 2026-10-15; P4–P6 remain planned.** This document remains the approved-direction plan governing the not-yet-shipped phases of a total facelift of the renderer's visible UI. Derived from the operator's sketch `git-client-sketch.html` (dark, offline git-client mockup, delivered 2026-10-13) treated as a **guide, not a spec**: every intentional divergence is numbered and justified in §6. Aesthetic direction is committed by the agent system (no human sign-off loop), per the operator's delegation.
+> **Status: P0 (token foundation), P1 (primitives), P2 (shell rebuild), P3 (history workspace) and P4 (changes & diff workspace) SHIPPED as of 2026-10-15; P5–P6 remain planned.** Verification at P4 close: renderer vitest 79 files / 1038 tests green, coverage 94.81% statements / 88.25% branches / 89.21% functions / 96.66% lines; `ng build` exit 0 (initial 549.43 kB). This document remains the approved-direction plan governing the not-yet-shipped phases of a total facelift of the renderer's visible UI. Derived from the operator's sketch `git-client-sketch.html` (dark, offline git-client mockup, delivered 2026-10-13) treated as a **guide, not a spec**: every intentional divergence is numbered and justified in §6. Aesthetic direction is committed by the agent system (no human sign-off loop), per the operator's delegation.
 >
 > **Scope:** `apps/angular/**` + `libs/ui-kit/**` only. No Go core, no contracts/proto, no Electron shell/IPC, no IPC-contract change. `files_to_touch` (§8.2) is the implementation manifest — P0–P2's entries are shipped; the rest are not yet created.
 

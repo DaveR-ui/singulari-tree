@@ -1,12 +1,12 @@
 ---
-last_updated: 2026-10-14
+last_updated: 2026-10-15
 status: active
 description: Agent-facing entry point of SingulariTree — Angular + Electron + Go core monorepo; stack, slices, commands and corpus navigation.
 tags:
 - project
 - entry-point
 - singularitree
-version: 1.4.0
+version: 1.5.0
 doc_language: en
 ---
 
@@ -133,6 +133,7 @@ SingulariTree/
 - [`docs/protocols/docs-review-protocol.md`](protocols/docs-review-protocol.md) — corpus review and validator errors.
 - [`docs/adrs/adr-index.md`](adrs/adr-index.md) — ADR hub (structural decisions, append-only).
 - [`docs/context/renderer-redesign-plan.md`](context/renderer-redesign-plan.md) — total-facelift design plan for the renderer's visible UI (shell, navigation, workspace panes, commit/diff/graph, settings), derived from the operator's git-client sketch with 15 justified divergences; plan only, not yet implemented.
+- [`docs/context/design-system.md`](context/design-system.md) — shipped Charcoal & Cyan design system: two-tier token vocabulary (dark + light), typography, spacing and geometry, the ui-kit component inventory, and copy-paste usage.
 
 ## Common Lookups
 
