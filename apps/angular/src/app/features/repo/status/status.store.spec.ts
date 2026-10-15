@@ -353,6 +353,84 @@ describe('StatusStore', () => {
     });
   });
 
+  // -- ADR-032: read-only commit changed-file list --------------------------
+
+  it('reads a commit changed-file paths without touching the viewer or addressing diffs', async () => {
+    const getDiff = vi.fn(() =>
+      Promise.resolve({ ...diff(), files: [fileDiff('a.ts'), fileDiff('b.ts')] }),
+    );
+    store = storeWith({ getDiff });
+    // Sentinel viewer + addressing substrates the read must leave untouched.
+    const viewer = diff();
+    const worktree = { ...diff(), additions: 99 };
+    const staged = { ...diff(), deletions: 7 };
+    store.diff.set(viewer);
+    store.diffContext.set('worktree');
+    store.unstagedDiff.set(worktree);
+    store.stagedDiff.set(staged);
+
+    const result = await store.readCommitChangedFiles(commit('child', ['parent']));
+
+    expect(getDiff).toHaveBeenCalledWith({
+      repoId: 'repo-1',
+      from: 'parent',
+      to: 'child',
+      path: '',
+      staged: false,
+    });
+    expect(result).toEqual(['a.ts', 'b.ts']);
+    // A read, not a load: no substrate or viewer signal was written.
+    expect(store.diff()).toBe(viewer);
+    expect(store.diffContext()).toBe('worktree');
+    expect(store.unstagedDiff()).toBe(worktree);
+    expect(store.stagedDiff()).toBe(staged);
+  });
+
+  it('reads a root commit against the empty tree (from is the empty oid)', async () => {
+    const getDiff = vi.fn(() => Promise.resolve({ ...diff(), files: [fileDiff('root.ts')] }));
+    store = storeWith({ getDiff });
+
+    const result = await store.readCommitChangedFiles(commit('root'));
+
+    expect(getDiff).toHaveBeenLastCalledWith({
+      repoId: 'repo-1',
+      from: '',
+      to: 'root',
+      path: '',
+      staged: false,
+    });
+    expect(result).toEqual(['root.ts']);
+  });
+
+  it('is an empty read without a repository', async () => {
+    const getDiff = vi.fn(() => Promise.resolve(diff()));
+    store = new StatusStore(makeBridge({ getDiff }));
+
+    const result = await store.readCommitChangedFiles(commit('c'));
+
+    expect(result).toEqual([]);
+    expect(getDiff).not.toHaveBeenCalled();
+  });
+
+  it('degrades a failed commit file read without throwing', async () => {
+    store = storeWith({
+      getDiff: () => Promise.reject({ code: 'DIFF_FAILED', message: 'no diff' }),
+    });
+
+    await expect(store.readCommitChangedFiles(commit('c'))).resolves.toEqual([]);
+    expect(store.error()).toEqual({ code: 'DIFF_FAILED', message: 'no diff', details: {} });
+
+    store = storeWith({
+      getDiff: () => {
+        throw { code: 'IPC_UNAVAILABLE', message: 'offline' };
+      },
+    });
+
+    await expect(store.readCommitChangedFiles(commit('c'))).resolves.toEqual([]);
+    expect(store.offline()).toBe(true);
+    expect(store.error()).toBeNull();
+  });
+
   it('selecting a path loads the working-tree diff', async () => {
     const getDiff = vi.fn(() => Promise.resolve(diff()));
     store = storeWith({ getDiff });

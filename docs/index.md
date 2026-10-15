@@ -9,8 +9,8 @@
 
 ### Overview
 
-- Markdown files: 37
-- Context docs: 6 | Notes: 6 | Hubs: 2 | adrs: 18 | templates: 0 | protocols: 3
+- Markdown files: 38
+- Context docs: 6 | Notes: 6 | Hubs: 2 | adrs: 19 | templates: 0 | protocols: 3
 
 ### Tree
 
@@ -30,6 +30,7 @@
   - adr-0029-file-status-screen.md — adr, id: `adr-0029-file-status-screen`
   - adr-0030-history-screen-is-compare-free.md — adr, id: `adr-0030-history-screen-is-compare-free`
   - adr-0031-repository-relocation-and-missing-folder-recovery.md — adr, id: `adr-0031-repository-relocation-and-missing-folder-recovery`
+  - adr-0032-history-commit-file-list-tooltip.md — adr, id: `adr-0032-history-commit-file-list-tooltip`
   - adr-024-multi-repo-workspaces.md — adr, id: `adr-024-multi-repo-workspaces`
   - adr-025-deep-links-and-clipboard-clone.md — adr, id: `adr-025-deep-links-and-clipboard-clone`
   - adr-026-cross-repo-commit-search.md — adr, id: `adr-026-cross-repo-commit-search`

@@ -9,6 +9,7 @@ import { WorkspacesStore } from '@core/services/workspaces.store';
 import { GraphStore } from '../graph/graph.store';
 import { CommitDetailsPanel } from '../graph/ui/commit-details-panel';
 import { GraphPage } from '../graph/page/graph-page';
+import { StatusStore } from '../status/status.store';
 import { RepoPicker } from '../ui/repo-picker';
 import { RepoRelocatePanel } from '../ui/repo-relocate-panel';
 
@@ -38,6 +39,7 @@ import { RepoRelocatePanel } from '../ui/repo-relocate-panel';
         detail
         [commit]="selectedCommit()"
         [isWip]="isWipSelected()"
+        [changedFiles]="changedFiles()"
         [showCta]="true"
         [showNavigation]="true"
         (reviewChanges)="openChanges()"
@@ -98,6 +100,11 @@ export class RepoPage {
   private readonly workspaces = inject(WorkspacesStore);
   private readonly destroyRef = inject(DestroyRef);
   /**
+   * The route-scoped `StatusStore` (the same instance `FileStatusStore` composes),
+   * used read-only for the History aside's changed-file tooltip (ADR-032).
+   */
+  private readonly status = inject(StatusStore);
+  /**
    * Optional: the page is also constructed outside a router (unit spec), so the
    * primary CTA's navigation degrades to a no-op there.
    */
@@ -145,6 +152,19 @@ export class RepoPage {
 
   /** Last observed `RepoState.statusRefreshRequested` token (dedupes the effect). */
   private lastStatusRefresh = this.repoState.statusRefreshRequested();
+
+  /**
+   * Changed-file paths of the selected commit, for the aside's read-only
+   * tooltip (ADR-032). Empty for the WIP row and for a cleared selection; the
+   * panel owns the disclosure, this page owns the read.
+   */
+  readonly changedFiles = signal<readonly string[]>([]);
+
+  /**
+   * Monotonic token guarding the async file-list read: a response whose commit
+   * is no longer selected is dropped instead of overwriting the current list.
+   */
+  private changedFilesSeq = 0;
 
   constructor() {
     // Sync the active repo into the route-scoped graph. `openRepository` is not
@@ -194,6 +214,30 @@ export class RepoPage {
     // `StatusWorkspace` fired on `fs:changed` before the band was removed.
     const unsubscribe = this.bridge.onFsChanged(() => this.graphStore.reload());
     this.destroyRef.onDestroy(unsubscribe);
+
+    // ADR-032: the aside's changed-file tooltip. Point the route-scoped
+    // `StatusStore` at the open repository (mirroring `FileStatusPage`) and,
+    // when a real commit is selected, read its first-parent / empty-tree file
+    // list. The read is deliberately non-mutating (`readCommitChangedFiles`), so
+    // it never disturbs the File-status viewer or its staging substrates, and
+    // `headOid` is not needed — the read takes its `from`/`to` explicitly. The
+    // WIP row and a cleared selection both clear the list; the monotonic token
+    // drops a late response for a commit that is no longer selected.
+    effect(() => {
+      const repoId = this.graphStore.repoId();
+      this.status.setRepoId(repoId);
+
+      const commit = this.selectedCommit();
+      const seq = ++this.changedFilesSeq;
+      if (!repoId || !commit) {
+        this.changedFiles.set([]);
+        return;
+      }
+      void this.status.readCommitChangedFiles(commit).then((paths) => {
+        if (seq !== this.changedFilesSeq) return;
+        this.changedFiles.set(paths);
+      });
+    });
   }
 
   /**

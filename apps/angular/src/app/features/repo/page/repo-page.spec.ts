@@ -17,6 +17,7 @@ import { IpcBridge, type AppError } from '@core/services/ipc-bridge.service';
 import { RepoState } from '@core/services/repo-state.service';
 import { WorkspacesStore } from '@core/services/workspaces.store';
 import { GraphStore, WIP_OID } from '../graph/graph.store';
+import { StatusStore } from '../status/status.store';
 import type { CommitRow } from '../repo-models';
 import { RepoPage } from './repo-page';
 
@@ -69,6 +70,17 @@ function makeRepoState(initial: Repository | null) {
  */
 function makeGraphStore() {
   const repoId = signal<string | null>(null);
+  const commits = signal<Commit[]>([]);
+  const selectedOid = signal<string | null>(null);
+  const selectedRow = computed<CommitRow | null>(() => {
+    const oid = selectedOid();
+    if (!oid || oid === WIP_OID) return null;
+    const commit = commits().find((c) => c.oid?.hex === oid);
+    return commit
+      ? { commit, lane: { index: 0, color: 0, continues: false }, refs: [], isHead: false }
+      : null;
+  });
+  const isWipSelected = computed(() => selectedOid() === WIP_OID);
   const openRepository = vi.fn(async (fsPath: string) => {
     const repo = ALL_REPOS.find((r) => r.fsPath === fsPath) ?? REPO_A;
     repoId.set(repo.id);
@@ -76,7 +88,31 @@ function makeGraphStore() {
   });
   const focusCommit = vi.fn(async (_oid: string) => {});
   const reload = vi.fn();
-  return { repoId, openRepository, focusCommit, reload, error: signal<AppError | null>(null) };
+  return {
+    repoId,
+    commits,
+    selectedOid,
+    selectedRow,
+    isWipSelected,
+    openRepository,
+    focusCommit,
+    reload,
+    error: signal<AppError | null>(null),
+  };
+}
+
+/**
+ * Minimal route-scoped `StatusStore` stand-in: only the two members `RepoPage`
+ * touches — the repo pointer and the ADR-032 read-only file-list read.
+ */
+function makeStatusStore() {
+  const repoId = signal<string | null>(null);
+  const readCommitChangedFiles = vi.fn(async (_commit: Commit) => [] as readonly string[]);
+  return {
+    repoId,
+    setRepoId: vi.fn((id: string | null) => repoId.set(id)),
+    readCommitChangedFiles,
+  };
 }
 
 /**
@@ -98,12 +134,14 @@ async function setup(initial: Repository | null = REPO_A) {
   const repoState = makeRepoState(initial);
   const graphStore = makeGraphStore();
   const bridge = makeBridge();
+  const status = makeStatusStore();
 
   await TestBed.configureTestingModule({
     providers: [
       provideZonelessChangeDetection(),
       { provide: RepoState, useValue: repoState },
       { provide: GraphStore, useValue: graphStore },
+      { provide: StatusStore, useValue: status },
       { provide: IpcBridge, useValue: bridge },
     ],
   }).compileComponents();
@@ -113,7 +151,7 @@ async function setup(initial: Repository | null = REPO_A) {
   TestBed.runInInjectionContext(() => new RepoPage());
   TestBed.tick();
   await Promise.resolve();
-  return { repoState, graphStore, bridge };
+  return { repoState, graphStore, bridge, status };
 }
 
 describe('RepoPage hydration', () => {
@@ -246,6 +284,14 @@ const COMMIT_A: Commit = {
   refs: [],
 };
 
+const COMMIT_B_OID = 'c'.repeat(40);
+const COMMIT_B: Commit = {
+  ...COMMIT_A,
+  oid: { hex: COMMIT_B_OID, kind: 'SHA1' },
+  parents: [{ hex: COMMIT_OID, kind: 'SHA1' }],
+  message: 'Second commit',
+};
+
 @Component({
   selector: 'st-graph-page',
   standalone: true,
@@ -302,6 +348,7 @@ class CommitDetailsPanelStub {
   readonly isWip = input(false);
   readonly showCta = input(false);
   readonly showNavigation = input(false);
+  readonly changedFiles = input<readonly string[]>([]);
   readonly reviewChanges = output<void>();
   readonly viewInTree = output<void>();
   readonly back = output<void>();
@@ -312,19 +359,25 @@ class CommitDetailsPanelStub {
  * signals `RepoPage` derives its split inputs from and keeps `selectedRow`
  * consistent with `selectedOid` (null for the WIP pseudo-oid).
  */
-function makeRenderGraphStore(opts: { openError?: AppError } = {}) {
+function makeRenderGraphStore(
+  opts: { openError?: AppError; failOn?: (fsPath: string) => boolean } = {},
+) {
   const repoId = signal<string | null>(null);
-  const commits = signal<Commit[]>([COMMIT_A]);
+  const commits = signal<Commit[]>([COMMIT_A, COMMIT_B]);
   const selectedOid = signal<string | null>(null);
   const error = signal<AppError | null>(null);
   const openRepository = vi.fn(async (fsPath: string) => {
     // A failed open leaves `repoId` null and records the error — the state that
-    // drives the recovery panel instead of the picker.
-    if (opts.openError) {
-      error.set(opts.openError);
+    // drives the recovery panel instead of the picker. The fixed store clears
+    // the pointer even when a previously open repo existed, so a failed switch
+    // never keeps rendering the old repo's window.
+    if (opts.openError || opts.failOn?.(fsPath)) {
+      error.set(opts.openError ?? { code: 'OPEN_FAILED', message: 'open failed', details: {} });
+      repoId.set(null);
       return null;
     }
     const repo = ALL_REPOS.find((r) => r.fsPath === fsPath) ?? REPO_A;
+    error.set(null);
     repoId.set(repo.id);
     return repo;
   });
@@ -351,11 +404,12 @@ function makeRenderGraphStore(opts: { openError?: AppError } = {}) {
 
 async function render(
   initial: Repository | null = REPO_A,
-  opts: { openError?: AppError } = {},
+  opts: { openError?: AppError; failOn?: (fsPath: string) => boolean } = {},
 ) {
   const repoState = makeRepoState(initial);
   const graphStore = makeRenderGraphStore(opts);
   const bridge = makeBridge();
+  const status = makeStatusStore();
   const router = { navigate: vi.fn(async () => true), url: '/repo' };
 
   await TestBed.configureTestingModule({
@@ -364,6 +418,7 @@ async function render(
       provideZonelessChangeDetection(),
       { provide: RepoState, useValue: repoState },
       { provide: GraphStore, useValue: graphStore },
+      { provide: StatusStore, useValue: status },
       { provide: IpcBridge, useValue: bridge },
       { provide: Router, useValue: router },
     ],
@@ -382,7 +437,14 @@ async function render(
     .compileComponents();
 
   const fixture = TestBed.createComponent(RepoPage);
-  return { fixture, repoState, graphStore, router, workspaces: TestBed.inject(WorkspacesStore) };
+  return {
+    fixture,
+    repoState,
+    graphStore,
+    status,
+    router,
+    workspaces: TestBed.inject(WorkspacesStore),
+  };
 }
 
 describe('RepoPage workspace split', () => {
@@ -412,6 +474,12 @@ describe('RepoPage workspace split', () => {
   function panelStub(fixture: ComponentFixture<RepoPage>): RepoRelocatePanelStub {
     return fixture.debugElement.query(By.directive(RepoRelocatePanelStub))
       .componentInstance as RepoRelocatePanelStub;
+  }
+
+  /** The stubbed commit-details panel instance (to read its inputs). */
+  function detailsStub(fixture: ComponentFixture<RepoPage>): CommitDetailsPanelStub {
+    return fixture.debugElement.query(By.directive(CommitDetailsPanelStub))
+      .componentInstance as CommitDetailsPanelStub;
   }
 
   /** Render with a failed open so the recovery state settles. */
@@ -602,5 +670,142 @@ describe('RepoPage workspace split', () => {
 
     expect(graphStore.selectedOid()).toBeNull();
     expect(host(fixture).querySelector('[data-testid="workspace-detail"]')).toBeNull();
+  });
+
+  // -- ADR-032: changed-file list read -------------------------------------
+
+  it('points the route-scoped StatusStore at the open repository', async () => {
+    const { status } = await renderWithGraph();
+
+    expect(status.setRepoId).toHaveBeenCalledWith(REPO_A.id);
+  });
+
+  it('reads the selected commit changed files and passes them to the panel', async () => {
+    const { fixture, graphStore, status } = await renderWithGraph();
+    status.readCommitChangedFiles.mockResolvedValue(['src/a.ts', 'src/b.ts']);
+
+    graphStore.select(COMMIT_OID);
+    fixture.detectChanges();
+    await vi.waitFor(() => {
+      fixture.detectChanges();
+      expect(detailsStub(fixture).changedFiles()).toEqual(['src/a.ts', 'src/b.ts']);
+    });
+
+    expect(status.readCommitChangedFiles).toHaveBeenCalledWith(COMMIT_A);
+    expect(fixture.componentInstance.changedFiles()).toEqual(['src/a.ts', 'src/b.ts']);
+  });
+
+  it('drops a late changed-file response for a commit that is no longer selected', async () => {
+    const { fixture, graphStore, status } = await renderWithGraph();
+
+    let resolveFirst: ((paths: readonly string[]) => void) | undefined;
+    status.readCommitChangedFiles.mockImplementationOnce(
+      () =>
+        new Promise<readonly string[]>((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    status.readCommitChangedFiles.mockResolvedValue(['late']);
+
+    graphStore.select(COMMIT_OID);
+    fixture.detectChanges();
+    await vi.waitFor(() => expect(status.readCommitChangedFiles).toHaveBeenCalledTimes(1));
+
+    graphStore.select(COMMIT_B_OID);
+    fixture.detectChanges();
+    await vi.waitFor(() => {
+      fixture.detectChanges();
+      expect(fixture.componentInstance.changedFiles()).toEqual(['late']);
+    });
+
+    // The deselected commit's slower response must not overwrite the list.
+    resolveFirst?.(['stale']);
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.changedFiles()).toEqual(['late']);
+  });
+
+  it('clears the changed-file list on a cleared selection and on the WIP row', async () => {
+    const { fixture, graphStore, status } = await renderWithGraph();
+    status.readCommitChangedFiles.mockResolvedValue(['src/a.ts']);
+
+    graphStore.select(COMMIT_OID);
+    fixture.detectChanges();
+    await vi.waitFor(() => {
+      fixture.detectChanges();
+      expect(fixture.componentInstance.changedFiles()).toEqual(['src/a.ts']);
+    });
+
+    graphStore.select(WIP_OID);
+    fixture.detectChanges();
+    await vi.waitFor(() => {
+      fixture.detectChanges();
+      expect(fixture.componentInstance.changedFiles()).toEqual([]);
+    });
+
+    graphStore.select(COMMIT_OID);
+    fixture.detectChanges();
+    await vi.waitFor(() => {
+      fixture.detectChanges();
+      expect(fixture.componentInstance.changedFiles()).toEqual(['src/a.ts']);
+    });
+
+    graphStore.select(null);
+    fixture.detectChanges();
+    await vi.waitFor(() => {
+      fixture.detectChanges();
+      expect(fixture.componentInstance.changedFiles()).toEqual([]);
+    });
+  });
+
+  // -- tab-switch refresh (repo A -> failing B -> back to A) ----------------
+
+  it('renders the picker, never a stale repo, after a failed open of the newly active repo', async () => {
+    const { fixture, repoState, graphStore } = await render(REPO_A, {
+      failOn: (fsPath) => fsPath === REPO_B.fsPath,
+    });
+    await vi.waitFor(() => {
+      fixture.detectChanges();
+      expect(graphStore.repoId()).toBe(REPO_A.id);
+    });
+
+    // Switching to a repo whose folder cannot be opened must not keep showing
+    // the previously open repo's window.
+    repoState.setActive(REPO_B);
+    await vi.waitFor(() => {
+      fixture.detectChanges();
+      expect(graphStore.error()).not.toBeNull();
+    });
+    fixture.detectChanges();
+
+    const el = host(fixture);
+    expect(graphStore.repoId()).toBeNull();
+    expect(el.querySelector('[data-testid="repo-picker-stub"]')).not.toBeNull();
+    expect(el.querySelector('[data-testid="graph-stub"]')).toBeNull();
+  });
+
+  it('re-opens a repo whose previous open failed when it is selected again', async () => {
+    const { fixture, repoState, graphStore } = await render(REPO_A, {
+      failOn: (fsPath) => fsPath === REPO_A.fsPath,
+    });
+    await vi.waitFor(() => {
+      fixture.detectChanges();
+      expect(graphStore.error()).not.toBeNull();
+    });
+    // The failed open left no repo latched (the fixed store clears the pointer).
+    expect(graphStore.repoId()).toBeNull();
+    const opensBefore = graphStore.openRepository.mock.calls.length;
+
+    // Re-selecting the same repo (a fresh object, as the drawer list hands back)
+    // retries the open: the guard must not treat the cleared id as "already
+    // open" — which is exactly what the old latched-id bug did.
+    repoState.setActive({ ...REPO_A });
+    await vi.waitFor(() => {
+      fixture.detectChanges();
+      expect(graphStore.openRepository.mock.calls.length).toBe(opensBefore + 1);
+    });
+    expect(graphStore.openRepository).toHaveBeenLastCalledWith(REPO_A.fsPath);
   });
 });

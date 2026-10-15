@@ -291,9 +291,11 @@ export class StatusStore {
    * Diff the commit against its first parent (or the empty tree for a root).
    *
    * Kept as a store capability after ADR-0030 removed the graph-route panel
-   * that used to drive it: the coupling is gone on purpose, and the file-status
-   * screen diffs commits through its own `loadOwnDiff`. Only a working-tree
-   * consumer (never the History screen, per ADR-0030) may use it again.
+   * that used to drive it: the viewer/substrate coupling is gone on purpose,
+   * and the file-status screen diffs commits through its own `loadOwnDiff`.
+   * The History aside reads a commit's file list through the non-mutating
+   * `readCommitChangedFiles` below (ADR-032), never through this viewer-diff
+   * method — so a History selection can no longer clobber the viewer it used to.
    */
   async loadCommitDiff(commit: Commit): Promise<void> {
     const id = this.repoId();
@@ -302,6 +304,42 @@ export class StatusStore {
     const from = commit.parents[0]?.hex ?? WORKTREE_OID;
     const to = commit.oid?.hex ?? WORKTREE_OID;
     await this.loadDiff(this.diff, this.diffLoading, this.diffError, id, from, to, false);
+  }
+
+  /**
+   * Read only the changed-file paths of one commit (first parent → commit, or
+   * the empty tree → commit for a root), for the History aside's read-only
+   * file-list tooltip (ADR-032).
+   *
+   * This is a *read*: unlike `loadCommitDiff` it writes none of the viewer
+   * substrates (`diff`/`diffContext`) nor the addressing substrates
+   * (`unstagedDiff`/`stagedDiff`), so a History selection can never disturb the
+   * File-status viewer or its staging state. It reuses the same `getDiff` RPC
+   * the File status screen uses — no new RPC, IPC channel or Go-core surface
+   * (ADR-032 item 3), and it never talks to Git directly.
+   *
+   * Failure degrades and never throws: `IPC_UNAVAILABLE` flips `offline` and
+   * yields an empty list, any other error is recorded on `error` and also
+   * yields an empty list. The tooltip is read-only chrome, so a failed read
+   * must not break the aside.
+   */
+  async readCommitChangedFiles(commit: Commit): Promise<readonly string[]> {
+    const id = this.repoId();
+    if (!id) return [];
+    const from = commit.parents[0]?.hex ?? WORKTREE_OID;
+    const to = commit.oid?.hex ?? WORKTREE_OID;
+    try {
+      const diff = await this.fetchDiff(id, from, to, false);
+      this.offline.set(false);
+      return diff.files.map((file) => file.path);
+    } catch (err) {
+      if (isIpcUnavailable(err)) {
+        this.offline.set(true);
+        return [];
+      }
+      this.error.set(toAppError(err));
+      return [];
+    }
   }
 
   /** Invalidate + reload the working tree status (fs:changed / external mutation). */
@@ -397,11 +435,8 @@ export class StatusStore {
     loading.set(true);
     errorSignal.set(null);
 
-    // `path: ''` = all changed files; `staged` selects HEAD->index vs
-    // HEAD->worktree (ADR-0020 GetDiffRequest evolution).
-    const req: GetDiffRequest = { repoId: id, from, to, path: '', staged };
     try {
-      const diff = await this.bridge.invoke('getDiff', req);
+      const diff = await this.fetchDiff(id, from, to, staged);
       this.offline.set(false);
       target.set(diff);
     } catch (err) {
@@ -414,5 +449,19 @@ export class StatusStore {
     } finally {
       loading.set(false);
     }
+  }
+
+  /**
+   * The single `getDiff` call the two diff readers share: the viewer/addressing
+   * loader (`loadDiff`) and the read-only commit file-list read
+   * (`readCommitChangedFiles`). No new RPC — the same request shape ADR-0020
+   * pinned. Deliberately not `async`: it returns the bridge promise unchanged so
+   * a caller's `await` costs exactly the same single tick it did inline before.
+   */
+  private fetchDiff(id: string, from: string, to: string, staged: boolean): Promise<Diff> {
+    // `path: ''` = all changed files; `staged` selects HEAD->index vs
+    // HEAD->worktree (ADR-0020 GetDiffRequest evolution).
+    const req: GetDiffRequest = { repoId: id, from, to, path: '', staged };
+    return this.bridge.invoke('getDiff', req);
   }
 }

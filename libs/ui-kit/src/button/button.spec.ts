@@ -8,13 +8,15 @@ import { ButtonComponent } from './button';
   imports: [ButtonComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <st-button [pressed]="pressed()">
+    <st-button [pressed]="pressed()" [expanded]="expanded()" [haspopup]="haspopup()">
       <span>Label</span>
     </st-button>
   `,
 })
 class ButtonTestHost {
   readonly pressed = signal<boolean | null>(null);
+  readonly expanded = signal<boolean | null>(null);
+  readonly haspopup = signal<string | null>(null);
 }
 
 async function setup(): Promise<ComponentFixture<ButtonTestHost>> {
@@ -52,5 +54,26 @@ describe('ButtonComponent', () => {
     const fixture = await setup();
 
     expect(inner(fixture).hasAttribute('aria-pressed')).toBe(false);
+  });
+
+  it('forwards aria-expanded and aria-haspopup to the inner button', async () => {
+    const fixture = await setup();
+
+    fixture.componentInstance.expanded.set(true);
+    fixture.componentInstance.haspopup.set('dialog');
+    fixture.detectChanges();
+    expect(inner(fixture).getAttribute('aria-expanded')).toBe('true');
+    expect(inner(fixture).getAttribute('aria-haspopup')).toBe('dialog');
+
+    fixture.componentInstance.expanded.set(false);
+    fixture.detectChanges();
+    expect(inner(fixture).getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('renders no aria-expanded or aria-haspopup by default', async () => {
+    const fixture = await setup();
+
+    expect(inner(fixture).hasAttribute('aria-expanded')).toBe(false);
+    expect(inner(fixture).hasAttribute('aria-haspopup')).toBe(false);
   });
 });

@@ -349,6 +349,163 @@ describe('GraphStore', () => {
     expect(store.offline()).toBe(true);
   });
 
+  it('clears the repository on a failed open so no stale window survives', async () => {
+    let call = 0;
+    const getCommits = vi.fn(() => Promise.resolve(makePage(2, 0, 2)));
+    const getCommitStats = vi.fn((req: unknown) => {
+      const { oids } = req as { oids: string[] };
+      return Promise.resolve({
+        stats: oids.map((oid) => ({ oid, additions: 1, deletions: 1, filesChanged: 1 })),
+      });
+    });
+    const openRepository = vi.fn(() => {
+      call++;
+      return call === 1
+        ? Promise.resolve(REPO)
+        : Promise.reject({ code: 'GIT_FAILED', message: 'boom' });
+    });
+    const listRepositories = vi.fn(() => Promise.resolve({ repositories: [REPO] }));
+    const watch = vi.fn(() => Promise.resolve({}));
+    store = new GraphStore(
+      makeBridge({ getCommits, getCommitStats, openRepository, listRepositories, watch }),
+    );
+
+    // First open mounts repo-1's window; select a commit and let the gauge
+    // cache fill so the paging/gauge residue is observable too.
+    await store.openRepository('/tmp/repo');
+    store.select(makeCommit(0).oid?.hex ?? '');
+    expect(store.repoId()).toBe('repo-1');
+    expect(store.commits()).toHaveLength(2);
+    await vi.waitFor(() => expect(store.commitStats().size).toBeGreaterThan(0));
+    expect(store.offset()).toBe(2);
+
+    // A failed open must leave NO repository open: the previous repo's commits,
+    // selection, paging offset and gauge cache cannot survive it (RepoPage's
+    // `repoId()` gate then routes to the relocate panel / picker).
+    await expect(store.openRepository('/tmp/other')).resolves.toBeNull();
+
+    expect(store.repoId()).toBeNull();
+    expect(store.commits()).toEqual([]);
+    expect(store.lanes()).toEqual([]);
+    expect(store.total()).toBe(0);
+    expect(store.selectedOid()).toBeNull();
+    expect(store.filter()).toBe('');
+    expect(store.offset()).toBe(0);
+    expect(store.commitStats().size).toBe(0);
+    expect(store.error()).toEqual({ code: 'GIT_FAILED', message: 'boom', details: {} });
+    // No extra watch was started for the failed open.
+    expect(watch).toHaveBeenCalledTimes(1);
+    expect(watch).toHaveBeenCalledWith({ repoId: 'repo-1' });
+  });
+
+  it('clears the repository on an IPC_UNAVAILABLE open failure (offline, no stale window)', async () => {
+    let call = 0;
+    const getCommits = vi.fn(() => Promise.resolve(makePage(2, 0, 2)));
+    const getCommitStats = vi.fn((req: unknown) => {
+      const { oids } = req as { oids: string[] };
+      return Promise.resolve({
+        stats: oids.map((oid) => ({ oid, additions: 1, deletions: 1, filesChanged: 1 })),
+      });
+    });
+    const openRepository = vi.fn(() => {
+      call++;
+      return call === 1
+        ? Promise.resolve(REPO)
+        : Promise.reject({ code: 'IPC_UNAVAILABLE', message: 'offline' });
+    });
+    const listRepositories = vi.fn(() => Promise.resolve({ repositories: [REPO] }));
+    store = new GraphStore(makeBridge({ getCommits, getCommitStats, openRepository, listRepositories }));
+
+    await store.openRepository('/tmp/repo');
+    expect(store.repoId()).toBe('repo-1');
+    await vi.waitFor(() => expect(store.commitStats().size).toBeGreaterThan(0));
+
+    await expect(store.openRepository('/tmp/other')).resolves.toBeNull();
+
+    expect(store.offline()).toBe(true);
+    expect(store.repoId()).toBeNull();
+    expect(store.commits()).toEqual([]);
+    expect(store.total()).toBe(0);
+    expect(store.offset()).toBe(0);
+    expect(store.commitStats().size).toBe(0);
+  });
+
+  it('discards a superseded open so a late resolve installs nothing', async () => {
+    const repoA = { ...REPO, id: 'repo-a', fsPath: '/tmp/a' };
+    const repoB = { ...REPO, id: 'repo-b', fsPath: '/tmp/b' };
+    let resolveA: ((value: Repository) => void) | undefined;
+    let resolveB: ((value: Repository) => void) | undefined;
+    const openRepository = vi.fn((req: unknown) => {
+      const { fsPath } = req as { fsPath: string };
+      return new Promise<Repository>((resolve) => {
+        if (fsPath === '/tmp/a') resolveA = resolve;
+        else resolveB = resolve;
+      });
+    });
+    const getCommits = vi.fn(() => Promise.resolve(makePage(2, 0, 2)));
+    const listRepositories = vi.fn(() => Promise.resolve({ repositories: [] }));
+    const watch = vi.fn(() => Promise.resolve({}));
+    store = new GraphStore(makeBridge({ getCommits, openRepository, listRepositories, watch }));
+
+    // The user switches tabs: A is opened, then B; B resolves first and A (the
+    // tab the user left) resolves last.
+    const openingA = store.openRepository('/tmp/a');
+    const openingB = store.openRepository('/tmp/b');
+
+    resolveB?.(repoB);
+    await openingB;
+    resolveA?.(repoA);
+    await expect(openingA).resolves.toBeNull();
+
+    // Only B installed its repo, loaded its window and started a watch.
+    expect(store.repoId()).toBe('repo-b');
+    expect(store.commits()).toHaveLength(2);
+    expect(watch).toHaveBeenCalledTimes(1);
+    expect(watch).toHaveBeenCalledWith({ repoId: 'repo-b' });
+  });
+
+  it('clears the previous repo rows while the switched-to window is in flight', async () => {
+    const repoA = { ...REPO, id: 'repo-a', fsPath: '/tmp/a' };
+    const repoB = { ...REPO, id: 'repo-b', fsPath: '/tmp/b' };
+    let resolveWindow: ((value: GetCommitsResponse) => void) | undefined;
+    let getCommitsCalls = 0;
+    const getCommits = vi.fn(() => {
+      getCommitsCalls++;
+      // A's window resolves immediately; B's stays in flight.
+      if (getCommitsCalls === 1) return Promise.resolve(makePage(2, 0, 2));
+      return new Promise<GetCommitsResponse>((resolve) => {
+        resolveWindow = resolve;
+      });
+    });
+    const openRepository = vi.fn((req: unknown) =>
+      Promise.resolve((req as { fsPath: string }).fsPath === '/tmp/a' ? repoA : repoB),
+    );
+    const listRepositories = vi.fn(() => Promise.resolve({ repositories: [] }));
+    const watch = vi.fn(() => Promise.resolve({}));
+    store = new GraphStore(makeBridge({ getCommits, openRepository, listRepositories, watch }));
+
+    await store.openRepository('/tmp/a');
+    expect(store.repoId()).toBe('repo-a');
+    expect(store.commits()).toHaveLength(2);
+
+    // Switch to B: its `open` resolves immediately, but its `getCommits` does not.
+    const switching = store.openRepository('/tmp/b');
+    await vi.waitFor(() => expect(store.repoId()).toBe('repo-b'));
+
+    // A's rows must not render under B's identity while B's window loads.
+    expect(store.commits()).toEqual([]);
+    expect(store.lanes()).toEqual([]);
+    expect(store.total()).toBe(0);
+    expect(store.loading()).toBe(true);
+
+    resolveWindow?.(makePage(3, 0, 3));
+    await switching;
+
+    // The successful load repopulates the new repo's window.
+    expect(store.commits()).toHaveLength(3);
+    expect(store.total()).toBe(3);
+  });
+
   it('filters loaded rows by message, author, oid and refs', async () => {
     const page: GetCommitsResponse = {
       commits: [

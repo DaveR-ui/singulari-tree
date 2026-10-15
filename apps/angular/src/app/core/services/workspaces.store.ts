@@ -126,13 +126,40 @@ export class WorkspacesStore {
 
   /**
    * Activate the tab for `repoId` and mirror it into `RepoState` (the active-repo
-   * source of truth). No-op for an unknown id.
+   * source of truth). No-op for an unknown id, or for a tab that is already both
+   * active and mirrored (re-clicking the active tab stays a no-op).
+   *
+   * When the tab's record is present in `RepoState.repos()` the mirror is
+   * synchronous (`setActive`, ADR-024: "Switching tabs routes to existing
+   * per-repo IPC calls"). When it is missing — e.g. a rehydrated tab whose repo
+   * is not yet in the settled core list — the source of truth follows the tab by
+   * opening it by path through `RepoState`: on success the repo is opened and
+   * activated (and `RepoPage`'s effect opens the graph). On failure the core no
+   * longer knows this path, so the tab is dropped and a neighbour is activated
+   * (mirroring `reconcile`); the failure itself is recorded on
+   * `RepoState.reposError` (visible in the drawer).
    */
   selectTab(repoId: string): void {
-    if (!this.tabsState().some((tab) => tab.repoId === repoId)) return;
+    const tab = this.tabsState().find((candidate) => candidate.repoId === repoId);
+    if (!tab) return;
+    // Already active *and* already mirrored: nothing to do.
+    if (this.activeTabIdState() === repoId && this.repoState.activeId() === repoId) return;
     this.activeTabIdState.set(repoId);
     const repo = this.repoState.repos().find((candidate) => candidate.id === repoId);
-    if (repo) this.repoState.setActive(repo);
+    if (repo) {
+      this.repoState.setActive(repo);
+    } else {
+      // Not in the core list yet: open by path so the active-repo source of
+      // truth follows the tab.
+      void this.repoState.openRepositoryPath(tab.fsPath).then((opened) => {
+        // The open failed: the core no longer knows this path. Drop the dead
+        // tab exactly like `reconcile` does at startup — `closeTab` activates
+        // (and mirrors) the neighbour, or clears the active repo when this was
+        // the last tab — so the top bar, `RepoState` and the graph never
+        // diverge. The failure itself is recorded on `RepoState.reposError`.
+        if (!opened) this.closeTab(repoId);
+      });
+    }
     this.persist();
   }
 

@@ -6,7 +6,7 @@ tags:
 - project
 - entry-point
 - singularitree
-version: 1.5.0
+version: 1.5.1
 doc_language: en
 ---
 
@@ -113,7 +113,7 @@ SingulariTree/
 - SQLite per user (WAL, `foreign_keys=ON`) and **NEVER** stores Git objects.
 - Necomat `frontend/`/`backend/` remain intact.
 - Tests/builds from the package directory (never the root, except Go via `go.work`).
-- ADRs are append-only; numbering continues at ADR-031 (new files use the padded form, e.g. `adr-0031-…`).
+- ADRs are append-only; numbering continues at ADR-033 (last used: ADR-0032; new files use the padded form, e.g. `adr-0032-…`).
 
 ## Domain Entities
 

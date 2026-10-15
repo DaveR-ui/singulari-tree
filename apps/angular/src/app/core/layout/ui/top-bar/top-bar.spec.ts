@@ -193,4 +193,68 @@ describe('TopBar', () => {
     const unpinned = await setup({ drawerPinned: false });
     expect(host(unpinned, 'top-bar-drawer-toggle')?.getAttribute('aria-expanded')).toBe('false');
   });
+
+  it('marks only the active tab with the full selection treatment', async () => {
+    const fixture = await setup();
+    const els = tabs(fixture);
+
+    expect(els[0].classList.contains('st-tab--active')).toBe(true);
+    expect(els[0].classList.contains('st-selection-bar')).toBe(true);
+    expect(els[1].classList.contains('st-tab--active')).toBe(false);
+    expect(els[1].classList.contains('st-selection-bar')).toBe(false);
+  });
+
+  it('gives the active and inactive tabs observably different fill and text colours', async () => {
+    const fixture = await setup();
+    const els = tabs(fixture);
+    const active = getComputedStyle(els[0]);
+    const inactive = getComputedStyle(els[1]);
+
+    // The active tab carries the selected fill; the inactive tab stays unfilled.
+    expect(active.backgroundColor).not.toBe(inactive.backgroundColor);
+    expect(active.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+    // Full-strength text on the active tab vs the muted colour on the inactive one.
+    expect(active.color).not.toBe(inactive.color);
+  });
+
+  it('exposes the focus-ring vocabulary and a labelled close on every tab', async () => {
+    const fixture = await setup();
+
+    for (const tab of tabs(fixture)) {
+      // Row-like tab: role/tabindex plus the shared inset focus-ring class.
+      expect(tab.getAttribute('role')).toBe('tab');
+      expect(tab.getAttribute('tabindex')).toBe('0');
+      expect(tab.classList.contains('st-focus-ring--inset')).toBe(true);
+
+      const close = tab.querySelector<HTMLButtonElement>('.st-tab__close');
+      expect(close).not.toBeNull();
+      expect(close!.type).toBe('button');
+      expect(close!.getAttribute('aria-label')).toBe('Close tab');
+      expect(close!.classList.contains('st-focus-ring--inset')).toBe(true);
+    }
+
+    // The standalone "+" control gets the standard ring.
+    const add = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+      '.st-tab__add',
+    );
+    expect(add!.getAttribute('aria-label')).toBe('Add tab');
+    expect(add!.classList.contains('st-focus-ring')).toBe(true);
+  });
+
+  it('keeps the close control labelled and operable on both the active and inactive tab', async () => {
+    const fixture = await setup();
+    const selected: string[] = [];
+    const closed: string[] = [];
+    fixture.componentInstance.tabSelected.subscribe((id) => selected.push(id));
+    fixture.componentInstance.tabClosed.subscribe((id) => closed.push(id));
+
+    const els = tabs(fixture);
+    expect(els[0].querySelector('.st-tab__close')?.getAttribute('aria-label')).toBe('Close tab');
+    expect(els[1].querySelector('.st-tab__close')?.getAttribute('aria-label')).toBe('Close tab');
+
+    els[1].querySelector<HTMLButtonElement>('.st-tab__close')!.click();
+
+    expect(closed).toEqual(['repo-2']);
+    expect(selected).toEqual([]);
+  });
 });

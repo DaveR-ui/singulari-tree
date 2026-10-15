@@ -29,6 +29,8 @@ export type ButtonType = 'button' | 'submit' | 'reset';
       [disabled]="disabled()"
       [attr.aria-label]="ariaLabel() || null"
       [attr.aria-pressed]="pressed()"
+      [attr.aria-expanded]="expanded()"
+      [attr.aria-haspopup]="haspopup()"
     >
       <ng-content />
     </button>
@@ -136,4 +138,8 @@ export class ButtonComponent {
   readonly ariaLabel = input('');
   /** `aria-pressed` for toggle buttons; `null` (default) renders no attribute. */
   readonly pressed = input<boolean | null>(null);
+  /** `aria-expanded` for disclosure triggers; `null` (default) renders no attribute. */
+  readonly expanded = input<boolean | null>(null);
+  /** `aria-haspopup` for popup triggers; `null` (default) renders no attribute. */
+  readonly haspopup = input<string | null>(null);
 }

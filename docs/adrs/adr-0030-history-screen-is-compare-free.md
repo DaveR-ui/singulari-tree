@@ -5,7 +5,7 @@ tags: [adr, renderer, graph, status, diff, compare]
 aliases: [ADR-0030, History screen is compare-free]
 related: [adr-index, renderer-slice, adr-0022-graph-context-menu-shell, adr-0029-file-status-screen, feature-gap-analysis]
 version: 1.0
-status: active
+status: superseded
 ---
 
 # ADR-0030: History screen is compare-free — comparison lives in File status

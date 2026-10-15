@@ -39,7 +39,7 @@ export interface TopBarTab {
       <div class="st-topbar__tabs" role="tablist">
         @for (tab of tabs(); track tab.id) {
           <span
-            class="st-tab"
+            class="st-tab st-focus-ring--inset"
             [class.st-tab--active]="tab.id === activeTab()"
             [class.st-selection-bar]="tab.id === activeTab()"
             role="tab"
@@ -57,7 +57,7 @@ export interface TopBarTab {
               }
             </span>
             <button
-              class="st-tab__close"
+              class="st-tab__close st-focus-ring--inset"
               type="button"
               aria-label="Close tab"
               i18n-aria-label
@@ -68,7 +68,7 @@ export interface TopBarTab {
           </span>
         }
         <button
-          class="st-tab__add"
+          class="st-tab__add st-focus-ring"
           type="button"
           aria-label="Add tab"
           i18n-aria-label
@@ -275,17 +275,33 @@ export interface TopBarTab {
       display: inline-flex;
       align-items: center;
       gap: var(--st-space-1);
+      box-sizing: border-box;
       height: 40px;
       padding: 0 var(--st-space-2) 0 var(--st-space-3);
+      /* The hairline is always reserved (transparent when inactive) so the
+         active tab's stronger edge cannot shift the 40px geometry. */
+      border: var(--st-hairline) solid transparent;
       border-radius: var(--st-radius-2);
+      background-color: transparent;
       color: var(--st-color-muted);
       font-size: var(--st-font-13);
       font-weight: 600;
       cursor: pointer;
     }
 
+    /* Inactive hover: the same subtle surface language as .st-hover-surface,
+       defined locally from tokens rather than pulling in a new template class. */
+    .st-tab:not(.st-tab--active):hover {
+      background-color: color-mix(in srgb, var(--st-color-text) 6%, transparent);
+      color: var(--st-color-text);
+    }
+
+    /* Active: the shared selection treatment — a decisively cyan-tinted fill,
+       the selected hairline, full-strength text and the 3px inset cyan
+       selection bar (applied by the .st-selection-bar class). */
     .st-tab--active {
-      background: var(--st-color-surface);
+      background-color: var(--st-color-selected);
+      border-color: var(--st-color-selected-border);
       color: var(--st-color-text);
     }
 
@@ -314,6 +330,7 @@ export interface TopBarTab {
     }
 
     .st-tab__close {
+      flex: none;
       background: transparent;
       border: none;
       color: inherit;
@@ -322,6 +339,12 @@ export interface TopBarTab {
       line-height: 1;
       padding: 0 2px;
       cursor: pointer;
+    }
+
+    /* Keep the close affordance clearly visible on the active tab and on hover. */
+    .st-tab--active .st-tab__close,
+    .st-tab:hover .st-tab__close {
+      opacity: 0.9;
     }
 
     .st-tab__close:hover {
