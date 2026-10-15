@@ -33,6 +33,14 @@ interface RowMenu {
  * renders explicit loading/offline/empty states instead of inventing data. Every
  * behavior of the retired `sidebar-left` is preserved (`dblclick`/Enter/Space
  * checkout, row context menus, the current-branch delete guard, "+" intents).
+ *
+ * Ref colour roles (Dark Neon, styles only): local branches read violet
+ * (`--st-color-ref-branch`), with the current branch's label lifted to
+ * full-strength text on top of the shared selection bar + fill; remote
+ * references read electric blue (`--st-color-ref-remote`); tags and stash
+ * messages read amber (`--st-color-ref-tag`); the active-repo header's branch
+ * byline reads violet. The current-branch pull-pending badge stays amber
+ * (`warning`). Geometry, hover and the disabled/empty states are unchanged.
  */
 @Component({
   selector: 'st-nav-rail',
@@ -148,7 +156,11 @@ interface RowMenu {
                     (keydown)="onBranchKeydown($event, branch)"
                     (contextmenu)="onBranchContextMenu($event, branch)"
                   >
-                    <span class="st-rail__row-label">{{ branch }}</span>
+                    <span
+                      class="st-rail__row-label st-rail__row-label--branch"
+                      [class.st-rail__row-label--current]="branch === currentBranch()"
+                      >{{ branch }}</span
+                    >
                     @if (branch === currentBranch() && currentBranchBehind() > 0) {
                       <st-badge
                         variant="warning"
@@ -191,7 +203,7 @@ interface RowMenu {
                   <li class="st-rail__sub st-mono">{{ group.remote }}</li>
                   @for (branch of group.branches; track branch) {
                     <li
-                      class="st-rail__row st-rail__row--sub st-rail__row--mono st-selectable-row st-focus-ring--inset"
+                      class="st-rail__row st-rail__row--sub st-rail__row--mono st-rail__row--remote st-selectable-row st-focus-ring--inset"
                       data-testid="st-sidebar-remote-branches"
                       role="button"
                       tabindex="0"
@@ -245,7 +257,7 @@ interface RowMenu {
             <ul class="st-rail__list" data-testid="st-sidebar-tags">
               @for (tag of tags(); track tag) {
                 <li
-                  class="st-rail__row st-rail__row--sub st-selectable-row st-focus-ring--inset"
+                  class="st-rail__row st-rail__row--sub st-rail__row--tag st-selectable-row st-focus-ring--inset"
                   data-testid="st-sidebar-tag"
                   (contextmenu)="onTagContextMenu($event, tag)"
                 >
@@ -468,7 +480,7 @@ interface RowMenu {
 
     .st-rail__repo-branch {
       font-size: var(--st-font-12);
-      color: var(--st-color-accent);
+      color: var(--st-color-ref-branch);
     }
 
     .st-rail__repo-path {
@@ -566,12 +578,40 @@ interface RowMenu {
       font-family: var(--st-font-mono);
     }
 
+    /* Remote references and tags share the --sub indent but carry distinct
+       semantic colours; the base .st-rail__row muted colour would otherwise
+       apply to both. */
+    .st-rail__row--remote {
+      color: var(--st-color-ref-remote);
+    }
+
+    .st-rail__row--tag {
+      color: var(--st-color-ref-tag);
+    }
+
     .st-rail__row-label {
       flex: 1 1 auto;
       min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    /* Local branch labels read violet; the current branch's label lifts to
+       full-strength text so it outranks its siblings (its selection bar and
+       fill already carry the "you are here" weight). */
+    .st-rail__row-label--branch {
+      color: var(--st-color-ref-branch);
+    }
+
+    .st-rail__row-label--current {
+      color: var(--st-color-text);
+    }
+
+    /* Keep the shared row hover affordance: hovering a branch row brightens its
+       violet label to full-strength text, matching remote/tag rows. */
+    .st-rail__row:hover .st-rail__row-label--branch {
+      color: var(--st-color-text);
     }
 
     .st-rail__sub {
@@ -613,6 +653,8 @@ interface RowMenu {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      /* Amber = pending changes, matching tags. */
+      color: var(--st-color-ref-tag);
     }
 
     .st-rail__stash-branch {

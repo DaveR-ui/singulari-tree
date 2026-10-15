@@ -12,123 +12,134 @@
  * symmetry is the theming fix: a missing light value can no longer silently
  * fall back to a dark hex, so no `var(--st-*, #hex)` fallback is ever needed.
  *
- * P2 note: the semantic DARK values are now the committed facelift palette
- * (plan §2.2, charcoal & cyan). P0 deliberately left them at the pre-facelift
- * palette so its re-tokenization carried no visual delta; P2 flips them as the
- * shell surfaces land, so they now match the tier-1 primitives. Light values
- * remain the committed light palette (plan §2.2).
- *
- * P4.1 note: at the operator's request the DARK surfaces / structure / text
- * moved off the charcoal ramp onto a navy/indigo ramp ("un poco más como
- * antes", echoing the app's earlier navy family — bg #1e1e2e, surfaces
- * #252536 / #2a2a3a, border #3a3a52). The cyan accent, the eight graph lanes,
- * the ref pills and the status colours are deliberately UNCHANGED: the accent
- * (--st-color-accent #69dfdc) is the documented identity token
- * (design-system.md — brand, hashes, current branch, focus rings and the
- * primary action) and the graph-lane palette is built on the same family. The
- * reference accent #0a84ff reaches only ~4.3:1 against these navy surfaces and
- * would fail WCAG AA for the 11–13px mono hash/path text that consumes
- * --st-color-accent, whereas #69dfdc holds ~10:1. So: navy surfaces, cyan
- * accent. Geometry and hairline structure are untouched — only the colour
- * family changes.
+ * P4.2 Dark Neon remap: at the operator's request the dark theme was remapped
+ * onto a near-black, slightly blue-tinted "developer studio" palette with a
+ * strict intensity budget — roughly 70% dark surfaces (canvas / chrome / rail /
+ * surface), 20% neutral structure and text (border / muted), and 10% bright
+ * accents — so hierarchy comes from colour *intensity* instead of everything
+ * glowing at once. Accent roles are assigned per meaning: turquoise
+ * (--st-color-accent #37e0d0) = interaction / selection / focus / graph
+ * connections / primary action; violet = branches; electric blue
+ * (--st-color-info #60a5fa) = navigation / history / informational and
+ * origin/* remotes; amber = pending changes / warnings / tags; mint = mainline
+ * ref and sync / staged; coral (--st-color-danger #fb7185) is RESERVED for
+ * errors only. #37e0d0 reads ~11:1 against the #171923 canvas, comfortably
+ * clearing WCAG AA for the 11–13px mono hash/path text that consumes
+ * --st-color-accent — which is why turquoise, not a darker blue, carries the
+ * accent role. Geometry, hairlines, radii, the type scale and the light
+ * theme's neutrals are untouched; only the colour family (and the light
+ * selection / graph / ref / avatar values) moved.
  */
 
 /* ── Tier 1 — primitives (raw values, theme-independent) ──────────────── */
 :root {
-  /* neutrals — navy/indigo ramp (P4.1) */
-  --st-prim-ink-900: #1e1e2e; /* canvas    */
-  --st-prim-ink-850: #20202f; /* rail      */
-  --st-prim-ink-800: #252536; /* surface   */
-  --st-prim-ink-750: #2a2a3a; /* surface-2 */
-  --st-prim-ink-700: #2e2e40; /* raised    */
-  --st-prim-ink-600: #3a3a52; /* border    */
-  --st-prim-ink-050: #e9e9f2; /* text      */
-  --st-prim-ink-300: #a8a8c0; /* muted     */
-  /* accent */
-  --st-prim-cyan-400: #69dfdc;
-  --st-prim-cyan-500: #438c89;
-  --st-prim-cyan-600: #356966;
-  --st-prim-cyan-700: #164746;
-  /* status */
-  --st-prim-green-300: #9fe0b1;
-  --st-prim-red-300: #ffacaf;
-  --st-prim-amber-300: #ebcb86;
+  /* neutrals — blue-tinted dark ramp */
+  --st-prim-ink-900: #171923; /* canvas    */
+  --st-prim-ink-850: #191d28; /* rail      */
+  --st-prim-ink-800: #1f2433; /* surface   */
+  --st-prim-ink-750: #262b3b; /* surface-2 */
+  --st-prim-ink-700: #2a3040; /* raised    */
+  --st-prim-ink-600: #333a4d; /* border    */
+  --st-prim-ink-050: #e7ecf7; /* text      */
+  --st-prim-ink-300: #9aa3b8; /* muted     */
+  /* accent — turquoise electric */
+  --st-prim-cyan-400: #37e0d0;
+  --st-prim-cyan-500: #1fa79e;
+  --st-prim-cyan-600: #177f79;
+  --st-prim-cyan-700: #0d4f4b;
+  /* other bright accents */
+  --st-prim-violet-400: #a78bfa;
+  --st-prim-blue-400: #60a5fa;
+  --st-prim-amber-400: #fbbf24;
+  --st-prim-coral-400: #fb7185;
+  --st-prim-mint-300: #6ee7b7;
+  --st-prim-rose-300: #ffacaf;
   /* diff tints */
-  --st-prim-diff-ins-bg: #223e2e;
-  --st-prim-diff-ins-fg: #c6f1d1;
-  --st-prim-diff-del-bg: #49292d;
-  --st-prim-diff-del-fg: #ffd4d5;
-  --st-prim-diff-hunk-bg: #293638;
-  --st-prim-diff-hunk-fg: #aad8d7;
-  /* graph + avatar */
-  --st-prim-graph-cyan: #67cbc7;
-  --st-prim-graph-amber: #cfad78;
-  --st-prim-avatar-bg: #343a52; /* navy (P4.1); fg stays #cef4db */
-  --st-prim-avatar-fg: #cef4db;
+  --st-prim-diff-ins-bg: #17322b;
+  --st-prim-diff-ins-fg: #b4f1d6;
+  --st-prim-diff-del-bg: #3a2229;
+  --st-prim-diff-del-fg: #fdd3d9;
+  --st-prim-diff-hunk-bg: #1c2634;
+  --st-prim-diff-hunk-fg: #a9c8ee;
+  /* graph lanes */
+  --st-prim-graph-lane-1: #37e0d0;
+  --st-prim-graph-lane-2: #a78bfa;
+  --st-prim-graph-lane-3: #fbbf24;
+  --st-prim-graph-lane-4: #6ee7b7;
+  --st-prim-graph-lane-5: #fb923c;
+  --st-prim-graph-lane-6: #60a5fa;
+  --st-prim-graph-lane-7: #a3e635;
+  --st-prim-graph-lane-8: #7dd3fc;
+  /* avatar */
+  --st-prim-avatar-bg: #2a3040;
+  --st-prim-avatar-fg: #a78bfa;
 }
 
 /* ── Tier 2 — semantic tokens, dark defaults ───────────────────────────── */
 :root {
   color-scheme: dark;
 
-  /* surfaces & structure */
-  --st-color-bg: #1e1e2e;
-  --st-color-chrome: #232334;
-  --st-color-rail: #20202f;
-  --st-color-surface: #252536;
-  --st-color-surface-2: #2a2a3a;
-  --st-color-raised: #2e2e40;
-  --st-color-border: #3a3a52;
+  /* surfaces & structure — the ~70% dark base */
+  --st-color-bg: #171923; /* canvas */
+  --st-color-chrome: #1b1f2b; /* top / status bar */
+  --st-color-rail: #191d28; /* nav rail */
+  --st-color-surface: #1f2433; /* panels, panes, cards */
+  --st-color-surface-2: #262b3b; /* raised strips, field background */
+  --st-color-raised: #2a3040; /* popovers, modals */
+  --st-color-border: #333a4d; /* hairline structure */
   --st-color-border-strong: color-mix(in srgb, var(--st-color-border) 94%, var(--st-color-text));
-  --st-color-text: #e9e9f2;
-  --st-color-muted: #a8a8c0;
+  --st-color-text: #e7ecf7;
+  --st-color-muted: #9aa3b8;
 
-  /* accent */
-  --st-color-accent: #69dfdc;
-  --st-color-accent-soft: color-mix(in srgb, var(--st-color-accent) 18%, transparent);
-  --st-color-accent-contrast: #16162a;
-  --st-color-focus: #69dfdc;
+  /* accent — turquoise: interaction, selection, focus */
+  --st-color-accent: #37e0d0;
+  --st-color-accent-soft: color-mix(in srgb, var(--st-color-accent) 14%, transparent);
+  --st-color-accent-contrast: #10241f;
+  --st-color-focus: #37e0d0;
+  /* info — electric blue: navigation, links, history, informational */
+  --st-color-info: #60a5fa;
 
   /* selection */
-  --st-color-selected: #123a46;
-  --st-color-selected-bar: #69dfdc;
-  --st-color-selected-border: #3a7d78;
+  --st-color-selected: #2a3149;
+  --st-color-selected-bar: #37e0d0;
+  --st-color-selected-border: #46517a;
 
   /* status */
-  --st-color-add: #9fe0b1;
+  --st-color-add: #6ee7b7; /* mint — mainline ref, staged, sync indicator */
   --st-color-add-soft: color-mix(in srgb, var(--st-color-add) 14%, transparent);
-  --st-color-remove: #ffacaf;
+  --st-color-remove: #ffacaf; /* kept lighter than coral so coral stays reserved */
   --st-color-remove-soft: color-mix(in srgb, var(--st-color-remove) 14%, transparent);
-  --st-color-warn: #ebcb86;
+  --st-color-warn: #fbbf24; /* amber — pending changes, warnings */
   --st-color-warn-soft: color-mix(in srgb, var(--st-color-warn) 14%, transparent);
-  --st-color-danger: #ffacaf;
+  --st-color-danger: #fb7185; /* coral — errors, failures, conflicts; RESERVED */
   --st-color-danger-soft: color-mix(in srgb, var(--st-color-danger) 14%, transparent);
 
   /* diff tints */
-  --st-color-diff-insert-bg: #223e2e;
-  --st-color-diff-insert-fg: #c6f1d1;
-  --st-color-diff-delete-bg: #49292d;
-  --st-color-diff-delete-fg: #ffd4d5;
-  --st-color-diff-hunk-bg: #293638;
-  --st-color-diff-hunk-fg: #aad8d7;
-  --st-color-diff-gutter-bg: #20202f;
-  --st-color-diff-gutter-fg: #6f7690;
+  --st-color-diff-insert-bg: #17322b;
+  --st-color-diff-insert-fg: #b4f1d6;
+  --st-color-diff-delete-bg: #3a2229;
+  --st-color-diff-delete-fg: #fdd3d9;
+  --st-color-diff-hunk-bg: #1c2634;
+  --st-color-diff-hunk-fg: #a9c8ee;
+  --st-color-diff-gutter-bg: #191d28;
+  --st-color-diff-gutter-fg: #8590a3;
 
   /* graph lanes */
-  --st-color-graph-lane-1: #67cbc7;
-  --st-color-graph-lane-2: #cfad78;
-  --st-color-graph-lane-3: #8fd6a0;
-  --st-color-graph-lane-4: #e79aa0;
-  --st-color-graph-lane-5: #b3a6e8;
-  --st-color-graph-lane-6: #7fb3e0;
-  --st-color-graph-lane-7: #e2cf8a;
-  --st-color-graph-lane-8: #dba6d4;
+  --st-color-graph-lane-1: #37e0d0;
+  --st-color-graph-lane-2: #a78bfa;
+  --st-color-graph-lane-3: #fbbf24;
+  --st-color-graph-lane-4: #6ee7b7;
+  --st-color-graph-lane-5: #fb923c;
+  --st-color-graph-lane-6: #60a5fa;
+  --st-color-graph-lane-7: #a3e635;
+  --st-color-graph-lane-8: #7dd3fc;
 
   /* ref pills */
-  --st-color-ref-head: #67cbc7;
-  --st-color-ref-branch: #9fe0b1;
-  --st-color-ref-remote: #ebcb86;
-  --st-color-ref-tag: #b3a6e8;
+  --st-color-ref-head: #37e0d0; /* HEAD */
+  --st-color-ref-branch: #a78bfa; /* local branch */
+  --st-color-ref-main: #6ee7b7; /* mainline branch */
+  --st-color-ref-remote: #60a5fa; /* origin/* */
+  --st-color-ref-tag: #fbbf24; /* tag */
 
   /* status pills (badges) — fill from a low-alpha mix of the hue, solid fg */
   --st-color-badge-branch-bg: color-mix(in srgb, var(--st-color-accent) 12%, transparent);
@@ -141,9 +152,9 @@
   --st-color-badge-warning-fg: var(--st-color-warn);
 
   /* misc */
-  --st-color-avatar-bg: #343a52;
-  --st-color-avatar-fg: #cef4db;
-  --st-color-overlay: rgba(12, 12, 24, 0.62);
+  --st-color-avatar-bg: #2a3040;
+  --st-color-avatar-fg: #a78bfa;
+  --st-color-overlay: rgba(15, 18, 32, 0.62);
 
   /* spacing — base unit 4px */
   --st-space-1: 4px;
@@ -225,16 +236,18 @@
   --st-color-text: #14181a;
   --st-color-muted: #5b6668;
 
-  /* accent */
+  /* accent — turquoise (darkened for light surfaces) */
   --st-color-accent: #0f7f7c;
   --st-color-accent-soft: color-mix(in srgb, var(--st-color-accent) 12%, transparent);
   --st-color-accent-contrast: #ffffff;
   --st-color-focus: #0f7f7c;
+  /* info — electric blue */
+  --st-color-info: #1d4ed8;
 
   /* selection */
-  --st-color-selected: #d3ece9;
+  --st-color-selected: #e2e6f8;
   --st-color-selected-bar: #0f7f7c;
-  --st-color-selected-border: #7fc4bd;
+  --st-color-selected-border: #a9b4e8;
 
   /* status */
   --st-color-add: #1c7c3c;
@@ -254,23 +267,24 @@
   --st-color-diff-hunk-bg: #e8f4f3;
   --st-color-diff-hunk-fg: #0f5f5c;
   --st-color-diff-gutter-bg: #f4f6f5;
-  --st-color-diff-gutter-fg: #8a9490;
+  --st-color-diff-gutter-fg: #626c66;
 
-  /* graph lanes — same hues, ~20% darkened for light surfaces */
-  --st-color-graph-lane-1: #52a29f;
-  --st-color-graph-lane-2: #a68a60;
-  --st-color-graph-lane-3: #72ab80;
-  --st-color-graph-lane-4: #b97b80;
-  --st-color-graph-lane-5: #8f85ba;
-  --st-color-graph-lane-6: #668fb3;
-  --st-color-graph-lane-7: #b5a66e;
-  --st-color-graph-lane-8: #af85aa;
+  /* graph lanes — the neon hues darkened for light surfaces */
+  --st-color-graph-lane-1: #0d9488;
+  --st-color-graph-lane-2: #7c3aed;
+  --st-color-graph-lane-3: #d97706;
+  --st-color-graph-lane-4: #059669;
+  --st-color-graph-lane-5: #ea580c;
+  --st-color-graph-lane-6: #2563eb;
+  --st-color-graph-lane-7: #4d7c0f;
+  --st-color-graph-lane-8: #0284c7;
 
-  /* ref pills — committed light-family hues (match the light accent) */
-  --st-color-ref-head: #0f7f7c;
-  --st-color-ref-branch: #1c7c3c;
-  --st-color-ref-remote: #8a6100;
-  --st-color-ref-tag: #6d28d9;
+  /* ref pills */
+  --st-color-ref-head: #0f7f7c; /* HEAD */
+  --st-color-ref-branch: #7c3aed; /* local branch */
+  --st-color-ref-main: #047857; /* mainline branch */
+  --st-color-ref-remote: #1d4ed8; /* origin/* */
+  --st-color-ref-tag: #8a6100; /* tag */
 
   /* status pills (badges) */
   --st-color-badge-branch-bg: color-mix(in srgb, var(--st-color-accent) 12%, transparent);
@@ -283,8 +297,8 @@
   --st-color-badge-warning-fg: #8a6100;
 
   /* misc */
-  --st-color-avatar-bg: #d9e6df;
-  --st-color-avatar-fg: #14532d;
+  --st-color-avatar-bg: #e7e2fb;
+  --st-color-avatar-fg: #5b21b6;
   --st-color-overlay: rgba(20, 24, 26, 0.35);
 
   /*

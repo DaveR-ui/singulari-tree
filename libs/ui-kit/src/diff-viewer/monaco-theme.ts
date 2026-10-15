@@ -26,25 +26,25 @@ export function singularitreeDarkTheme(): editor.IStandaloneThemeData {
     rules: [
       // Only the default-code, hunk-header and comment tokens are tinted; the
       // diff viewer renders `plaintext`, so no other token classes apply.
-      { token: '', foreground: 'e9e9f2' }, // --st-color-text (default code)
-      { token: 'comment', foreground: 'a8a8c0' }, // --st-color-muted
-      { token: 'hunk', foreground: 'aad8d7' }, // --st-color-diff-hunk-fg
+      { token: '', foreground: 'e7ecf7' }, // --st-color-text (default code)
+      { token: 'comment', foreground: '9aa3b8' }, // --st-color-muted
+      { token: 'hunk', foreground: 'a9c8ee' }, // --st-color-diff-hunk-fg
     ],
     colors: {
-      'editor.background': '#252536', // --st-color-surface
-      'editor.foreground': '#e9e9f2', // --st-color-text
-      'editorGutter.background': '#252536', // --st-color-surface
-      'editorGutter.foreground': '#6f7690', // --st-color-diff-gutter-fg
-      'editorLineNumber.foreground': '#6f7690', // --st-color-diff-gutter-fg
-      'editorLineNumber.activeForeground': '#a8a8c0', // --st-color-muted
-      'diffEditor.insertedLineBackground': '#223e2e', // --st-color-diff-insert-bg
-      'diffEditor.removedLineBackground': '#49292d', // --st-color-diff-delete-bg
-      'diffEditor.insertedTextBackground': '#223e2e', // --st-color-diff-insert-bg
-      'diffEditor.removedTextBackground': '#49292d', // --st-color-diff-delete-bg
-      'diffEditorGutter.insertedLineBackground': '#223e2e', // --st-color-diff-insert-bg
-      'diffEditorGutter.removedLineBackground': '#49292d', // --st-color-diff-delete-bg
-      'editorWidget.background': '#2a2a3a', // --st-color-surface-2
-      'editor.selectionBackground': '#3a3a52', // --st-color-border
+      'editor.background': '#1f2433', // --st-color-surface
+      'editor.foreground': '#e7ecf7', // --st-color-text
+      'editorGutter.background': '#1f2433', // --st-color-surface
+      'editorGutter.foreground': '#8590a3', // --st-color-diff-gutter-fg
+      'editorLineNumber.foreground': '#8590a3', // --st-color-diff-gutter-fg
+      'editorLineNumber.activeForeground': '#9aa3b8', // --st-color-muted
+      'diffEditor.insertedLineBackground': '#17322b', // --st-color-diff-insert-bg
+      'diffEditor.removedLineBackground': '#3a2229', // --st-color-diff-delete-bg
+      'diffEditor.insertedTextBackground': '#17322b', // --st-color-diff-insert-bg
+      'diffEditor.removedTextBackground': '#3a2229', // --st-color-diff-delete-bg
+      'diffEditorGutter.insertedLineBackground': '#17322b', // --st-color-diff-insert-bg
+      'diffEditorGutter.removedLineBackground': '#3a2229', // --st-color-diff-delete-bg
+      'editorWidget.background': '#262b3b', // --st-color-surface-2
+      'editor.selectionBackground': '#333a4d', // --st-color-border
     },
   };
 }
@@ -63,8 +63,8 @@ export function singularitreeLightTheme(): editor.IStandaloneThemeData {
       'editor.background': '#ffffff', // --st-color-surface
       'editor.foreground': '#14181a', // --st-color-text
       'editorGutter.background': '#f4f6f5', // --st-color-surface-2
-      'editorGutter.foreground': '#8a9490', // --st-color-diff-gutter-fg
-      'editorLineNumber.foreground': '#8a9490', // --st-color-diff-gutter-fg
+      'editorGutter.foreground': '#626c66', // --st-color-diff-gutter-fg
+      'editorLineNumber.foreground': '#626c66', // --st-color-diff-gutter-fg
       'editorLineNumber.activeForeground': '#5b6668', // --st-color-muted
       'diffEditor.insertedLineBackground': '#e6f7ea', // --st-color-diff-insert-bg
       'diffEditor.removedLineBackground': '#fde8e9', // --st-color-diff-delete-bg

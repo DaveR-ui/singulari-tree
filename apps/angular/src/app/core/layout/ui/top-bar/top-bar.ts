@@ -21,6 +21,13 @@ export interface TopBarTab {
  * and the drawer pin toggle. The parent owns every piece of state and routing;
  * this component only renders and emits intents (D3: the retired toolbar's live
  * actions live here, its inert chrome buttons are gone).
+ *
+ * Emphasis hierarchy (Dark Neon): exactly one action is highlighted — Push, the
+ * `primary` variant (turquoise fill + dark contrast text). Pull and Fetch stay
+ * secondary; Fetch all is neutral with an electric-blue `info` interaction
+ * accent on hover/focus. The sync pill is mint (`success`) when clean and amber
+ * (`warning`) while a pull is pending. Coral (`danger`) is reserved for
+ * repository errors and is never applied here.
  */
 @Component({
   selector: 'st-top-bar',
@@ -96,7 +103,7 @@ export interface TopBarTab {
           }
         </st-button>
         <st-button
-          variant="ghost"
+          variant="primary"
           size="sm"
           class="st-topbar__action"
           data-testid="top-bar-push"
@@ -118,7 +125,7 @@ export interface TopBarTab {
           <span i18n>Fetch</span>
         </st-button>
         <st-button
-          variant="ghost"
+          variant="info"
           size="sm"
           class="st-topbar__action"
           data-testid="top-bar-fetch-all"
@@ -154,7 +161,7 @@ export interface TopBarTab {
       <div class="st-topbar__sync">
         <st-badge
           data-testid="top-bar-sync-pill"
-          [variant]="pullPending() > 0 ? 'warning' : 'neutral'"
+          [variant]="pullPending() > 0 ? 'warning' : 'success'"
         >
           @if (pullPending() > 0) {
             ↓{{ pullPending() }}

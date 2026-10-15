@@ -4,6 +4,7 @@ export {
   authorName,
   firstLine,
   formatShortDate,
+  isMainlineBranch,
   normalizeRefKind,
   shortOidHex,
   type RefKind,

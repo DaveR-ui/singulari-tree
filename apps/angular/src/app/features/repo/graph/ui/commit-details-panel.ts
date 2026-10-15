@@ -6,12 +6,13 @@ import {
   output,
   signal,
 } from '@angular/core';
-import type { Commit, Signature } from '@contracts/domain';
+import type { Commit, RefLabel, Signature } from '@contracts/domain';
 import {
   BadgeComponent,
   ButtonComponent,
   IconComponent,
   PopoverComponent,
+  isMainlineBranch,
   normalizeRefKind,
   shortOidHex,
 } from '@singularitree/ui-kit';
@@ -112,7 +113,7 @@ const BLANK_LINE = String.fromCharCode(10, 10);
           @if (refs().length) {
             <div class="st-commit-details__refs" data-testid="commit-details-refs">
               @for (ref of refs(); track ref.kind + ':' + ref.name) {
-                <span class="st-commit-details__ref" [class]="refClass(ref.kind)">{{ ref.name }}</span>
+                <span class="st-commit-details__ref" [class]="refClass(ref)">{{ ref.name }}</span>
               }
             </div>
           }
@@ -407,6 +408,10 @@ const BLANK_LINE = String.fromCharCode(10, 10);
       color: var(--st-color-ref-head);
     }
 
+    .st-commit-details__ref--main {
+      color: var(--st-color-ref-main);
+    }
+
     .st-commit-details__ref--branch {
       color: var(--st-color-ref-branch);
     }
@@ -602,7 +607,16 @@ export class CommitDetailsPanel {
     return refs.map((ref) => `${ref.name} (${ref.kind})`).join(', ');
   }
 
-  refClass(kind: string): string {
-    return `st-commit-details__ref st-commit-details__ref--${normalizeRefKind(kind)}`;
+  /**
+   * Classes for one ref pill. A mainline local branch (`main`/`master`) reads
+   * mint (`--main`); every other ref keeps its per-kind colour
+   * (`--head`/`--branch`/`--remote`/`--tag`/`--other`), matching `st-graph-row`.
+   */
+  refClass(ref: RefLabel): string {
+    const kind = normalizeRefKind(ref.kind);
+    if (kind === 'branch' && isMainlineBranch(ref.name)) {
+      return 'st-commit-details__ref st-commit-details__ref--main';
+    }
+    return `st-commit-details__ref st-commit-details__ref--${kind}`;
   }
 }

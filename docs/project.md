@@ -132,8 +132,8 @@ SingulariTree/
 - [`docs/protocols/new-note-protocol.md`](protocols/new-note-protocol.md) — create a new note per the contract.
 - [`docs/protocols/docs-review-protocol.md`](protocols/docs-review-protocol.md) — corpus review and validator errors.
 - [`docs/adrs/adr-index.md`](adrs/adr-index.md) — ADR hub (structural decisions, append-only).
-- [`docs/context/renderer-redesign-plan.md`](context/renderer-redesign-plan.md) — total-facelift design plan for the renderer's visible UI (shell, navigation, workspace panes, commit/diff/graph, settings), derived from the operator's git-client sketch with 15 justified divergences; plan only, not yet implemented.
-- [`docs/context/design-system.md`](context/design-system.md) — shipped Charcoal & Cyan design system: two-tier token vocabulary (dark + light), typography, spacing and geometry, the ui-kit component inventory, and copy-paste usage.
+- [`docs/context/renderer-redesign-plan.md`](context/renderer-redesign-plan.md) — total-facelift design plan for the renderer's visible UI (shell, navigation, workspace panes, commit/diff/graph, settings), derived from the operator's git-client sketch with 15 justified divergences; P0–P4 shipped (P4.2 adds the Dark Neon / Developer Studio palette remap), P5–P6 still planned.
+- [`docs/context/design-system.md`](context/design-system.md) — shipped Dark Neon / Developer Studio design system: two-tier token vocabulary (dark + light), typography, spacing and geometry, the ui-kit component inventory, and copy-paste usage.
 
 ## Common Lookups
 

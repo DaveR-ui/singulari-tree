@@ -165,6 +165,35 @@ describe('TopBar', () => {
     expect(host(pending, 'top-bar-sync-pill')?.textContent).toContain('↓4');
   });
 
+  it('highlights Push as the one primary action and demotes its neighbours', async () => {
+    const fixture = await setup();
+
+    // Push carries the turquoise primary fill; Pull and Fetch stay secondary.
+    expect(button(fixture, 'top-bar-push')!.classList.contains('st-button--primary')).toBe(true);
+    expect(button(fixture, 'top-bar-pull')!.classList.contains('st-button--primary')).toBe(false);
+    expect(button(fixture, 'top-bar-fetch')!.classList.contains('st-button--primary')).toBe(false);
+  });
+
+  it('gives Fetch all the neutral info variant with a blue interaction accent', async () => {
+    const fixture = await setup({ canFetchAll: true });
+    expect(button(fixture, 'top-bar-fetch-all')!.classList.contains('st-button--info')).toBe(true);
+    expect(button(fixture, 'top-bar-fetch-all')!.classList.contains('st-button--primary')).toBe(
+      false,
+    );
+  });
+
+  it('shows a success sync pill when clean and a warning one while a pull is pending', async () => {
+    const clean = await setup({ pullPending: 0 });
+    const cleanPill = host(clean, 'top-bar-sync-pill');
+    expect(cleanPill?.querySelector('.st-badge--success')).not.toBeNull();
+    expect(cleanPill?.querySelector('.st-badge--warning')).toBeNull();
+
+    const pending = await setup({ pullPending: 3 });
+    const pendingPill = host(pending, 'top-bar-sync-pill');
+    expect(pendingPill?.querySelector('.st-badge--warning')).not.toBeNull();
+    expect(pendingPill?.querySelector('.st-badge--success')).toBeNull();
+  });
+
   it('opens the overflow menu with the three navigation entries', async () => {
     const fixture = await setup();
 

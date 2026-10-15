@@ -1,7 +1,14 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import type { Commit, CommitStats, Lane } from '@singularitree/contracts/domain';
+import type { Commit, CommitStats, Lane, RefLabel } from '@singularitree/contracts/domain';
 import { laneColor } from './lane-palette';
-import { authorName, firstLine, formatShortDate, normalizeRefKind, shortOidHex } from './graph-row.utils';
+import {
+  authorName,
+  firstLine,
+  formatShortDate,
+  isMainlineBranch,
+  normalizeRefKind,
+  shortOidHex,
+} from './graph-row.utils';
 
 /** Fixed row height in px — MUST match the CDK virtual-scroll `itemSize`. */
 export const GRAPH_ROW_HEIGHT = 28;
@@ -11,6 +18,11 @@ export const LANE_COLUMN_WIDTH = 14;
 /**
  * Dumb, presentational commit row: one SVG lane segment + short oid, ref labels,
  * message subject, author and date. Holds no services — the parent owns data.
+ *
+ * Ref pill colours are keyed on the reference TYPE — head / local branch /
+ * mainline branch / remote / tag — never per commit, so `main` and `master`
+ * take the mint `--st-color-ref-main` role while every other branch uses
+ * `--st-color-ref-branch`.
  */
 @Component({
   selector: 'st-graph-row',
@@ -22,6 +34,7 @@ export const LANE_COLUMN_WIDTH = 14;
     tabindex: '0',
     '[style.height.px]': 'rowHeight',
     '[class.st-graph-row--selected]': 'selected()',
+    '[class.st-selection-bar]': 'selected()',
     '(click)': 'picked.emit()',
     '(keydown.enter)': 'picked.emit()',
   },
@@ -57,7 +70,7 @@ export const LANE_COLUMN_WIDTH = 14;
     <div class="st-graph-row__content">
       <span class="st-graph-row__oid" data-testid="graph-row-oid">{{ shortOid() }}</span>
       @for (ref of refs(); track ref.kind + ':' + ref.name) {
-        <span class="st-graph-row__ref" [class]="refClass(ref.kind)" data-testid="graph-row-ref">{{
+        <span class="st-graph-row__ref" [class]="refClass(ref)" data-testid="graph-row-ref">{{
           ref.name
         }}</span>
       }
@@ -107,7 +120,8 @@ export const LANE_COLUMN_WIDTH = 14;
     }
 
     :host(.st-graph-row--selected) {
-      background: color-mix(in srgb, var(--st-color-accent) 22%, transparent);
+      background: var(--st-color-selected);
+      border-bottom-color: var(--st-color-selected-border);
     }
 
     .st-graph-row__graph {
@@ -146,6 +160,10 @@ export const LANE_COLUMN_WIDTH = 14;
 
     .st-graph-row__ref--branch {
       color: var(--st-color-ref-branch);
+    }
+
+    .st-graph-row__ref--main {
+      color: var(--st-color-ref-main);
     }
 
     .st-graph-row__ref--remote {
@@ -241,7 +259,11 @@ export class GraphRow {
   );
   readonly color = computed(() => laneColor(this.lane().color));
 
-  refClass(kind: string): string {
-    return `st-graph-row__ref st-graph-row__ref--${normalizeRefKind(kind)}`;
+  refClass(ref: RefLabel): string {
+    const kind = normalizeRefKind(ref.kind);
+    if (kind === 'branch' && isMainlineBranch(ref.name)) {
+      return 'st-graph-row__ref st-graph-row__ref--main';
+    }
+    return `st-graph-row__ref st-graph-row__ref--${kind}`;
   }
 }

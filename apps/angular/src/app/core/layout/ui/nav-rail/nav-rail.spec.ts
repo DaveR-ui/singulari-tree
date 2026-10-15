@@ -185,6 +185,28 @@ describe('NavRail', () => {
     expect(el.querySelector('[data-testid="st-sidebar-tags"]')?.textContent).toContain('v1.0.0');
   });
 
+  it('colours the ref lists semantically via dedicated classes', async () => {
+    const fixture = await setup({
+      branches: ['main', 'feature/x'],
+      currentBranch: 'main',
+      remotes: ['origin'],
+      remoteBranches: ['origin/main'],
+      tags: ['v1.0.0'],
+    });
+    const el = fixture.nativeElement as HTMLElement;
+
+    // Every local branch label reads violet; only the current one lifts to text.
+    const branchLabels = el.querySelectorAll<HTMLElement>('.st-rail__row-label--branch');
+    expect(branchLabels).toHaveLength(2);
+    const currentLabel = el.querySelector<HTMLElement>('.st-rail__row-label--current');
+    expect(currentLabel?.textContent?.trim()).toBe('main');
+
+    // Remote reference rows carry their own class; so do tag rows.
+    expect(el.querySelector('.st-rail__row--remote')).not.toBeNull();
+    expandTags(fixture);
+    expect(el.querySelector('.st-rail__row--tag')).not.toBeNull();
+  });
+
   it('narrows the branch list with the filter input', async () => {
     const fixture = await setup({ branches: ['main', 'feature/x', 'release/1.0'] });
 

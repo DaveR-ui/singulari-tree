@@ -8,9 +8,11 @@ import { IconComponent } from '../icon/icon';
  * `(click)` on the `<st-nav-item>` host — the inner button's click bubbles up.
  *
  * Active state is one reusable treatment: accent text, an `--st-color-accent-soft`
- * fill and the 3px inset selection bar (`st-selection-bar`) so a rail item reads
- * exactly like a selected list row. The count pill reuses `st-badge` in its
- * neutral variant; it is hidden when the count is 0 or absent.
+ * fill, a turquoise `--st-color-accent` border and the 3px inset selection bar
+ * (`st-selection-bar`) so a rail item reads exactly like a selected list row.
+ * The icon inherits `currentColor`, so the active icon turns turquoise too. The
+ * count pill reuses `st-badge` in its neutral variant; it is hidden when the
+ * count is 0 or absent.
  */
 @Component({
   selector: 'st-nav-item',
@@ -55,7 +57,9 @@ import { IconComponent } from '../icon/icon';
       width: 100%;
       height: var(--st-size-row-tree-dense);
       padding: 0 var(--st-space-2);
-      border: 0;
+      /* Transparent hairline border keeps the 24px outer box (border-box) while
+         letting the active state paint a turquoise edge. */
+      border: var(--st-hairline) solid transparent;
       border-radius: var(--st-radius-2);
       background: transparent;
       color: var(--st-color-muted);
@@ -88,6 +92,7 @@ import { IconComponent } from '../icon/icon';
 
     .st-nav-item--active {
       background: var(--st-color-accent-soft);
+      border-color: var(--st-color-accent);
       color: var(--st-color-accent);
     }
 

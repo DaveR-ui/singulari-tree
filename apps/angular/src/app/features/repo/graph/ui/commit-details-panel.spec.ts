@@ -82,6 +82,60 @@ describe('CommitDetailsPanel', () => {
     expect(text(el, 'commit-details-short-oid')).toBe('aaaaaaa');
   });
 
+  it('renders mainline branch refs with the --main pill and other branches with --branch', () => {
+    const commit: Commit = {
+      ...COMMIT,
+      refs: [
+        { name: 'main', kind: 'branch' },
+        { name: 'master', kind: 'branch' },
+        { name: 'feature/x', kind: 'branch' },
+      ],
+    };
+    const el = render(commit).nativeElement as HTMLElement;
+
+    const refs = el.querySelectorAll<HTMLElement>(
+      '[data-testid="commit-details-refs"] .st-commit-details__ref',
+    );
+    const classes = Array.from(refs).map((ref) => ref.className);
+
+    expect(classes[0]).toContain('st-commit-details__ref--main');
+    expect(classes[1]).toContain('st-commit-details__ref--main');
+    expect(classes[2]).toContain('st-commit-details__ref--branch');
+    expect(classes[2]).not.toContain('st-commit-details__ref--main');
+  });
+
+  it('keeps a head-kind ref on the head colour even when it names the mainline', () => {
+    // The current branch is reported as kind `head` (see the fixture); only a
+    // `branch`-kind ref takes the mint mainline role, matching `st-graph-row`.
+    const el = render(COMMIT).nativeElement as HTMLElement;
+    const main = el.querySelector<HTMLElement>(
+      '[data-testid="commit-details-refs"] .st-commit-details__ref',
+    );
+    expect(main?.className).toContain('st-commit-details__ref--head');
+    expect(main?.className).not.toContain('st-commit-details__ref--main');
+  });
+
+  it('never re-colours a remote or tag ref as mainline', () => {
+    const commit: Commit = {
+      ...COMMIT,
+      refs: [
+        { name: 'origin/main', kind: 'remote' },
+        { name: 'master', kind: 'tag' },
+      ],
+    };
+    const el = render(commit).nativeElement as HTMLElement;
+
+    const refs = el.querySelectorAll<HTMLElement>(
+      '[data-testid="commit-details-refs"] .st-commit-details__ref',
+    );
+    const classes = Array.from(refs).map((ref) => ref.className);
+
+    expect(classes[0]).toContain('st-commit-details__ref--remote');
+    expect(classes[0]).not.toContain('st-commit-details__ref--main');
+    expect(classes[1]).toContain('st-commit-details__ref--tag');
+    expect(classes[1]).not.toContain('st-commit-details__ref--main');
+  });
+
   it('renders the 24px initials avatar from the author name', () => {
     const el = render(COMMIT).nativeElement as HTMLElement;
     // First letters of the first two whitespace-separated words, uppercased.

@@ -1,12 +1,18 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
-export type ButtonVariant = 'default' | 'primary' | 'ghost' | 'danger' | 'icon';
+export type ButtonVariant = 'default' | 'primary' | 'ghost' | 'danger' | 'info' | 'icon';
 export type ButtonSize = 'sm' | 'md';
 export type ButtonType = 'button' | 'submit' | 'reset';
 
 /**
  * Dumb button: a native `<button>` with projected label. Consumers attach
  * `(click)` on the `<st-button>` host — the inner button's click bubbles up.
+ *
+ * Variants: `default` (bordered surface), `primary` (the one accented,
+ * glowing action), `ghost` (transparent), `danger` (transparent, coral —
+ * errors only) and `info` (neutral/muted that takes the electric-blue
+ * `--st-color-info` accent only while hovered or focused). `icon` sizes the
+ * button square instead of adding a label.
  *
  * Toggle buttons set `[pressed]` to `true`/`false`: it is forwarded as
  * `aria-pressed` on the inner native `<button>` so assistive tech reads the
@@ -77,6 +83,8 @@ export type ButtonType = 'button' | 'submit' | 'reset';
       background: var(--st-color-accent);
       border-color: var(--st-color-accent);
       color: var(--st-color-accent-contrast);
+      /* The ONE permitted glow in the system — the primary action only. */
+      box-shadow: 0 2px 10px color-mix(in srgb, var(--st-color-accent) 22%, transparent);
     }
 
     .st-button--ghost {
@@ -88,6 +96,12 @@ export type ButtonType = 'button' | 'submit' | 'reset';
       background: transparent;
       border-color: transparent;
       color: var(--st-color-danger);
+    }
+
+    .st-button--info {
+      background: transparent;
+      border-color: transparent;
+      color: var(--st-color-muted);
     }
 
     .st-button--icon {
@@ -118,6 +132,14 @@ export type ButtonType = 'button' | 'submit' | 'reset';
     .st-button--danger:not(:disabled):hover {
       background: var(--st-color-danger-soft);
       border-color: transparent;
+    }
+
+    /* Declared after the generic hover so the info accent only appears on
+       interaction — a neutral button that lights up electric blue. */
+    .st-button--info:not(:disabled):hover,
+    .st-button--info:not(:disabled):focus-visible {
+      border-color: var(--st-color-info);
+      color: var(--st-color-info);
     }
 
     .st-button:disabled {
