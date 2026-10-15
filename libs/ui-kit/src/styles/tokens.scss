@@ -1,0 +1,337 @@
+/*
+ * SingulariTree ui-kit — design tokens: the canonical two-tier layer.
+ *
+ * Tier 1 (`--st-prim-*`) holds the raw palette of the committed visual
+ * direction (plan §2.2). Raw values only — never referenced by a component.
+ * Tier 2 (semantic) is the only layer components consume: `--st-color-*`,
+ * `--st-space-*`, `--st-font-*`, `--st-size-*`, `--st-radius-*`,
+ * `--st-motion-*`, `--st-z-*`.
+ *
+ * Every semantic token is defined in BOTH the `:root` (dark defaults) block
+ * and the matched `[data-theme='light']` block — never in only one. That
+ * symmetry is the theming fix: a missing light value can no longer silently
+ * fall back to a dark hex, so no `var(--st-*, #hex)` fallback is ever needed.
+ *
+ * P2 note: the semantic DARK values are now the committed facelift palette
+ * (plan §2.2, charcoal & cyan). P0 deliberately left them at the pre-facelift
+ * palette so its re-tokenization carried no visual delta; P2 flips them as the
+ * shell surfaces land, so they now match the tier-1 primitives. Light values
+ * remain the committed light palette (plan §2.2).
+ */
+
+/* ── Tier 1 — primitives (raw values, theme-independent) ──────────────── */
+:root {
+  /* neutrals */
+  --st-prim-ink-900: #1b1c1e;
+  --st-prim-ink-850: #202224;
+  --st-prim-ink-800: #222426;
+  --st-prim-ink-750: #242628;
+  --st-prim-ink-700: #292b2e;
+  --st-prim-ink-600: #3b3e41;
+  --st-prim-ink-050: #eceeef;
+  --st-prim-ink-300: #b0b5b9;
+  /* accent */
+  --st-prim-cyan-400: #69dfdc;
+  --st-prim-cyan-500: #438c89;
+  --st-prim-cyan-600: #356966;
+  --st-prim-cyan-700: #164746;
+  /* status */
+  --st-prim-green-300: #9fe0b1;
+  --st-prim-red-300: #ffacaf;
+  --st-prim-amber-300: #ebcb86;
+  /* diff tints */
+  --st-prim-diff-ins-bg: #223e2e;
+  --st-prim-diff-ins-fg: #c6f1d1;
+  --st-prim-diff-del-bg: #49292d;
+  --st-prim-diff-del-fg: #ffd4d5;
+  --st-prim-diff-hunk-bg: #293638;
+  --st-prim-diff-hunk-fg: #aad8d7;
+  /* graph + avatar */
+  --st-prim-graph-cyan: #67cbc7;
+  --st-prim-graph-amber: #cfad78;
+  --st-prim-avatar-bg: #3d4543;
+  --st-prim-avatar-fg: #cef4db;
+}
+
+/* ── Tier 2 — semantic tokens, dark defaults ───────────────────────────── */
+:root {
+  color-scheme: dark;
+
+  /* surfaces & structure */
+  --st-color-bg: #1b1c1e;
+  --st-color-chrome: #242628;
+  --st-color-rail: #202224;
+  --st-color-surface: #222426;
+  --st-color-surface-2: #292b2e;
+  --st-color-raised: #292b2e;
+  --st-color-border: #3b3e41;
+  --st-color-border-strong: color-mix(in srgb, var(--st-color-border) 94%, var(--st-color-text));
+  --st-color-text: #eceeef;
+  --st-color-muted: #b0b5b9;
+
+  /* accent */
+  --st-color-accent: #69dfdc;
+  --st-color-accent-soft: color-mix(in srgb, var(--st-color-accent) 18%, transparent);
+  --st-color-accent-contrast: #1b1c1e;
+  --st-color-focus: #69dfdc;
+
+  /* selection */
+  --st-color-selected: #164746;
+  --st-color-selected-bar: #69dfdc;
+  --st-color-selected-border: #356966;
+
+  /* status */
+  --st-color-add: #9fe0b1;
+  --st-color-add-soft: color-mix(in srgb, var(--st-color-add) 14%, transparent);
+  --st-color-remove: #ffacaf;
+  --st-color-remove-soft: color-mix(in srgb, var(--st-color-remove) 14%, transparent);
+  --st-color-warn: #ebcb86;
+  --st-color-warn-soft: color-mix(in srgb, var(--st-color-warn) 14%, transparent);
+  --st-color-danger: #ffacaf;
+  --st-color-danger-soft: color-mix(in srgb, var(--st-color-danger) 14%, transparent);
+
+  /* diff tints */
+  --st-color-diff-insert-bg: #223e2e;
+  --st-color-diff-insert-fg: #c6f1d1;
+  --st-color-diff-delete-bg: #49292d;
+  --st-color-diff-delete-fg: #ffd4d5;
+  --st-color-diff-hunk-bg: #293638;
+  --st-color-diff-hunk-fg: #aad8d7;
+  --st-color-diff-gutter-bg: #202224;
+  --st-color-diff-gutter-fg: #6f767a;
+
+  /* graph lanes */
+  --st-color-graph-lane-1: #67cbc7;
+  --st-color-graph-lane-2: #cfad78;
+  --st-color-graph-lane-3: #8fd6a0;
+  --st-color-graph-lane-4: #e79aa0;
+  --st-color-graph-lane-5: #b3a6e8;
+  --st-color-graph-lane-6: #7fb3e0;
+  --st-color-graph-lane-7: #e2cf8a;
+  --st-color-graph-lane-8: #dba6d4;
+
+  /* ref pills */
+  --st-color-ref-head: #67cbc7;
+  --st-color-ref-branch: #9fe0b1;
+  --st-color-ref-remote: #ebcb86;
+  --st-color-ref-tag: #b3a6e8;
+
+  /* status pills (badges) — fill from a low-alpha mix of the hue, solid fg */
+  --st-color-badge-branch-bg: color-mix(in srgb, var(--st-color-accent) 12%, transparent);
+  --st-color-badge-branch-fg: var(--st-color-accent);
+  --st-color-badge-tag-bg: color-mix(in srgb, var(--st-color-warn) 12%, transparent);
+  --st-color-badge-tag-fg: var(--st-color-warn);
+  --st-color-badge-success-bg: color-mix(in srgb, var(--st-color-add) 12%, transparent);
+  --st-color-badge-success-fg: var(--st-color-add);
+  --st-color-badge-warning-bg: color-mix(in srgb, var(--st-color-warn) 12%, transparent);
+  --st-color-badge-warning-fg: var(--st-color-warn);
+
+  /* misc */
+  --st-color-avatar-bg: #3d4543;
+  --st-color-avatar-fg: #cef4db;
+  --st-color-overlay: rgba(9, 10, 12, 0.62);
+
+  /* spacing — base unit 4px */
+  --st-space-1: 4px;
+  --st-space-2: 8px;
+  --st-space-3: 12px;
+  --st-space-4: 16px;
+  --st-space-5: 20px;
+  --st-space-6: 24px;
+  --st-space-7: 32px;
+  --st-space-8: 40px;
+
+  /* typography */
+  --st-font-ui: Inter, system-ui, -apple-system, sans-serif;
+  --st-font-mono: Consolas, 'Liberation Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --st-font-10: 10px;
+  --st-font-11: 11px;
+  --st-font-12: 12px;
+  --st-font-13: 13px;
+  --st-font-17: 17px;
+  --st-font-22: 22px;
+  --st-leading-tight: 1.25;
+  --st-leading-ui: 1.5;
+  --st-leading-code: 24px;
+
+  /* geometry */
+  --st-hairline: 1px;
+  --st-size-topbar: 64px;
+  --st-size-statusbar: 31px;
+  --st-size-rail: 224px;
+  --st-size-rail-collapsed: 40px;
+  --st-size-drawer: 264px;
+  --st-size-detail-pane: 380px;
+  --st-size-pane-min: 320px;
+  --st-size-row-graph: 28px;
+  --st-size-row-tree: 28px;
+  --st-size-row-tree-dense: 24px;
+  --st-size-control-sm: 24px;
+  --st-size-control-md: 28px;
+  --st-size-control-lg: 32px;
+  --st-size-selection-bar-w: 3px;
+
+  /* radii */
+  --st-radius-1: 3px;
+  --st-radius-2: 4px;
+  --st-radius-3: 5px;
+  --st-radius-4: 8px;
+  --st-radius-pill: 999px;
+
+  /* motion */
+  --st-motion-fast: 120ms;
+  --st-motion-base: 180ms;
+  --st-motion-slow: 240ms;
+  --st-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  /* z-index scale */
+  --st-z-sticky: 10;
+  --st-z-rail: 15;
+  --st-z-backdrop: 30;
+  --st-z-drawer: 35;
+  --st-z-popover: 40;
+  --st-z-menu: 45;
+  --st-z-modal: 100;
+  --st-z-toast: 120;
+}
+
+/* ── Tier 2 — semantic tokens, light theme ────────────────────────────── */
+[data-theme='light'] {
+  color-scheme: light;
+
+  /* surfaces & structure */
+  --st-color-bg: #f7f8f7;
+  --st-color-chrome: #eceeed;
+  --st-color-rail: #f0f2f1;
+  --st-color-surface: #ffffff;
+  --st-color-surface-2: #f4f6f5;
+  --st-color-raised: #ffffff;
+  --st-color-border: #d8dcda;
+  --st-color-border-strong: color-mix(in srgb, var(--st-color-border) 90%, var(--st-color-text));
+  --st-color-text: #14181a;
+  --st-color-muted: #5b6668;
+
+  /* accent */
+  --st-color-accent: #0f7f7c;
+  --st-color-accent-soft: color-mix(in srgb, var(--st-color-accent) 12%, transparent);
+  --st-color-accent-contrast: #ffffff;
+  --st-color-focus: #0f7f7c;
+
+  /* selection */
+  --st-color-selected: #d3ece9;
+  --st-color-selected-bar: #0f7f7c;
+  --st-color-selected-border: #7fc4bd;
+
+  /* status */
+  --st-color-add: #1c7c3c;
+  --st-color-add-soft: color-mix(in srgb, var(--st-color-add) 10%, transparent);
+  --st-color-remove: #b3261e;
+  --st-color-remove-soft: color-mix(in srgb, var(--st-color-remove) 10%, transparent);
+  --st-color-warn: #8a6100;
+  --st-color-warn-soft: color-mix(in srgb, var(--st-color-warn) 10%, transparent);
+  --st-color-danger: #b3261e;
+  --st-color-danger-soft: color-mix(in srgb, var(--st-color-danger) 10%, transparent);
+
+  /* diff tints */
+  --st-color-diff-insert-bg: #e6f7ea;
+  --st-color-diff-insert-fg: #14532d;
+  --st-color-diff-delete-bg: #fde8e9;
+  --st-color-diff-delete-fg: #7f1d1d;
+  --st-color-diff-hunk-bg: #e8f4f3;
+  --st-color-diff-hunk-fg: #0f5f5c;
+  --st-color-diff-gutter-bg: #f4f6f5;
+  --st-color-diff-gutter-fg: #8a9490;
+
+  /* graph lanes — same hues, ~20% darkened for light surfaces */
+  --st-color-graph-lane-1: #52a29f;
+  --st-color-graph-lane-2: #a68a60;
+  --st-color-graph-lane-3: #72ab80;
+  --st-color-graph-lane-4: #b97b80;
+  --st-color-graph-lane-5: #8f85ba;
+  --st-color-graph-lane-6: #668fb3;
+  --st-color-graph-lane-7: #b5a66e;
+  --st-color-graph-lane-8: #af85aa;
+
+  /* ref pills — committed light-family hues (match the light accent) */
+  --st-color-ref-head: #0f7f7c;
+  --st-color-ref-branch: #1c7c3c;
+  --st-color-ref-remote: #8a6100;
+  --st-color-ref-tag: #6d28d9;
+
+  /* status pills (badges) */
+  --st-color-badge-branch-bg: color-mix(in srgb, var(--st-color-accent) 12%, transparent);
+  --st-color-badge-branch-fg: #0f7f7c;
+  --st-color-badge-tag-bg: color-mix(in srgb, var(--st-color-warn) 12%, transparent);
+  --st-color-badge-tag-fg: #8a6100;
+  --st-color-badge-success-bg: color-mix(in srgb, var(--st-color-add) 12%, transparent);
+  --st-color-badge-success-fg: #1c7c3c;
+  --st-color-badge-warning-bg: color-mix(in srgb, var(--st-color-warn) 12%, transparent);
+  --st-color-badge-warning-fg: #8a6100;
+
+  /* misc */
+  --st-color-avatar-bg: #d9e6df;
+  --st-color-avatar-fg: #14532d;
+  --st-color-overlay: rgba(20, 24, 26, 0.35);
+
+  /*
+   * Theme-independent groups (spacing, typography, geometry, radii, motion,
+   * z) are repeated verbatim below so that EVERY semantic token is defined in
+   * both blocks — a token may never exist in only one theme.
+   */
+  --st-space-1: 4px;
+  --st-space-2: 8px;
+  --st-space-3: 12px;
+  --st-space-4: 16px;
+  --st-space-5: 20px;
+  --st-space-6: 24px;
+  --st-space-7: 32px;
+  --st-space-8: 40px;
+
+  --st-font-ui: Inter, system-ui, -apple-system, sans-serif;
+  --st-font-mono: Consolas, 'Liberation Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --st-font-10: 10px;
+  --st-font-11: 11px;
+  --st-font-12: 12px;
+  --st-font-13: 13px;
+  --st-font-17: 17px;
+  --st-font-22: 22px;
+  --st-leading-tight: 1.25;
+  --st-leading-ui: 1.5;
+  --st-leading-code: 24px;
+
+  --st-hairline: 1px;
+  --st-size-topbar: 64px;
+  --st-size-statusbar: 31px;
+  --st-size-rail: 224px;
+  --st-size-rail-collapsed: 40px;
+  --st-size-drawer: 264px;
+  --st-size-detail-pane: 380px;
+  --st-size-pane-min: 320px;
+  --st-size-row-graph: 28px;
+  --st-size-row-tree: 28px;
+  --st-size-row-tree-dense: 24px;
+  --st-size-control-sm: 24px;
+  --st-size-control-md: 28px;
+  --st-size-control-lg: 32px;
+  --st-size-selection-bar-w: 3px;
+
+  --st-radius-1: 3px;
+  --st-radius-2: 4px;
+  --st-radius-3: 5px;
+  --st-radius-4: 8px;
+  --st-radius-pill: 999px;
+
+  --st-motion-fast: 120ms;
+  --st-motion-base: 180ms;
+  --st-motion-slow: 240ms;
+  --st-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  --st-z-sticky: 10;
+  --st-z-rail: 15;
+  --st-z-backdrop: 30;
+  --st-z-drawer: 35;
+  --st-z-popover: 40;
+  --st-z-menu: 45;
+  --st-z-modal: 100;
+  --st-z-toast: 120;
+}

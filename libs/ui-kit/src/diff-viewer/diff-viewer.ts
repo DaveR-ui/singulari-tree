@@ -121,25 +121,26 @@ export const MONACO_LOADER = new InjectionToken<MonacoLoader>('MONACO_LOADER', {
       height: 100%;
       min-height: 0;
       overflow: auto;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
     }
 
     .st-diff-viewer__notice {
       margin: 0;
-      padding: 12px;
-      font-size: 12px;
+      padding: var(--st-space-3);
+      font-size: var(--st-font-12);
       opacity: 0.65;
     }
 
     .st-diff-viewer__notice--error {
-      color: #ff6b6b;
+      color: var(--st-color-danger);
       opacity: 1;
     }
 
     .st-diff-viewer__notice--truncated {
-      color: #e0a458;
+      color: var(--st-color-warn);
       opacity: 1;
-      border-bottom: 1px solid color-mix(in srgb, #e0a458 40%, transparent);
+      border-bottom: var(--st-hairline) solid
+        color-mix(in srgb, var(--st-color-warn) 40%, transparent);
     }
 
     .st-diff-viewer__editor {
@@ -149,9 +150,9 @@ export const MONACO_LOADER = new InjectionToken<MonacoLoader>('MONACO_LOADER', {
 
     .st-diff-viewer__fallback {
       margin: 0;
-      padding: 8px 12px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 12px;
+      padding: var(--st-space-2) var(--st-space-3);
+      font-family: var(--st-font-mono);
+      font-size: var(--st-font-12);
       white-space: pre;
       overflow: auto;
     }

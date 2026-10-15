@@ -1,291 +1,301 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import {
+  ButtonComponent,
   EmptyStateComponent,
+  IconComponent,
+  InputComponent,
+  PopoverComponent,
   RepoCardComponent,
   type RepoCardView,
 } from '@singularitree/ui-kit';
 import type { AppError } from '@core/services/ipc-bridge.service';
 
 /**
- * Dumb right drawer: local repository list with search, a close control and a
- * resize handle. Data is supplied by the shell from the LOCAL `RepoState`; the
- * component only filters locally and emits selection / add intents.
+ * Dumb repository drawer (plan §4.7): local repository list with search, a
+ * pin/unpin toggle (replacing the old close control) and an "add" affordance.
+ *
+ * Pinned = docked inline at `--st-size-drawer` with a left hairline. Unpinned +
+ * `open` = a floating 280px popover at every width (Escape / outside-click /
+ * focus-out close it). Data is supplied by the shell from the LOCAL `RepoState`;
+ * the component only filters locally and emits selection / add intents.
  */
 @Component({
   selector: 'st-repo-drawer',
   standalone: true,
-  imports: [RepoCardComponent, EmptyStateComponent],
+  imports: [
+    NgTemplateOutlet,
+    ButtonComponent,
+    EmptyStateComponent,
+    IconComponent,
+    InputComponent,
+    PopoverComponent,
+    RepoCardComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
-    class: 'st-right',
+    class: 'st-drawer-host',
     'data-testid': 'repo-drawer',
-    '[class.st-right--collapsed]': 'collapsed()',
-    '[class.st-right--overlay]': 'overlay()',
-    '[style.width.px]': 'width()',
-    '[attr.aria-hidden]': "collapsed() && !overlay() ? 'true' : null",
+    '[class.st-drawer-host--pinned]': 'pinned()',
+    '[class.st-drawer-host--floating]': '!pinned() && open()',
   },
   template: `
-    @if (!collapsed() || overlay()) {
-      <div
-        class="st-right__resize"
-        (mousedown)="resizeStart.emit($event)"
-        title="Drag to resize"
-        i18n-title
-      ></div>
+    @if (pinned()) {
+      <div class="st-drawer st-drawer--pinned">
+        <ng-container [ngTemplateOutlet]="body" />
+      </div>
+    } @else if (open()) {
+      <div class="st-drawer__anchor">
+        <st-popover [open]="open()" (closed)="closed.emit()">
+          <div class="st-drawer st-drawer--floating">
+            <ng-container [ngTemplateOutlet]="body" />
+          </div>
+        </st-popover>
+      </div>
     }
-    <div class="st-right__head">
-      <span class="st-right__title" i18n>Local repositories</span>
-      <span class="st-right__spacer"></span>
-      <button
-        class="st-icon-btn st-icon-btn--sm"
-        type="button"
-        (click)="toggleRight.emit()"
-        title="Close"
-        i18n-title
-      >
-        ✕
-      </button>
-    </div>
-    <div class="st-right__search">
-      <input
-        class="st-search st-search--full"
-        type="search"
-        data-testid="repo-drawer-search"
-        placeholder="Search repositories…"
-        i18n-placeholder
-        [value]="search()"
-        (input)="onSearch($event)"
-      />
-    </div>
-    <div class="st-right__list">
-      @if (loading() && repos().length === 0) {
-        <st-empty-state [title]="messages.loadingRepos" data-testid="repo-drawer-loading" />
-      } @else if (error(); as err) {
-        <st-empty-state
-          tone="error"
-          [message]="err.message"
-          data-testid="repo-drawer-error"
+
+    <ng-template #body>
+      <div class="st-drawer__head">
+        <span class="st-drawer__title" i18n>Local repositories</span>
+        <span class="st-drawer__spacer"></span>
+        <st-button
+          variant="icon"
+          size="sm"
+          data-testid="repo-drawer-pin"
+          [attr.aria-pressed]="pinned()"
+          [attr.title]="pinned() ? unpinTitle : pinTitle"
+          (click)="pinToggled.emit()"
+        >
+          <st-icon [name]="pinned() ? 'pin' : 'pin-off'" />
+          <span class="st-drawer__sr">{{ pinned() ? unpinTitle : pinTitle }}</span>
+        </st-button>
+      </div>
+      <div class="st-drawer__search">
+        <st-input
+          type="search"
+          data-testid="repo-drawer-search"
+          [value]="search()"
+          [placeholder]="messages.searchPlaceholder"
+          [ariaLabel]="messages.searchPlaceholder"
+          (valueChange)="search.set($event)"
         />
-      } @else if (offline()) {
-        <st-empty-state
-          icon="🔌"
-          [title]="messages.desktopRequired"
-          [message]="messages.offlineMessage"
-          data-testid="repo-drawer-offline"
-        />
-      } @else if (filteredRepos().length === 0) {
-        @if (search().trim() === '') {
+      </div>
+      <div class="st-drawer__list">
+        @if (loading() && repos().length === 0) {
+          <st-empty-state [title]="messages.loadingRepos" data-testid="repo-drawer-loading" />
+        } @else if (error(); as err) {
+          <st-empty-state tone="error" [message]="err.message" data-testid="repo-drawer-error" />
+        } @else if (offline()) {
           <st-empty-state
-            icon="📭"
-            [title]="messages.noRepos"
-            [message]="messages.noReposMessage"
-            data-testid="repo-drawer-no-repos"
+            icon="🔌"
+            [title]="messages.desktopRequired"
+            [message]="messages.offlineMessage"
+            data-testid="repo-drawer-offline"
           />
-        } @else {
-          <st-empty-state [title]="messages.noMatches" data-testid="repo-drawer-no-matches" />
-        }
-      } @else {
-        <div data-testid="repo-drawer-list">
-          @for (repo of filteredRepos(); track repo.id) {
-            <div class="st-right__row" data-testid="repo-drawer-row">
-              <st-repo-card
-                [repo]="repo"
-                [selected]="selectedId() === repo.id"
-                (picked)="select(repo.id)"
-              />
-              <button
-                class="st-icon-btn st-icon-btn--sm st-right__remove"
-                type="button"
-                data-testid="repo-drawer-remove"
-                title="Remove repository"
-                i18n-title
-                [attr.aria-label]="removeAriaLabel(repo)"
-                [disabled]="removingId() === repo.id"
-                (click)="onRemove($event, repo.id)"
-              >
-                🗑
-              </button>
-            </div>
+        } @else if (filteredRepos().length === 0) {
+          @if (search().trim() === '') {
+            <st-empty-state
+              icon="📭"
+              [title]="messages.noRepos"
+              [message]="messages.noReposMessage"
+              data-testid="repo-drawer-no-repos"
+            />
+          } @else {
+            <st-empty-state [title]="messages.noMatches" data-testid="repo-drawer-no-matches" />
           }
-        </div>
-      }
-      <button class="st-right__add" type="button" (click)="addRequested.emit()" i18n>
-        + Add repository
-      </button>
-    </div>
+        } @else {
+          <div data-testid="repo-drawer-list">
+            @for (repo of filteredRepos(); track repo.id) {
+              <div class="st-drawer__row" data-testid="repo-drawer-row">
+                <st-repo-card
+                  [repo]="repo"
+                  [selected]="selectedId() === repo.id"
+                  (picked)="select(repo.id)"
+                />
+                <button
+                  class="st-drawer__remove"
+                  type="button"
+                  data-testid="repo-drawer-remove"
+                  title="Remove repository"
+                  i18n-title
+                  [attr.aria-label]="removeAriaLabel(repo)"
+                  [disabled]="removingId() === repo.id"
+                  (click)="onRemove($event, repo.id)"
+                >
+                  🗑
+                </button>
+              </div>
+            }
+          </div>
+        }
+        <button class="st-right__add" type="button" (click)="addRequested.emit()" i18n>
+          + Add repository
+        </button>
+      </div>
+    </ng-template>
   `,
   styles: `
     :host {
-      width: var(--right-w, 320px);
-      min-width: 0;
-      background: var(--st-color-surface, #252536);
-      border-left: 1px solid var(--st-color-border, #2f2f44);
       display: flex;
       flex-direction: column;
-      overflow: hidden;
-      transition:
-        transform 200ms ease,
-        width 200ms ease,
-        opacity 200ms ease;
-      position: relative;
-      color: var(--st-color-text, #d6d6de);
-    }
-
-    :host(.st-right--collapsed):not(.st-right--overlay) {
-      width: 0;
       min-width: 0;
-      opacity: 0;
-      pointer-events: none;
-      border-left: none;
+      background: var(--st-color-surface);
+      color: var(--st-color-text);
     }
 
-    :host(.st-right--overlay) {
-      position: absolute;
+    :host(.st-drawer-host--pinned) {
+      position: relative;
+      width: var(--st-size-drawer);
+      border-left: var(--st-hairline) solid var(--st-color-border);
+      overflow: hidden;
+    }
+
+    /* Unpinned + open: a floating panel anchored to the right edge, at all widths. */
+    :host(.st-drawer-host--floating) {
+      position: fixed;
+      top: var(--st-size-topbar);
+      right: 0;
+      bottom: var(--st-size-statusbar);
+      width: 0;
+      z-index: var(--st-z-drawer);
+      background: transparent;
+    }
+
+    .st-drawer__anchor {
+      position: static;
+    }
+
+    :host(.st-drawer-host--floating) ::ng-deep .st-popover {
       top: 0;
       right: 0;
-      bottom: 0;
-      z-index: 20;
-      box-shadow: -12px 0 32px rgba(0, 0, 0, 0.5);
+      min-width: 0;
+      width: 280px;
+      box-shadow: 0 12px 32px color-mix(in srgb, var(--st-color-bg) 60%, transparent);
     }
 
-    :host(.st-right--overlay.st-right--collapsed) {
-      transform: translateX(100%);
-      opacity: 0;
-      pointer-events: none;
+    .st-drawer {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
     }
 
-    .st-right__resize {
-      position: absolute;
-      left: 0;
-      top: 0;
-      bottom: 0;
-      width: 6px;
-      cursor: col-resize;
-      z-index: 2;
+    .st-drawer--pinned {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
     }
 
-    .st-right__resize:hover {
-      background: var(--accent-soft, rgba(10, 132, 255, 0.15));
+    .st-drawer--floating {
+      background: var(--st-color-raised);
+      border-radius: var(--st-radius-4);
+      overflow: hidden;
     }
 
-    .st-right__head {
+    .st-drawer__head {
       display: flex;
       align-items: center;
-      gap: 6px;
-      padding: 10px 10px 8px 14px;
-      border-bottom: 1px solid var(--st-color-border, #2f2f44);
+      gap: var(--st-space-2);
+      padding: var(--st-space-3);
+      border-bottom: var(--st-hairline) solid var(--st-color-border);
       background: var(--st-color-surface-2);
       flex-shrink: 0;
     }
 
-    .st-right__title {
-      font-weight: 700;
-      font-size: 12px;
-      letter-spacing: 0.3px;
+    .st-drawer__title {
+      font-size: var(--st-font-12);
+      font-weight: 600;
     }
 
-    .st-right__spacer {
+    .st-drawer__spacer {
       flex: 1;
     }
 
-    .st-right__search {
-      padding: 8px 10px;
-      border-bottom: 1px solid var(--st-color-border, #2f2f44);
+    .st-drawer__search {
+      padding: var(--st-space-2) var(--st-space-3);
+      border-bottom: var(--st-hairline) solid var(--st-color-border);
     }
 
-    .st-search {
-      background: var(--st-color-surface-2);
-      border: 1px solid var(--st-color-border, #2f2f44);
-      color: var(--st-color-text, #d6d6de);
-      border-radius: 6px;
-      padding: 6px 10px;
-      font-size: 12px;
-      outline: none;
-    }
-
-    .st-search:focus {
-      border-color: var(--st-color-accent, #0a84ff);
-    }
-
-    .st-search--full {
-      width: 100%;
-    }
-
-    .st-right__list {
+    .st-drawer__list {
       flex: 1;
       overflow: auto;
-      padding: 6px 0;
+      padding: var(--st-space-2) 0;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: var(--st-space-2);
     }
 
-    .st-right__row {
+    .st-drawer__row {
       display: flex;
       align-items: center;
-      gap: 4px;
-      margin: 0 8px;
+      gap: var(--st-space-1);
+      margin: 0 var(--st-space-2);
       min-width: 0;
     }
 
-    .st-right__row st-repo-card {
+    .st-drawer__row st-repo-card {
       flex: 1;
       min-width: 0;
       margin: 0;
     }
 
-    .st-right__remove {
+    .st-drawer__remove {
       flex: none;
+      background: transparent;
+      border: var(--st-hairline) solid transparent;
+      color: var(--st-color-muted);
+      border-radius: var(--st-radius-2);
+      cursor: pointer;
+      padding: 3px 6px;
+      font-size: var(--st-font-12);
+      line-height: 1;
+    }
+
+    .st-drawer__remove:hover:not(:disabled) {
+      color: var(--st-color-text);
+      background: color-mix(in srgb, var(--st-color-text) 7%, transparent);
+      border-color: var(--st-color-border);
+    }
+
+    .st-drawer__remove:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
     }
 
     .st-right__add {
-      margin: 8px 10px;
+      margin: var(--st-space-2) var(--st-space-3);
       background: transparent;
-      border: 1px dashed var(--st-color-border, #2f2f44);
-      color: var(--muted, #8a8a9a);
-      border-radius: 6px;
-      padding: 8px;
-      width: calc(100% - 20px);
+      border: var(--st-hairline) dashed var(--st-color-border);
+      color: var(--st-color-muted);
+      border-radius: var(--st-radius-2);
+      padding: var(--st-space-2);
       cursor: pointer;
     }
 
     .st-right__add:hover {
-      color: var(--st-color-text, #d6d6de);
-      border-color: var(--muted, #8a8a9a);
+      color: var(--st-color-text);
+      border-color: var(--st-color-muted);
     }
 
-    .st-icon-btn {
-      background: transparent;
-      border: 1px solid transparent;
-      color: var(--muted, #8a8a9a);
-      border-radius: 6px;
-      cursor: pointer;
-      padding: 4px 7px;
-      line-height: 1;
-    }
-
-    .st-icon-btn:hover {
-      color: var(--st-color-text, #d6d6de);
-      background: rgba(255, 255, 255, 0.07);
-      border-color: var(--st-color-border, #2f2f44);
-    }
-
-    .st-icon-btn--sm {
-      padding: 3px 6px;
-      font-size: 12px;
-    }
-
-    .st-icon-btn:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
+    /* Accessible name for the icon-only pin toggle. */
+    .st-drawer__sr {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+      border: 0;
     }
   `,
 })
 export class RepoDrawer {
   readonly repos = input<readonly RepoCardView[]>([]);
-  readonly collapsed = input(false);
-  readonly overlay = input(false);
-  readonly width = input<number | null>(null);
+  /** Whether the drawer is docked inline (true) or a floating popover (false). */
+  readonly pinned = input(true);
+  /** Whether the unpinned floating popover is shown. Ignored while pinned. */
+  readonly open = input(false);
   readonly loading = input(false);
   readonly offline = input(false);
   readonly error = input<AppError | null>(null);
@@ -294,11 +304,14 @@ export class RepoDrawer {
   /** Id of the repository being removed, or null when idle; disables its button. */
   readonly removingId = input<string | null>(null);
 
-  readonly toggleRight = output<void>();
-  readonly resizeStart = output<MouseEvent>();
+  readonly pinToggled = output<void>();
+  readonly closed = output<void>();
   readonly repoSelected = output<string>();
   readonly removeRequested = output<string>();
   readonly addRequested = output<void>();
+
+  readonly pinTitle = $localize`Pin`;
+  readonly unpinTitle = $localize`Unpin`;
 
   readonly search = signal('');
 
@@ -310,6 +323,7 @@ export class RepoDrawer {
     noRepos: $localize`No repositories`,
     noReposMessage: $localize`No local repositories yet. Add one to get started.`,
     noMatches: $localize`No matches`,
+    searchPlaceholder: $localize`Search repositories…`,
   };
 
   readonly filteredRepos = computed<readonly RepoCardView[]>(() => {
@@ -321,10 +335,6 @@ export class RepoDrawer {
         (repo.subtitle ?? '').toLowerCase().includes(term),
     );
   });
-
-  onSearch(event: Event): void {
-    this.search.set((event.target as HTMLInputElement).value);
-  }
 
   select(id: string): void {
     this.repoSelected.emit(id);

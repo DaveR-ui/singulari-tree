@@ -1,0 +1,463 @@
+import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
+import {
+  BadgeComponent,
+  ButtonComponent,
+  IconComponent,
+  PopoverComponent,
+} from '@singularitree/ui-kit';
+
+/** One top-bar repository tab: a stable id, its display name and an optional branch byline. */
+export interface TopBarTab {
+  readonly id: string;
+  readonly label: string;
+  /** Current branch byline; supplied by the parent for the active tab only. */
+  readonly branch?: string;
+}
+
+/**
+ * Dumb 64px shell top bar (plan §3/§4.1): brand glyph + wordmark, a hairline,
+ * the repo tab strip, the live remote-op cluster, a sync pill, an overflow menu
+ * and the drawer pin toggle. The parent owns every piece of state and routing;
+ * this component only renders and emits intents (D3: the retired toolbar's live
+ * actions live here, its inert chrome buttons are gone).
+ */
+@Component({
+  selector: 'st-top-bar',
+  standalone: true,
+  imports: [RouterLink, BadgeComponent, ButtonComponent, IconComponent, PopoverComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <header class="st-topbar">
+      <div class="st-topbar__brand">
+        <st-icon class="st-topbar__brand-glyph" name="brand" />
+        <span class="st-topbar__wordmark">{{ brand() }}</span>
+      </div>
+
+      <div class="st-topbar__rule st-hairline--left" aria-hidden="true"></div>
+
+      <div class="st-topbar__tabs" role="tablist">
+        @for (tab of tabs(); track tab.id) {
+          <span
+            class="st-tab"
+            [class.st-tab--active]="tab.id === activeTab()"
+            [class.st-selection-bar]="tab.id === activeTab()"
+            role="tab"
+            tabindex="0"
+            [attr.aria-selected]="tab.id === activeTab()"
+            [attr.title]="tab.label"
+            (click)="tabSelected.emit(tab.id)"
+            (keydown.enter)="selectFromKeyboard($event, tab.id)"
+            (keydown.space)="selectFromKeyboard($event, tab.id)"
+          >
+            <span class="st-tab__body">
+              <span class="st-tab__label">{{ tab.label }}</span>
+              @if (tab.branch) {
+                <span class="st-tab__branch st-mono">{{ tab.branch }}</span>
+              }
+            </span>
+            <button
+              class="st-tab__close"
+              type="button"
+              aria-label="Close tab"
+              i18n-aria-label
+              (click)="close($event, tab.id)"
+            >
+              ×
+            </button>
+          </span>
+        }
+        <button
+          class="st-tab__add"
+          type="button"
+          aria-label="Add tab"
+          i18n-aria-label
+          (click)="addRequested.emit()"
+        >
+          +
+        </button>
+      </div>
+
+      <div class="st-topbar__drag"></div>
+
+      <div class="st-topbar__actions">
+        <st-button
+          variant="ghost"
+          size="sm"
+          class="st-topbar__action"
+          data-testid="top-bar-pull"
+          [disabled]="!hasActiveRepo()"
+          (click)="pullRequested.emit()"
+        >
+          <st-icon name="pull" />
+          <span i18n>Pull</span>
+          @if (pullPending() > 0) {
+            <st-badge variant="warning" data-testid="top-bar-pull-badge">{{ pullPending() }}</st-badge>
+          }
+        </st-button>
+        <st-button
+          variant="ghost"
+          size="sm"
+          class="st-topbar__action"
+          data-testid="top-bar-push"
+          [disabled]="!hasActiveRepo()"
+          (click)="pushRequested.emit()"
+        >
+          <st-icon name="push" />
+          <span i18n>Push</span>
+        </st-button>
+        <st-button
+          variant="ghost"
+          size="sm"
+          class="st-topbar__action"
+          data-testid="top-bar-fetch"
+          [disabled]="!hasActiveRepo()"
+          (click)="fetchRequested.emit()"
+        >
+          <st-icon name="fetch" />
+          <span i18n>Fetch</span>
+        </st-button>
+        <st-button
+          variant="ghost"
+          size="sm"
+          class="st-topbar__action"
+          data-testid="top-bar-fetch-all"
+          [disabled]="!canFetchAll()"
+          (click)="fetchAllRequested.emit()"
+        >
+          <st-icon name="fetch-all" />
+          <span i18n>Fetch all</span>
+        </st-button>
+        <st-button
+          variant="ghost"
+          size="sm"
+          class="st-topbar__action"
+          data-testid="top-bar-clone-clipboard"
+          (click)="cloneFromClipboardRequested.emit()"
+        >
+          <st-icon name="clone" />
+          <span i18n>Clone from clipboard</span>
+        </st-button>
+        <st-button
+          variant="ghost"
+          size="sm"
+          class="st-topbar__action"
+          data-testid="top-bar-copy-repo-url"
+          [disabled]="!hasActiveRepo()"
+          (click)="copyRepoUrlRequested.emit()"
+        >
+          <st-icon name="copy-link" />
+          <span i18n>Copy repo URL</span>
+        </st-button>
+      </div>
+
+      <div class="st-topbar__sync">
+        <st-badge
+          data-testid="top-bar-sync-pill"
+          [variant]="pullPending() > 0 ? 'warning' : 'neutral'"
+        >
+          @if (pullPending() > 0) {
+            ↓{{ pullPending() }}
+          } @else {
+            <span i18n>Synced</span>
+          }
+        </st-badge>
+      </div>
+
+      <div class="st-topbar__overflow">
+        <st-button
+          variant="icon"
+          size="sm"
+          data-testid="top-bar-overflow-toggle"
+          aria-haspopup="dialog"
+          [attr.aria-expanded]="overflowOpen()"
+          (click)="toggleOverflow()"
+        >
+          <st-icon name="menu" />
+          <span class="st-topbar__sr" i18n>Menu</span>
+        </st-button>
+        <st-popover [open]="overflowOpen()" (closed)="overflowOpen.set(false)">
+          <nav class="st-topbar__menu">
+            <a class="st-topbar__menu-item" routerLink="/repos" data-testid="top-bar-nav-repos" i18n
+              >Repositories</a
+            >
+            <a
+              class="st-topbar__menu-item"
+              routerLink="/github-account"
+              data-testid="top-bar-nav-github"
+              i18n
+              >GitHub account</a
+            >
+            <a
+              class="st-topbar__menu-item"
+              routerLink="/settings"
+              data-testid="top-bar-nav-settings"
+              i18n
+              >Settings</a
+            >
+          </nav>
+        </st-popover>
+      </div>
+
+      <div class="st-topbar__drawer">
+        <st-button
+          variant="icon"
+          size="sm"
+          data-testid="top-bar-drawer-toggle"
+          [attr.id]="drawerToggleId()"
+          [attr.tabindex]="-1"
+          [attr.aria-expanded]="drawerPinned()"
+          [attr.title]="drawerPinned() ? unpinTitle : pinTitle"
+          (click)="drawerToggled.emit()"
+        >
+          <st-icon [name]="drawerPinned() ? 'pin' : 'pin-off'" />
+          <span class="st-topbar__sr" i18n>Toggle repositories</span>
+        </st-button>
+      </div>
+    </header>
+  `,
+  styles: `
+    :host {
+      display: block;
+      flex: none;
+    }
+
+    .st-topbar {
+      display: flex;
+      align-items: center;
+      gap: var(--st-space-2);
+      height: var(--st-size-topbar);
+      padding: 0 var(--st-space-3);
+      background: var(--st-color-chrome);
+      border-bottom: var(--st-hairline) solid var(--st-color-border);
+      color: var(--st-color-text);
+      -webkit-app-region: drag;
+      user-select: none;
+    }
+
+    .st-topbar__brand {
+      display: flex;
+      align-items: center;
+      gap: var(--st-space-2);
+      flex: none;
+      color: var(--st-color-accent);
+    }
+
+    .st-topbar__brand-glyph {
+      flex: none;
+    }
+
+    .st-topbar__wordmark {
+      font-size: var(--st-font-17);
+      font-weight: 600;
+      color: var(--st-color-text);
+      letter-spacing: 0.2px;
+    }
+
+    /* 1px vertical hairline, full bar height, 12px inset. */
+    .st-topbar__rule {
+      flex: none;
+      align-self: stretch;
+      margin: var(--st-space-3) 0;
+    }
+
+    .st-topbar__tabs {
+      display: flex;
+      align-items: center;
+      gap: var(--st-space-1);
+      flex: none;
+      max-width: 45%;
+      overflow: hidden;
+      -webkit-app-region: no-drag;
+    }
+
+    .st-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--st-space-1);
+      height: 40px;
+      padding: 0 var(--st-space-2) 0 var(--st-space-3);
+      border-radius: var(--st-radius-2);
+      color: var(--st-color-muted);
+      font-size: var(--st-font-13);
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .st-tab--active {
+      background: var(--st-color-surface);
+      color: var(--st-color-text);
+    }
+
+    .st-tab__body {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      line-height: var(--st-leading-tight);
+    }
+
+    .st-tab__label {
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .st-tab__branch {
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: var(--st-font-12);
+      font-weight: 400;
+      color: var(--st-color-muted);
+    }
+
+    .st-tab__close {
+      background: transparent;
+      border: none;
+      color: inherit;
+      opacity: 0.6;
+      font-size: var(--st-font-13);
+      line-height: 1;
+      padding: 0 2px;
+      cursor: pointer;
+    }
+
+    .st-tab__close:hover {
+      opacity: 1;
+    }
+
+    .st-tab__add {
+      flex: none;
+      background: transparent;
+      border: var(--st-hairline) solid var(--st-color-border);
+      color: var(--st-color-muted);
+      width: 24px;
+      height: 24px;
+      border-radius: var(--st-radius-pill);
+      cursor: pointer;
+    }
+
+    .st-tab__add:hover {
+      color: var(--st-color-text);
+      border-color: var(--st-color-accent);
+    }
+
+    /* Far-right, flexible drag region; interactive clusters opt out. */
+    .st-topbar__drag {
+      flex: 1 1 auto;
+      align-self: stretch;
+      min-width: var(--st-space-4);
+      -webkit-app-region: drag;
+    }
+
+    .st-topbar__actions {
+      display: flex;
+      align-items: center;
+      gap: var(--st-space-1);
+      flex: none;
+      -webkit-app-region: no-drag;
+    }
+
+    .st-topbar__action {
+      color: var(--st-color-muted);
+    }
+
+    .st-topbar__sync {
+      flex: none;
+      -webkit-app-region: no-drag;
+    }
+
+    .st-topbar__overflow,
+    .st-topbar__drawer {
+      position: relative;
+      flex: none;
+      -webkit-app-region: no-drag;
+    }
+
+    .st-topbar__menu {
+      display: flex;
+      flex-direction: column;
+      min-width: 180px;
+      padding: var(--st-space-1);
+    }
+
+    .st-topbar__menu-item {
+      display: block;
+      padding: var(--st-space-2) var(--st-space-3);
+      border-radius: var(--st-radius-2);
+      color: var(--st-color-text);
+      font-size: var(--st-font-12);
+      text-decoration: none;
+    }
+
+    .st-topbar__menu-item:hover,
+    .st-topbar__menu-item:focus-visible {
+      background: var(--st-color-accent-soft);
+      outline: none;
+    }
+
+    /* Accessible name for the two icon-only controls. */
+    .st-topbar__sr {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+      border: 0;
+    }
+  `,
+})
+export class TopBar {
+  readonly brand = input('SingulariTree');
+  readonly tabs = input<readonly TopBarTab[]>([]);
+  /** Id of the active tab, or null when none is active. */
+  readonly activeTab = input<string | null>(null);
+  /** Whether a repository is active; gates Pull/Push/Fetch/Copy-URL. */
+  readonly hasActiveRepo = input(false);
+  /** Whether any repository tab is open; gates Fetch-all. */
+  readonly canFetchAll = input(false);
+  /** Pull-pending (behind) count of the current branch; badges Pull and the sync pill. */
+  readonly pullPending = input(0);
+  /** Whether the repo drawer is pinned (docked); reflected on the toggle. */
+  readonly drawerPinned = input(true);
+  /** Element id of the drawer toggle, so the shell can restore focus on close. */
+  readonly drawerToggleId = input('st-drawer-toggle');
+
+  readonly tabSelected = output<string>();
+  readonly tabClosed = output<string>();
+  readonly addRequested = output<void>();
+  readonly pullRequested = output<void>();
+  readonly pushRequested = output<void>();
+  readonly fetchRequested = output<void>();
+  readonly fetchAllRequested = output<void>();
+  readonly cloneFromClipboardRequested = output<void>();
+  readonly copyRepoUrlRequested = output<void>();
+  readonly drawerToggled = output<void>();
+
+  /** Open state of the overflow menu (Repositories / GitHub / Settings). */
+  readonly overflowOpen = signal(false);
+
+  readonly pinTitle = $localize`Pin repositories`;
+  readonly unpinTitle = $localize`Unpin repositories`;
+
+  toggleOverflow(): void {
+    this.overflowOpen.update((open) => !open);
+  }
+
+  /** Enter/Space activation for a tab (role="tab"). */
+  selectFromKeyboard(event: Event, id: string): void {
+    event.preventDefault();
+    this.tabSelected.emit(id);
+  }
+
+  /** Close a tab without also selecting it. */
+  close(event: Event, id: string): void {
+    event.stopPropagation();
+    this.tabClosed.emit(id);
+  }
+}

@@ -86,28 +86,28 @@ export const LANE_COLUMN_WIDTH = 14;
       display: flex;
       align-items: center;
       gap: 6px;
-      height: 28px;
+      height: var(--st-size-row-graph);
       padding: 0 8px;
       overflow: hidden;
       cursor: pointer;
-      font-size: 12px;
+      font-size: var(--st-font-12);
       line-height: 1;
-      border-bottom: 1px solid var(--st-color-border, #2f2f44);
-      color: var(--st-color-text, #d6d6de);
+      border-bottom: var(--st-hairline) solid var(--st-color-border);
+      color: var(--st-color-text);
       contain: layout style;
     }
 
     :host(:hover) {
-      background: color-mix(in srgb, var(--st-color-accent, #0a84ff) 10%, transparent);
+      background: color-mix(in srgb, var(--st-color-accent) 10%, transparent);
     }
 
     :host:focus-visible {
-      outline: 1px solid var(--st-color-accent, #0a84ff);
+      outline: 1px solid var(--st-color-focus);
       outline-offset: -1px;
     }
 
     :host(.st-graph-row--selected) {
-      background: color-mix(in srgb, var(--st-color-accent, #0a84ff) 22%, transparent);
+      background: color-mix(in srgb, var(--st-color-accent) 22%, transparent);
     }
 
     .st-graph-row__graph {
@@ -126,14 +126,14 @@ export const LANE_COLUMN_WIDTH = 14;
 
     .st-graph-row__oid {
       flex: none;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-family: var(--st-font-mono);
       opacity: 0.6;
     }
 
     .st-graph-row__ref {
       flex: none;
       padding: 1px 5px;
-      border-radius: 999px;
+      border-radius: var(--st-radius-pill);
       border: 1px solid currentColor;
       font-size: 10px;
       line-height: 14px;
@@ -141,23 +141,23 @@ export const LANE_COLUMN_WIDTH = 14;
     }
 
     .st-graph-row__ref--head {
-      color: #0a84ff;
+      color: var(--st-color-ref-head);
     }
 
     .st-graph-row__ref--branch {
-      color: #30d158;
+      color: var(--st-color-ref-branch);
     }
 
     .st-graph-row__ref--remote {
-      color: #ff9f0a;
+      color: var(--st-color-ref-remote);
     }
 
     .st-graph-row__ref--tag {
-      color: #bf5af2;
+      color: var(--st-color-ref-tag);
     }
 
     .st-graph-row__ref--other {
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
       opacity: 0.7;
     }
 
@@ -181,17 +181,17 @@ export const LANE_COLUMN_WIDTH = 14;
       display: inline-flex;
       align-items: baseline;
       gap: 4px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 11px;
+      font-family: var(--st-font-mono);
+      font-size: var(--st-font-11);
       white-space: nowrap;
     }
 
     .st-graph-row__additions {
-      color: #30d158;
+      color: var(--st-color-add);
     }
 
     .st-graph-row__deletions {
-      color: #ff6b6b;
+      color: var(--st-color-remove);
     }
 
     .st-graph-row__files {
@@ -200,6 +200,7 @@ export const LANE_COLUMN_WIDTH = 14;
 
     .st-graph-row__date {
       flex: none;
+      font-variant-numeric: tabular-nums;
       opacity: 0.5;
       white-space: nowrap;
     }

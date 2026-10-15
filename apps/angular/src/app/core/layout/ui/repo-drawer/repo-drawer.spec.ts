@@ -15,9 +15,12 @@ interface SetupOptions {
   loading?: boolean;
   offline?: boolean;
   error?: AppError | null;
+  pinned?: boolean;
+  open?: boolean;
 }
 
 async function setup(opts: SetupOptions = {}): Promise<ComponentFixture<RepoDrawer>> {
+  TestBed.resetTestingModule();
   await TestBed.configureTestingModule({
     providers: [provideZonelessChangeDetection()],
   }).compileComponents();
@@ -30,6 +33,8 @@ async function setup(opts: SetupOptions = {}): Promise<ComponentFixture<RepoDraw
   ref.setInput('loading', opts.loading ?? false);
   ref.setInput('offline', opts.offline ?? false);
   ref.setInput('error', opts.error ?? null);
+  ref.setInput('pinned', opts.pinned ?? true);
+  ref.setInput('open', opts.open ?? false);
   fixture.detectChanges();
   return fixture;
 }
@@ -53,7 +58,7 @@ function query<T extends Element>(fixture: ComponentFixture<RepoDrawer>, testId:
 }
 
 function typeSearch(fixture: ComponentFixture<RepoDrawer>, value: string): void {
-  const input = query<HTMLInputElement>(fixture, 'repo-drawer-search')!;
+  const input = query<HTMLElement>(fixture, 'repo-drawer-search')!.querySelector('input')!;
   input.value = value;
   input.dispatchEvent(new Event('input'));
   fixture.detectChanges();
@@ -143,5 +148,50 @@ describe('RepoDrawer', () => {
     const [first, second] = removeButtons(fixture);
     expect(first.disabled).toBe(true);
     expect(second.disabled).toBe(false);
+  });
+
+  // -- pin / popover model -------------------------------------------------
+
+  it('renders the pin toggle with aria-pressed and emits pinToggled', async () => {
+    const fixture = await setup({ repos: [REPO_A], pinned: true });
+    const toggle = query<HTMLElement>(fixture, 'repo-drawer-pin')!;
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+
+    let toggles = 0;
+    fixture.componentInstance.pinToggled.subscribe(() => toggles++);
+    toggle.click();
+
+    expect(toggles).toBe(1);
+  });
+
+  it('renders inline without a popover wrapper when pinned', async () => {
+    const fixture = await setup({ repos: [REPO_A], pinned: true, open: true });
+
+    expect(query(fixture, 'popover')).toBeNull();
+    expect(query(fixture, 'repo-drawer-list')).not.toBeNull();
+  });
+
+  it('renders a floating popover when unpinned and open', async () => {
+    const fixture = await setup({ repos: [REPO_A], pinned: false, open: true });
+
+    expect(query(fixture, 'popover')).not.toBeNull();
+    expect(query(fixture, 'repo-drawer-list')).not.toBeNull();
+  });
+
+  it('renders nothing when unpinned and closed', async () => {
+    const fixture = await setup({ repos: [REPO_A], pinned: false, open: false });
+
+    expect(query(fixture, 'popover')).toBeNull();
+    expect(query(fixture, 'repo-drawer-list')).toBeNull();
+  });
+
+  it('emits closed when Escape dismisses the floating popover', async () => {
+    const fixture = await setup({ repos: [REPO_A], pinned: false, open: true });
+    let closed = 0;
+    fixture.componentInstance.closed.subscribe(() => closed++);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+    expect(closed).toBe(1);
   });
 });

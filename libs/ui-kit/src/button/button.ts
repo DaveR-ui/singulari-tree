@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
-export type ButtonVariant = 'default' | 'primary' | 'ghost';
+export type ButtonVariant = 'default' | 'primary' | 'ghost' | 'danger' | 'icon';
 export type ButtonSize = 'sm' | 'md';
 export type ButtonType = 'button' | 'submit' | 'reset';
 
@@ -41,10 +41,10 @@ export type ButtonType = 'button' | 'submit' | 'reset';
       align-items: center;
       justify-content: center;
       gap: 6px;
-      border: 1px solid var(--st-color-border, #2f2f44);
+      border: 1px solid var(--st-color-border);
       border-radius: 6px;
-      background: var(--st-color-surface, #252536);
-      color: var(--st-color-text, #d6d6de);
+      background: var(--st-color-surface);
+      color: var(--st-color-text);
       font: inherit;
       cursor: pointer;
       transition:
@@ -65,9 +65,9 @@ export type ButtonType = 'button' | 'submit' | 'reset';
     }
 
     .st-button--primary {
-      background: var(--st-color-accent, #0a84ff);
-      border-color: var(--st-color-accent, #0a84ff);
-      color: #ffffff;
+      background: var(--st-color-accent);
+      border-color: var(--st-color-accent);
+      color: var(--st-color-accent-contrast);
     }
 
     .st-button--ghost {
@@ -75,12 +75,40 @@ export type ButtonType = 'button' | 'submit' | 'reset';
       border-color: transparent;
     }
 
+    .st-button--danger {
+      background: transparent;
+      border-color: transparent;
+      color: var(--st-color-danger);
+    }
+
+    .st-button--icon {
+      padding: 0;
+    }
+
+    .st-button--icon.st-button--sm {
+      width: var(--st-size-control-sm);
+      height: var(--st-size-control-sm);
+      min-width: var(--st-size-control-sm);
+    }
+
+    .st-button--icon.st-button--md {
+      width: var(--st-size-control-md);
+      height: var(--st-size-control-md);
+      min-width: var(--st-size-control-md);
+    }
+
     .st-button:not(:disabled):hover {
-      border-color: var(--st-color-accent, #0a84ff);
+      border-color: var(--st-color-accent);
     }
 
     .st-button--primary:not(:disabled):hover {
-      background: color-mix(in srgb, var(--st-color-accent, #0a84ff) 85%, #ffffff);
+      background: color-mix(in srgb, var(--st-color-accent) 85%, var(--st-color-accent-contrast));
+    }
+
+    /* Declared after the generic hover so the transparent border wins. */
+    .st-button--danger:not(:disabled):hover {
+      background: var(--st-color-danger-soft);
+      border-color: transparent;
     }
 
     .st-button:disabled {
@@ -88,7 +116,7 @@ export type ButtonType = 'button' | 'submit' | 'reset';
     }
 
     .st-button:focus-visible {
-      outline: 2px solid var(--st-color-accent, #0a84ff);
+      outline: 2px solid var(--st-color-focus);
       outline-offset: 1px;
     }
   `,

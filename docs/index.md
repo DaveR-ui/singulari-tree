@@ -4,13 +4,13 @@
 # SingulariTree — Documentation index
 
 <!-- BEGIN GENERATED: index -->
-<!-- snapshot: 2026-10-11 -->
+<!-- snapshot: 2026-10-14 -->
 ## Generated index
 
 ### Overview
 
-- Markdown files: 34
-- Context docs: 4 | Notes: 6 | Hubs: 2 | adrs: 17 | templates: 0 | protocols: 3
+- Markdown files: 35
+- Context docs: 5 | Notes: 6 | Hubs: 2 | adrs: 17 | templates: 0 | protocols: 3
 
 ### Tree
 
@@ -39,6 +39,7 @@
   - accepted-debt.md — context-doc
   - documentation-system.md — context-doc
   - feature-gap-analysis.md — context-doc
+  - renderer-redesign-plan.md — context-doc
 - protocols/
   - bootstrap-protocol.md — protocol, id: `bootstrap-protocol`
   - docs-review-protocol.md — protocol, id: `docs-review-protocol`

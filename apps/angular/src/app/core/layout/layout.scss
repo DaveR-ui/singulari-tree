@@ -1,18 +1,6 @@
-/* Layout shell — aliases the global design tokens for local use. */
+/* Layout shell — consumes the global ui-kit design tokens directly. */
 :host {
   display: block;
-  --left-w: 260px;
-  --right-w: 320px;
-  --header-h: 48px;
-  --toolbar-h: 44px;
-  --bg: var(--st-color-bg);
-  --panel: var(--st-color-surface);
-  --panel-2: var(--st-color-surface-2);
-  --border: var(--st-color-border);
-  --text: var(--st-color-text);
-  --muted: var(--st-color-muted);
-  --accent: var(--st-color-accent);
-  --accent-soft: var(--st-color-accent-soft);
 }
 
 .st-shell {
@@ -20,11 +8,22 @@
   flex-direction: column;
   height: 100vh;
   height: 100dvh;
-  background: var(--bg);
-  color: var(--text);
-  font-family: Inter, system-ui, -apple-system, sans-serif;
+  background: var(--st-color-bg);
+  color: var(--st-color-text);
+  font-family: var(--st-font-ui);
   overflow: hidden;
-  font-size: 13px;
+  font-size: var(--st-font-13);
+}
+
+/* Chrome blocks size themselves; pin them so the body absorbs the slack. */
+.st-shell st-top-bar {
+  flex: none;
+  height: var(--st-size-topbar);
+}
+
+.st-shell st-status-bar {
+  flex: none;
+  height: var(--st-size-statusbar);
 }
 
 /* BODY flex 3 cols */
@@ -32,54 +31,31 @@
   flex: 1;
   display: flex;
   min-height: 0;
-  position: relative;
   overflow: hidden;
 }
 
-/* CENTER */
-.st-center {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
+.st-body st-nav-rail {
+  flex: none;
+}
+
+/* Center workspace: the split fills the slack between rail and drawer. */
+.st-body st-workspace-split {
+  flex: 1 1 auto;
   min-width: 0;
-  background: var(--bg);
-  overflow: hidden;
 }
 
-/* always-mounted routed region, fills the center */
+.st-body st-repo-drawer {
+  flex: none;
+}
+
+/* always-mounted routed region, fills the primary pane */
 .st-router-host {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-/* backdrop */
-.st-backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.35);
-  z-index: 19;
-  backdrop-filter: blur(1px);
-}
-
-.st-right-peek {
-  position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-right: none;
-  color: var(--muted);
-  border-radius: 6px 0 0 6px;
-  padding: 10px 6px;
-  cursor: pointer;
-  z-index: 10;
-  &:hover {
-    color: var(--text);
-  }
+  background: var(--st-color-bg);
 }
 
 /* scrollbars */
@@ -88,7 +64,7 @@
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background: #3a3a4a;
+  background: var(--st-color-border);
   border-radius: 4px;
 }
 *::-webkit-scrollbar-track {

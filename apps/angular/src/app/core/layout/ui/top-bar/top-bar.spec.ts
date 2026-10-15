@@ -1,0 +1,196 @@
+import { provideZonelessChangeDetection } from '@angular/core';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { TopBar, type TopBarTab } from './top-bar';
+
+const TABS: TopBarTab[] = [
+  { id: 'repo-1', label: 'alpha', branch: 'main' },
+  { id: 'repo-2', label: 'beta' },
+];
+
+async function setup(
+  inputs: Partial<{
+    tabs: readonly TopBarTab[];
+    activeTab: string | null;
+    hasActiveRepo: boolean;
+    canFetchAll: boolean;
+    pullPending: number;
+    drawerPinned: boolean;
+  }> = {},
+): Promise<ComponentFixture<TopBar>> {
+  TestBed.resetTestingModule();
+  await TestBed.configureTestingModule({
+    providers: [provideZonelessChangeDetection(), provideRouter([])],
+  }).compileComponents();
+  const fixture = TestBed.createComponent(TopBar);
+  fixture.componentRef.setInput('tabs', inputs.tabs ?? TABS);
+  fixture.componentRef.setInput('activeTab', inputs.activeTab ?? 'repo-1');
+  fixture.componentRef.setInput('hasActiveRepo', inputs.hasActiveRepo ?? true);
+  fixture.componentRef.setInput('canFetchAll', inputs.canFetchAll ?? false);
+  fixture.componentRef.setInput('pullPending', inputs.pullPending ?? 0);
+  fixture.componentRef.setInput('drawerPinned', inputs.drawerPinned ?? true);
+  fixture.detectChanges();
+  return fixture;
+}
+
+function host(fixture: ComponentFixture<TopBar>, testId: string): HTMLElement | null {
+  return (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
+    `[data-testid="${testId}"]`,
+  );
+}
+
+/** The native button inside a `<st-button>` host carrying `testId`. */
+function button(fixture: ComponentFixture<TopBar>, testId: string): HTMLButtonElement | null {
+  return host(fixture, testId)?.querySelector<HTMLButtonElement>('button') ?? null;
+}
+
+function tabs(fixture: ComponentFixture<TopBar>): HTMLElement[] {
+  return Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.st-tab'));
+}
+
+describe('TopBar', () => {
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+  });
+
+  it('renders one tab per input, the active one marked and branchy', async () => {
+    const fixture = await setup();
+
+    const els = tabs(fixture);
+    expect(els).toHaveLength(2);
+    expect(els[0].textContent).toContain('alpha');
+    expect(els[1].textContent).toContain('beta');
+    expect(els[0].classList.contains('st-tab--active')).toBe(true);
+    expect(els[0].getAttribute('aria-selected')).toBe('true');
+    expect(els[0].textContent).toContain('main');
+    expect(els[1].getAttribute('aria-selected')).toBe('false');
+  });
+
+  it('emits the tab id on click', async () => {
+    const fixture = await setup();
+    const emitted: string[] = [];
+    fixture.componentInstance.tabSelected.subscribe((id) => emitted.push(id));
+
+    tabs(fixture)[1].click();
+
+    expect(emitted).toEqual(['repo-2']);
+  });
+
+  it('emits the tab id on Enter and Space', async () => {
+    const fixture = await setup();
+    const emitted: string[] = [];
+    fixture.componentInstance.tabSelected.subscribe((id) => emitted.push(id));
+
+    tabs(fixture)[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    tabs(fixture)[0].dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }));
+
+    expect(emitted).toEqual(['repo-1', 'repo-1']);
+  });
+
+  it('emits tabClosed without also selecting when the close control is used', async () => {
+    const fixture = await setup();
+    const selected: string[] = [];
+    const closed: string[] = [];
+    fixture.componentInstance.tabSelected.subscribe((id) => selected.push(id));
+    fixture.componentInstance.tabClosed.subscribe((id) => closed.push(id));
+
+    tabs(fixture)[0].querySelector<HTMLButtonElement>('.st-tab__close')!.click();
+
+    expect(closed).toEqual(['repo-1']);
+    expect(selected).toEqual([]);
+  });
+
+  it('emits addRequested from the "+" control', async () => {
+    const fixture = await setup();
+    let added = 0;
+    fixture.componentInstance.addRequested.subscribe(() => added++);
+
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.st-tab__add')!
+      .click();
+
+    expect(added).toBe(1);
+  });
+
+  it('gates the remote-op cluster on hasActiveRepo', async () => {
+    const inactive = await setup({ hasActiveRepo: false });
+    for (const id of ['top-bar-pull', 'top-bar-push', 'top-bar-fetch', 'top-bar-copy-repo-url']) {
+      expect(button(inactive, id)!.disabled).toBe(true);
+    }
+    // Clone-from-clipboard is independent of an active repo.
+    expect(button(inactive, 'top-bar-clone-clipboard')!.disabled).toBe(false);
+
+    const active = await setup({ hasActiveRepo: true });
+    for (const id of ['top-bar-pull', 'top-bar-push', 'top-bar-fetch', 'top-bar-copy-repo-url']) {
+      expect(button(active, id)!.disabled).toBe(false);
+    }
+  });
+
+  it('gates fetch-all on canFetchAll', async () => {
+    const disabled = await setup({ canFetchAll: false });
+    expect(button(disabled, 'top-bar-fetch-all')!.disabled).toBe(true);
+
+    const enabled = await setup({ canFetchAll: true });
+    expect(button(enabled, 'top-bar-fetch-all')!.disabled).toBe(false);
+  });
+
+  it('emits the remote-op intents', async () => {
+    const fixture = await setup({ canFetchAll: true });
+    const events: string[] = [];
+    fixture.componentInstance.pullRequested.subscribe(() => events.push('pull'));
+    fixture.componentInstance.pushRequested.subscribe(() => events.push('push'));
+    fixture.componentInstance.fetchRequested.subscribe(() => events.push('fetch'));
+    fixture.componentInstance.fetchAllRequested.subscribe(() => events.push('fetch-all'));
+    fixture.componentInstance.cloneFromClipboardRequested.subscribe(() => events.push('clone'));
+    fixture.componentInstance.copyRepoUrlRequested.subscribe(() => events.push('copy-url'));
+
+    button(fixture, 'top-bar-pull')!.click();
+    button(fixture, 'top-bar-push')!.click();
+    button(fixture, 'top-bar-fetch')!.click();
+    button(fixture, 'top-bar-fetch-all')!.click();
+    button(fixture, 'top-bar-clone-clipboard')!.click();
+    button(fixture, 'top-bar-copy-repo-url')!.click();
+
+    expect(events).toEqual(['pull', 'push', 'fetch', 'fetch-all', 'clone', 'copy-url']);
+  });
+
+  it('renders the pull badge only when there is something pending', async () => {
+    const clean = await setup({ pullPending: 0 });
+    expect(host(clean, 'top-bar-pull-badge')).toBeNull();
+    expect(host(clean, 'top-bar-sync-pill')?.textContent).toContain('Synced');
+
+    const pending = await setup({ pullPending: 4 });
+    expect(host(pending, 'top-bar-pull-badge')?.textContent?.trim()).toBe('4');
+    expect(host(pending, 'top-bar-sync-pill')?.textContent).toContain('↓4');
+  });
+
+  it('opens the overflow menu with the three navigation entries', async () => {
+    const fixture = await setup();
+
+    expect(host(fixture, 'popover')).toBeNull();
+    expect(host(fixture, 'top-bar-overflow-toggle')?.getAttribute('aria-expanded')).toBe('false');
+
+    button(fixture, 'top-bar-overflow-toggle')!.click();
+    fixture.detectChanges();
+
+    expect(host(fixture, 'top-bar-overflow-toggle')?.getAttribute('aria-expanded')).toBe('true');
+    const menu = host(fixture, 'popover');
+    expect(menu).not.toBeNull();
+    expect(menu!.textContent).toContain('Repositories');
+    expect(menu!.textContent).toContain('GitHub account');
+    expect(menu!.textContent).toContain('Settings');
+  });
+
+  it('reflects the pinned drawer state and emits the toggle intent', async () => {
+    const pinned = await setup({ drawerPinned: true });
+    expect(host(pinned, 'top-bar-drawer-toggle')?.getAttribute('aria-expanded')).toBe('true');
+    let toggles = 0;
+    pinned.componentInstance.drawerToggled.subscribe(() => toggles++);
+    button(pinned, 'top-bar-drawer-toggle')!.click();
+    expect(toggles).toBe(1);
+
+    const unpinned = await setup({ drawerPinned: false });
+    expect(host(unpinned, 'top-bar-drawer-toggle')?.getAttribute('aria-expanded')).toBe('false');
+  });
+});

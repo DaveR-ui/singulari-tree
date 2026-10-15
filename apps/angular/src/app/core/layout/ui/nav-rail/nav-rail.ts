@@ -1,11 +1,12 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
-import { BadgeComponent } from '@singularitree/ui-kit';
+import { BadgeComponent, IconComponent, InputComponent, NavItemComponent } from '@singularitree/ui-kit';
 import type { Stash } from '@contracts/domain';
 import type { AppError } from '@core/services/ipc-bridge.service';
 
 interface WorkspaceItem {
   readonly kind: string;
   readonly label: string;
+  /** `st-icon` registry name. */
   readonly icon: string;
 }
 
@@ -24,170 +25,173 @@ interface RowMenu {
 }
 
 /**
- * Dumb left sidebar: workspace switcher plus branches/tags/remotes sections.
+ * Dumb 224px navigation rail (plan §3/§4.2): active-repo header, the workspace
+ * switcher, local branches (filter + context menu), remote references, tags,
+ * stashes, git-flow and the collapse control.
  *
  * The ref lists are supplied by the parent (root `RepoState`); the component
- * renders explicit loading/offline/empty states instead of inventing data.
+ * renders explicit loading/offline/empty states instead of inventing data. Every
+ * behavior of the retired `sidebar-left` is preserved (`dblclick`/Enter/Space
+ * checkout, row context menus, the current-branch delete guard, "+" intents).
  */
 @Component({
-  selector: 'st-sidebar-left',
+  selector: 'st-nav-rail',
   standalone: true,
-  imports: [BadgeComponent],
+  imports: [BadgeComponent, IconComponent, InputComponent, NavItemComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
-    '[class.st-left--collapsed]': 'collapsed()',
+    '[class.st-rail--collapsed]': 'collapsed()',
   },
   template: `
     @if (!collapsed()) {
-      <div class="st-left__section">
+      @if (repoName() || repoPath()) {
+        <div class="st-rail__repo" data-testid="st-rail-repo-header">
+          @if (repoName()) {
+            <span class="st-rail__repo-name">{{ repoName() }}</span>
+          }
+          @if (currentBranch()) {
+            <span class="st-rail__repo-branch st-mono">{{ currentBranch() }}</span>
+          }
+          @if (repoPath()) {
+            <span class="st-rail__repo-path st-mono">{{ repoPath() }}</span>
+          }
+        </div>
+      }
+
+      <div class="st-rail__section">
         <button
-          class="st-left__head"
+          class="st-rail__head st-eyebrow"
           type="button"
           (click)="workspaceExpanded.set(!workspaceExpanded())"
         >
-          <span class="st-left__arrow">{{ workspaceExpanded() ? '▾' : '▸' }}</span
-          ><span i18n>WORKSPACE</span>
+          <st-icon
+            class="st-rail__chevron"
+            [name]="workspaceExpanded() ? 'chevron-down' : 'chevron-right'"
+          />
+          <span i18n>Workspace</span>
         </button>
         @if (workspaceExpanded()) {
-          <ul class="st-left__list">
+          <ul class="st-rail__list">
             @for (item of WORKSPACE; track item.kind) {
               <li
-                class="st-left__item"
+                class="st-rail__item"
+                [class.st-rail__item--active]="activeWorkspace() === item.kind"
                 [attr.data-testid]="'st-sidebar-workspace-' + item.kind"
-                [class.st-left__item--active]="activeWorkspace() === item.kind"
                 (click)="selectWorkspace(item.kind)"
               >
-                <span class="st-left__ico">{{ item.icon }}</span> {{ item.label }}
+                <st-nav-item
+                  [icon]="item.icon"
+                  [label]="item.label"
+                  [count]="countFor(item.kind)"
+                  [active]="activeWorkspace() === item.kind"
+                />
               </li>
             }
           </ul>
         }
       </div>
 
-      <div class="st-left__section">
-        <div class="st-left__headrow">
+      <div class="st-rail__section">
+        <div class="st-rail__headrow">
           <button
-            class="st-left__head"
+            class="st-rail__head st-eyebrow"
             type="button"
             (click)="branchesExpanded.set(!branchesExpanded())"
           >
-            <span class="st-left__arrow">{{ branchesExpanded() ? '▾' : '▸' }}</span
-            ><span i18n>BRANCHES</span>
+            <st-icon
+              class="st-rail__chevron"
+              [name]="branchesExpanded() ? 'chevron-down' : 'chevron-right'"
+            />
+            <span i18n>Local branches</span>
           </button>
           <button
-            class="st-left__add"
+            class="st-rail__add"
             type="button"
             data-testid="st-sidebar-add-branch"
             title="New branch"
             i18n-title
             (click)="newBranchRequested.emit()"
           >
-            +
+            <st-icon name="plus" />
           </button>
         </div>
         @if (branchesExpanded()) {
           @if (loading()) {
-            <p class="st-left__empty" data-testid="st-sidebar-refs-loading" i18n>Loading…</p>
+            <p class="st-rail__empty" data-testid="st-sidebar-refs-loading" i18n>Loading…</p>
           } @else if (offline()) {
-            <p class="st-left__empty" data-testid="st-sidebar-refs-offline" i18n>Git core offline</p>
+            <p class="st-rail__empty" data-testid="st-sidebar-refs-offline" i18n>Git core offline</p>
           } @else if (error(); as err) {
-            <p class="st-left__empty" data-testid="st-sidebar-refs-error">{{ err.message }}</p>
-          } @else if (branches().length === 0) {
-            <p class="st-left__empty" data-testid="st-sidebar-branches-empty" i18n>No branches</p>
+            <p class="st-rail__empty" data-testid="st-sidebar-refs-error">{{ err.message }}</p>
           } @else {
-            <ul class="st-left__list" data-testid="st-sidebar-branches">
-              @for (branch of branches(); track branch) {
-                <li
-                  class="st-left__item st-left__sub st-left__sub--clickable"
-                  data-testid="st-sidebar-branch"
-                  role="button"
-                  tabindex="0"
-                  (dblclick)="selectBranch(branch)"
-                  (keydown)="onBranchKeydown($event, branch)"
-                  (contextmenu)="onBranchContextMenu($event, branch)"
-                >
-                  {{ branch }}
-                  @if (branch === currentBranch() && currentBranchBehind() > 0) {
-                    <st-badge
-                      variant="warning"
-                      data-testid="st-sidebar-branch-badge"
-                    >{{ currentBranchBehind() }}</st-badge>
-                  }
-                </li>
-              }
-            </ul>
+            <div class="st-rail__filter">
+              <st-input
+                type="search"
+                data-testid="st-rail-branch-filter"
+                [value]="branchFilter()"
+                [placeholder]="branchFilterPlaceholder"
+                [ariaLabel]="branchFilterPlaceholder"
+                (valueChange)="branchFilter.set($event)"
+              />
+            </div>
+            @if (branches().length === 0) {
+              <p class="st-rail__empty" data-testid="st-sidebar-branches-empty" i18n>No branches</p>
+            } @else {
+              <ul class="st-rail__list" data-testid="st-sidebar-branches">
+                @for (branch of filteredBranches(); track branch) {
+                  <li
+                    class="st-rail__row st-selectable-row st-focus-ring--inset"
+                    [class.st-selection-bar]="branch === currentBranch()"
+                    data-testid="st-sidebar-branch"
+                    role="button"
+                    tabindex="0"
+                    (dblclick)="selectBranch(branch)"
+                    (keydown)="onBranchKeydown($event, branch)"
+                    (contextmenu)="onBranchContextMenu($event, branch)"
+                  >
+                    <span class="st-rail__row-label">{{ branch }}</span>
+                    @if (branch === currentBranch() && currentBranchBehind() > 0) {
+                      <st-badge
+                        variant="warning"
+                        data-testid="st-sidebar-branch-badge"
+                      >{{ currentBranchBehind() }}</st-badge>
+                    }
+                  </li>
+                }
+              </ul>
+            }
           }
         }
       </div>
 
-      <div class="st-left__section">
-        <div class="st-left__headrow">
-          <button class="st-left__head" type="button" (click)="tagsExpanded.set(!tagsExpanded())">
-            <span class="st-left__arrow">{{ tagsExpanded() ? '▾' : '▸' }}</span
-            ><span i18n>TAGS</span>
-          </button>
-          <button
-            class="st-left__add"
-            type="button"
-            data-testid="st-sidebar-add-tag"
-            title="New tag"
-            i18n-title
-            (click)="newTagRequested.emit()"
-          >
-            +
-          </button>
-        </div>
-        @if (tagsExpanded()) {
-          @if (loading()) {
-            <p class="st-left__empty" data-testid="st-sidebar-refs-loading" i18n>Loading…</p>
-          } @else if (offline()) {
-            <p class="st-left__empty" data-testid="st-sidebar-refs-offline" i18n>Git core offline</p>
-          } @else if (error(); as err) {
-            <p class="st-left__empty" data-testid="st-sidebar-refs-error">{{ err.message }}</p>
-          } @else if (tags().length === 0) {
-            <p class="st-left__empty" data-testid="st-sidebar-tags-empty" i18n>No tags</p>
-          } @else {
-            <ul class="st-left__list" data-testid="st-sidebar-tags">
-              @for (tag of tags(); track tag) {
-                <li
-                  class="st-left__item st-left__sub"
-                  data-testid="st-sidebar-tag"
-                  (contextmenu)="onTagContextMenu($event, tag)"
-                >
-                  {{ tag }}
-                </li>
-              }
-            </ul>
-          }
-        }
-      </div>
-
-      <div class="st-left__section">
+      <div class="st-rail__section">
         <button
-          class="st-left__head"
+          class="st-rail__head st-eyebrow"
           type="button"
           (click)="remotesExpanded.set(!remotesExpanded())"
         >
-          <span class="st-left__arrow">{{ remotesExpanded() ? '▾' : '▸' }}</span
-          ><span i18n>REMOTES</span>
+          <st-icon
+            class="st-rail__chevron"
+            [name]="remotesExpanded() ? 'chevron-down' : 'chevron-right'"
+          />
+          <span i18n>Remote references</span>
         </button>
         @if (remotesExpanded()) {
           @if (loading()) {
-            <p class="st-left__empty" data-testid="st-sidebar-refs-loading" i18n>Loading…</p>
+            <p class="st-rail__empty" data-testid="st-sidebar-refs-loading" i18n>Loading…</p>
           } @else if (offline()) {
-            <p class="st-left__empty" data-testid="st-sidebar-refs-offline" i18n>Git core offline</p>
+            <p class="st-rail__empty" data-testid="st-sidebar-refs-offline" i18n>Git core offline</p>
           } @else if (error(); as err) {
-            <p class="st-left__empty" data-testid="st-sidebar-refs-error">{{ err.message }}</p>
+            <p class="st-rail__empty" data-testid="st-sidebar-refs-error">{{ err.message }}</p>
           } @else if (remoteGroups().length === 0) {
-            <p class="st-left__empty" data-testid="st-sidebar-remotes-empty" i18n>No remotes</p>
+            <p class="st-rail__empty" data-testid="st-sidebar-remotes-empty" i18n>No remotes</p>
           } @else {
             <div data-testid="st-sidebar-remotes">
               @for (group of remoteGroups(); track group.remote) {
-                <ul class="st-left__list">
-                  <li class="st-left__item st-left__sub">{{ group.remote }}</li>
+                <ul class="st-rail__list">
+                  <li class="st-rail__sub st-mono">{{ group.remote }}</li>
                   @for (branch of group.branches; track branch) {
                     <li
-                      class="st-left__item st-left__sub st-left__sub--branch st-left__sub--clickable"
+                      class="st-rail__row st-rail__row--sub st-rail__row--mono st-selectable-row st-focus-ring--inset"
                       data-testid="st-sidebar-remote-branches"
                       role="button"
                       tabindex="0"
@@ -204,47 +208,99 @@ interface RowMenu {
         }
       </div>
 
-      <div class="st-left__section">
-        <div class="st-left__headrow">
+      <div class="st-rail__section">
+        <div class="st-rail__headrow">
           <button
-            class="st-left__head"
+            class="st-rail__head st-eyebrow"
+            type="button"
+            (click)="tagsExpanded.set(!tagsExpanded())"
+          >
+            <st-icon
+              class="st-rail__chevron"
+              [name]="tagsExpanded() ? 'chevron-down' : 'chevron-right'"
+            />
+            <span i18n>Tags</span>
+          </button>
+          <button
+            class="st-rail__add"
+            type="button"
+            data-testid="st-sidebar-add-tag"
+            title="New tag"
+            i18n-title
+            (click)="newTagRequested.emit()"
+          >
+            <st-icon name="plus" />
+          </button>
+        </div>
+        @if (tagsExpanded()) {
+          @if (loading()) {
+            <p class="st-rail__empty" data-testid="st-sidebar-refs-loading" i18n>Loading…</p>
+          } @else if (offline()) {
+            <p class="st-rail__empty" data-testid="st-sidebar-refs-offline" i18n>Git core offline</p>
+          } @else if (error(); as err) {
+            <p class="st-rail__empty" data-testid="st-sidebar-refs-error">{{ err.message }}</p>
+          } @else if (tags().length === 0) {
+            <p class="st-rail__empty" data-testid="st-sidebar-tags-empty" i18n>No tags</p>
+          } @else {
+            <ul class="st-rail__list" data-testid="st-sidebar-tags">
+              @for (tag of tags(); track tag) {
+                <li
+                  class="st-rail__row st-rail__row--sub st-selectable-row st-focus-ring--inset"
+                  data-testid="st-sidebar-tag"
+                  (contextmenu)="onTagContextMenu($event, tag)"
+                >
+                  {{ tag }}
+                </li>
+              }
+            </ul>
+          }
+        }
+      </div>
+
+      <div class="st-rail__section">
+        <div class="st-rail__headrow">
+          <button
+            class="st-rail__head st-eyebrow"
             type="button"
             (click)="stashesExpanded.set(!stashesExpanded())"
           >
-            <span class="st-left__arrow">{{ stashesExpanded() ? '▾' : '▸' }}</span
-            ><span i18n>STASHES</span>
+            <st-icon
+              class="st-rail__chevron"
+              [name]="stashesExpanded() ? 'chevron-down' : 'chevron-right'"
+            />
+            <span i18n>Stashes</span>
           </button>
           <button
-            class="st-left__add"
+            class="st-rail__add"
             type="button"
             data-testid="st-sidebar-stash-push"
             title="Stash current changes"
             i18n-title
             (click)="stashPushRequested.emit()"
           >
-            +
+            <st-icon name="plus" />
           </button>
         </div>
         @if (stashesExpanded()) {
           @if (stashesLoading()) {
-            <p class="st-left__empty" data-testid="st-sidebar-stashes-loading" i18n>Loading…</p>
+            <p class="st-rail__empty" data-testid="st-sidebar-stashes-loading" i18n>Loading…</p>
           } @else if (offline()) {
-            <p class="st-left__empty" data-testid="st-sidebar-stashes-offline" i18n>Git core offline</p>
+            <p class="st-rail__empty" data-testid="st-sidebar-stashes-offline" i18n>Git core offline</p>
           } @else if (stashesError(); as err) {
-            <p class="st-left__empty" data-testid="st-sidebar-stashes-error">{{ err.message }}</p>
+            <p class="st-rail__empty" data-testid="st-sidebar-stashes-error">{{ err.message }}</p>
           } @else if (stashes().length === 0) {
-            <p class="st-left__empty" data-testid="st-sidebar-stashes-empty" i18n>No stashes</p>
+            <p class="st-rail__empty" data-testid="st-sidebar-stashes-empty" i18n>No stashes</p>
           } @else {
-            <ul class="st-left__list" data-testid="st-sidebar-stashes">
+            <ul class="st-rail__list" data-testid="st-sidebar-stashes">
               @for (stash of stashes(); track stash.index) {
-                <li class="st-left__item st-left__sub st-left__stash" data-testid="st-sidebar-stash">
-                  <span class="st-left__stash-label">
-                    <span class="st-left__stash-msg">{{ stashLabel(stash) }}</span>
+                <li class="st-rail__stash" data-testid="st-sidebar-stash">
+                  <span class="st-rail__stash-label">
+                    <span class="st-rail__stash-msg">{{ stashLabel(stash) }}</span>
                     @if (stash.branchName) {
-                      <span class="st-left__stash-branch">{{ stash.branchName }}</span>
+                      <span class="st-rail__stash-branch">{{ stash.branchName }}</span>
                     }
                   </span>
-                  <span class="st-left__stash-actions">
+                  <span class="st-rail__stash-actions">
                     <button
                       type="button"
                       data-testid="st-sidebar-stash-apply"
@@ -263,7 +319,7 @@ interface RowMenu {
                     </button>
                     <button
                       type="button"
-                      class="st-left__menu-danger"
+                      class="st-rail__menu-danger"
                       data-testid="st-sidebar-stash-drop"
                       [disabled]="stashOpRunning()"
                       (click)="stashDropRequested.emit(stash)"
@@ -278,28 +334,27 @@ interface RowMenu {
         }
       </div>
 
-      <div class="st-left__section">
-        <div class="st-left__headrow">
-          <button
-            class="st-left__head"
-            type="button"
-            data-testid="st-sidebar-git-flow"
-            (click)="gitFlowRequested.emit()"
-          >
-            <span class="st-left__arrow">⚙</span><span i18n>GIT FLOW</span>
-          </button>
-        </div>
+      <div class="st-rail__section">
+        <button
+          class="st-rail__head st-eyebrow"
+          type="button"
+          data-testid="st-sidebar-git-flow"
+          (click)="gitFlowRequested.emit()"
+        >
+          <st-icon class="st-rail__chevron" name="git-flow" />
+          <span i18n>Git Flow</span>
+        </button>
       </div>
 
       @if (rowMenu(); as menu) {
         <div
-          class="st-left__menu-backdrop"
+          class="st-rail__menu-backdrop"
           data-testid="st-sidebar-menu-backdrop"
           (click)="closeRowMenu()"
           (contextmenu)="onMenuBackdropContextMenu($event)"
         ></div>
         <div
-          class="st-left__menu"
+          class="st-rail__menu"
           role="menu"
           data-testid="st-sidebar-row-menu"
           [style.left.px]="menu.x"
@@ -334,7 +389,7 @@ interface RowMenu {
           <button
             type="button"
             role="menuitem"
-            class="st-left__menu-danger"
+            class="st-rail__menu-danger"
             data-testid="st-sidebar-menu-delete"
             [disabled]="deleteBlockedFor(menu)"
             [attr.title]="deleteBlockedFor(menu) ? deleteCurrentBranchTitle : null"
@@ -345,9 +400,9 @@ interface RowMenu {
         </div>
       }
 
-      <div class="st-left__footer">
+      <div class="st-rail__footer">
         <button
-          class="st-left__collapse"
+          class="st-rail__collapse"
           type="button"
           (click)="collapseToggle.emit()"
           title="Collapse"
@@ -358,7 +413,7 @@ interface RowMenu {
       </div>
     } @else {
       <button
-        class="st-left__collapse"
+        class="st-rail__collapse"
         type="button"
         (click)="collapseToggle.emit()"
         title="Expand"
@@ -372,280 +427,303 @@ interface RowMenu {
     :host {
       display: flex;
       flex-direction: column;
-      width: var(--left-w, 260px);
-      min-width: var(--left-w, 260px);
-      background: var(--st-color-surface, #252536);
-      border-right: 1px solid var(--st-color-border, #2f2f44);
-      color: var(--st-color-text, #d6d6de);
+      width: var(--st-size-rail);
+      min-width: var(--st-size-rail);
+      background: var(--st-color-rail);
+      border-right: var(--st-hairline) solid var(--st-color-border);
+      color: var(--st-color-text);
       overflow: auto;
-      font-size: 12.5px;
+      font-size: var(--st-font-12);
     }
 
-    :host(.st-left--collapsed) {
-      width: 32px;
-      min-width: 32px;
+    :host(.st-rail--collapsed) {
+      width: var(--st-size-rail-collapsed);
+      min-width: var(--st-size-rail-collapsed);
       align-items: center;
-      padding-top: 8px;
+      padding-top: var(--st-space-2);
       overflow: hidden;
     }
 
-    .st-left__section {
-      border-bottom: 1px solid var(--st-color-border, #2f2f44);
-      padding: 6px 0;
-    }
-
-    .st-left__headrow {
-      display: flex;
-      align-items: center;
-    }
-
-    .st-left__head {
-      flex: 1;
-      min-width: 0;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      background: transparent;
-      border: none;
-      color: var(--muted, #8a8a9a);
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.5px;
-      padding: 6px 10px;
-      cursor: pointer;
-      text-align: left;
-    }
-
-    .st-left__add {
-      flex: none;
-      background: transparent;
-      border: 1px solid transparent;
-      color: var(--muted, #8a8a9a);
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-      line-height: 1;
-      padding: 1px 7px;
-      margin-right: 6px;
-    }
-
-    .st-left__add:hover {
-      color: var(--st-color-text, #d6d6de);
-      border-color: var(--st-color-border, #2f2f44);
-    }
-
-    .st-left__head:hover {
-      color: var(--st-color-text, #d6d6de);
-    }
-
-    .st-left__arrow {
-      font-size: 10px;
-      width: 12px;
-      display: inline-block;
-    }
-
-    .st-left__list {
-      list-style: none;
-      margin: 0;
-      padding: 0 0 4px 0;
-    }
-
-    .st-left__item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 5px 10px 5px 28px;
-      cursor: pointer;
-      color: var(--st-color-text, #d6d6de);
-      font-size: 12.5px;
-    }
-
-    .st-left__item:hover {
-      background: rgba(255, 255, 255, 0.05);
-    }
-
-    .st-left__item--active {
-      background: var(--accent-soft, rgba(10, 132, 255, 0.15));
-      color: var(--st-color-accent, #0a84ff);
-      border-left: 2px solid var(--st-color-accent, #0a84ff);
-      padding-left: 26px;
-    }
-
-    .st-left__ico {
-      opacity: 0.7;
-      width: 14px;
-      text-align: center;
-    }
-
-    .st-left__sub {
-      padding-left: 44px;
-      color: var(--muted, #8a8a9a);
-    }
-
-    .st-left__sub--branch {
-      padding-left: 58px;
-    }
-
-    /* Branch rows are actionable: brighter hover plus a keyboard focus ring. */
-    .st-left__sub--clickable {
-      -webkit-user-select: none;
-      user-select: none;
-    }
-
-    .st-left__sub--clickable:hover {
-      color: var(--st-color-text, #d6d6de);
-      background: rgba(255, 255, 255, 0.08);
-    }
-
-    .st-left__sub--clickable:focus-visible {
-      outline: 1px solid var(--st-color-accent, #0a84ff);
-      outline-offset: -1px;
-    }
-
-    .st-left__empty {
-      margin: 0;
-      padding: 4px 10px 4px 28px;
-      color: var(--muted, #8a8a9a);
-      font-size: 12px;
-      font-style: italic;
-    }
-
-    .st-left__stash {
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 6px;
-      padding-right: 8px;
-    }
-
-    .st-left__stash-label {
+    .st-rail__repo {
       display: flex;
       flex-direction: column;
+      gap: 2px;
+      padding: var(--st-space-3);
+      border-bottom: var(--st-hairline) solid var(--st-color-border);
       min-width: 0;
     }
 
-    .st-left__stash-msg {
+    .st-rail__repo-name,
+    .st-rail__repo-branch,
+    .st-rail__repo-path {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
 
-    .st-left__stash-branch {
-      color: var(--muted, #8a8a9a);
-      font-size: 11px;
+    .st-rail__repo-name {
+      font-size: var(--st-font-13);
+      font-weight: 600;
     }
 
-    .st-left__stash-actions {
+    .st-rail__repo-branch {
+      font-size: var(--st-font-12);
+      color: var(--st-color-accent);
+    }
+
+    .st-rail__repo-path {
+      font-size: var(--st-font-11);
+      color: var(--st-color-muted);
+    }
+
+    .st-rail__section {
+      border-bottom: var(--st-hairline) solid var(--st-color-border);
+      padding: var(--st-space-1) 0;
+    }
+
+    .st-rail__headrow {
+      display: flex;
+      align-items: center;
+    }
+
+    .st-rail__head {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: var(--st-space-2);
+      background: transparent;
+      border: none;
+      color: var(--st-color-muted);
+      padding: var(--st-space-2) var(--st-space-3);
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .st-rail__head:hover {
+      color: var(--st-color-text);
+    }
+
+    .st-rail__chevron {
+      flex: none;
+    }
+
+    .st-rail__add {
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: var(--st-hairline) solid transparent;
+      color: var(--st-color-muted);
+      border-radius: var(--st-radius-2);
+      cursor: pointer;
+      padding: 2px;
+      margin-right: var(--st-space-2);
+    }
+
+    .st-rail__add:hover {
+      color: var(--st-color-text);
+      border-color: var(--st-color-border);
+    }
+
+    .st-rail__list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .st-rail__item {
+      margin: 0 var(--st-space-2);
+    }
+
+    .st-rail__item--active {
+      border-radius: var(--st-radius-2);
+    }
+
+    .st-rail__row {
+      display: flex;
+      align-items: center;
+      gap: var(--st-space-2);
+      height: var(--st-size-row-tree-dense);
+      padding: 0 var(--st-space-2) 0 var(--st-space-6);
+      color: var(--st-color-muted);
+      font-size: var(--st-font-12);
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    .st-rail__row:hover {
+      color: var(--st-color-text);
+    }
+
+    .st-rail__row--sub {
+      padding-left: var(--st-space-6);
+    }
+
+    .st-rail__row--mono {
+      padding-left: var(--st-space-7);
+      font-family: var(--st-font-mono);
+    }
+
+    .st-rail__row-label {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .st-rail__sub {
+      display: flex;
+      align-items: center;
+      height: var(--st-size-row-tree-dense);
+      padding: 0 var(--st-space-3);
+      color: var(--st-color-muted);
+      font-size: var(--st-font-11);
+    }
+
+    .st-rail__filter {
+      padding: var(--st-space-1) var(--st-space-2) var(--st-space-2);
+    }
+
+    .st-rail__empty {
+      margin: 0;
+      padding: var(--st-space-1) var(--st-space-3);
+      color: var(--st-color-muted);
+      font-size: var(--st-font-12);
+      font-style: italic;
+    }
+
+    .st-rail__stash {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--st-space-2);
+      padding: var(--st-space-1) var(--st-space-2) var(--st-space-1) var(--st-space-3);
+    }
+
+    .st-rail__stash-label {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .st-rail__stash-msg {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .st-rail__stash-branch {
+      color: var(--st-color-muted);
+      font-size: var(--st-font-11);
+    }
+
+    .st-rail__stash-actions {
       display: flex;
       flex: none;
       gap: 2px;
     }
 
-    .st-left__stash-actions button {
+    .st-rail__stash-actions button {
       background: transparent;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      border-radius: 4px;
-      color: var(--muted, #8a8a9a);
+      border: var(--st-hairline) solid var(--st-color-border);
+      border-radius: var(--st-radius-2);
+      color: var(--st-color-muted);
       cursor: pointer;
       font: inherit;
-      font-size: 11px;
+      font-size: var(--st-font-11);
       padding: 1px 6px;
     }
 
-    .st-left__stash-actions button:hover:not(:disabled) {
-      color: var(--st-color-text, #d6d6de);
+    .st-rail__stash-actions button:hover:not(:disabled) {
+      color: var(--st-color-text);
     }
 
-    .st-left__stash-actions button:disabled {
+    .st-rail__stash-actions button:disabled {
       opacity: 0.5;
       cursor: default;
     }
 
-    .st-left__menu-backdrop {
+    .st-rail__menu-backdrop {
       position: fixed;
       inset: 0;
-      z-index: 119;
+      z-index: var(--st-z-backdrop);
     }
 
-    .st-left__menu {
+    .st-rail__menu {
       position: fixed;
-      z-index: 120;
+      z-index: var(--st-z-menu);
       min-width: 168px;
-      padding: 4px;
-      background: var(--st-color-surface, #252536);
-      border: 1px solid var(--st-color-border, #2f2f44);
-      border-radius: 8px;
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
-      color: var(--st-color-text, #d6d6de);
-      font-size: 12px;
+      padding: var(--st-space-1);
+      background: var(--st-color-raised);
+      border: var(--st-hairline) solid var(--st-color-border);
+      border-radius: var(--st-radius-4);
+      color: var(--st-color-text);
+      font-size: var(--st-font-12);
     }
 
-    .st-left__menu button {
+    .st-rail__menu button {
       display: block;
       width: 100%;
-      padding: 6px 10px;
+      padding: var(--st-space-2) var(--st-space-3);
       background: transparent;
       border: 0;
-      border-radius: 5px;
+      border-radius: var(--st-radius-3);
       color: inherit;
       font: inherit;
       text-align: left;
       cursor: pointer;
     }
 
-    .st-left__menu button:hover,
-    .st-left__menu button:focus-visible {
-      background: color-mix(in srgb, var(--st-color-accent, #0a84ff) 22%, transparent);
+    .st-rail__menu button:hover,
+    .st-rail__menu button:focus-visible {
+      background: var(--st-color-accent-soft);
       outline: none;
     }
 
-    .st-left__menu button:disabled {
+    .st-rail__menu button:disabled {
       opacity: 0.5;
       cursor: default;
     }
 
-    .st-left__menu button:disabled:hover {
+    .st-rail__menu button:disabled:hover {
       background: transparent;
     }
 
-    .st-left__menu-danger {
-      color: #ff6b6b;
+    .st-rail__menu-danger {
+      color: var(--st-color-danger);
     }
 
-    .st-left__footer {
+    .st-rail__footer {
       margin-top: auto;
-      padding: 8px;
+      padding: var(--st-space-2);
       display: flex;
       justify-content: flex-end;
     }
 
-    .st-left__collapse {
+    .st-rail__collapse {
       background: transparent;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      color: var(--muted, #8a8a9a);
-      border-radius: 4px;
+      border: var(--st-hairline) solid var(--st-color-border);
+      color: var(--st-color-muted);
+      border-radius: var(--st-radius-2);
       cursor: pointer;
       padding: 2px 8px;
     }
 
-    .st-left__collapse:hover {
-      color: var(--st-color-text, #d6d6de);
-      border-color: var(--muted, #8a8a9a);
-    }
-
-    @media (max-width: 640px) {
-      :host(:not(.st-left--collapsed)) {
-        position: absolute;
-        left: 0;
-        top: 0;
-        bottom: 0;
-        z-index: 15;
-        box-shadow: 8px 0 24px rgba(0, 0, 0, 0.4);
-      }
+    .st-rail__collapse:hover {
+      color: var(--st-color-text);
+      border-color: var(--st-color-muted);
     }
   `,
 })
-export class SidebarLeft {
+export class NavRail {
   readonly collapsed = input(false);
+  /** Active repository display name; hidden with the header when empty. */
+  readonly repoName = input('');
+  /** Active repository filesystem path (mono byline). */
+  readonly repoPath = input('');
   /** Local branch display names. */
   readonly branches = input<readonly string[]>([]);
   /** Name of the current local branch; only it can carry a pull-pending badge. */
@@ -668,6 +746,13 @@ export class SidebarLeft {
   readonly error = input<AppError | null>(null);
   /** Controlled by the parent; this component never mutates it locally. */
   readonly activeWorkspace = input('history');
+  /**
+   * Working-tree change count for the "Local changes" workspace pill. The shell
+   * has no working-tree count at its scope yet, so it passes 0 and the pill is
+   * hidden; the `st-nav-item` mechanism is already in place for a later feed.
+   * (Deferral — no IPC call is invented here.)
+   */
+  readonly changeCount = input(0);
 
   readonly collapseToggle = output<void>();
   readonly workspaceSelected = output<string>();
@@ -732,24 +817,40 @@ export class SidebarLeft {
   });
 
   readonly WORKSPACE: readonly WorkspaceItem[] = [
-    { kind: 'status', label: $localize`File status`, icon: '▦' },
-    { kind: 'history', label: $localize`History`, icon: '≡' },
-    { kind: 'search', label: $localize`Search`, icon: '⌕' },
+    { kind: 'status', label: $localize`Local changes`, icon: 'changes' },
+    { kind: 'history', label: $localize`History`, icon: 'history' },
+    { kind: 'search', label: $localize`Search`, icon: 'search' },
   ];
 
   /** Explanatory tooltip shown when "Delete…" targets the current branch. */
   readonly deleteCurrentBranchTitle = $localize`Cannot delete the current branch`;
+
+  readonly branchFilterPlaceholder = $localize`Filter branches…`;
 
   readonly workspaceExpanded = signal(true);
   readonly branchesExpanded = signal(true);
   readonly tagsExpanded = signal(false);
   readonly remotesExpanded = signal(true);
   readonly stashesExpanded = signal(false);
+  /** Client-side branch filter term (empty = no filtering). */
+  readonly branchFilter = signal('');
   /** Open per-row menu (branch or tag), or null when closed. */
   readonly rowMenu = signal<RowMenu | null>(null);
 
+  /** Branch rows narrowed by the local filter (case-insensitive substring). */
+  readonly filteredBranches = computed<readonly string[]>(() => {
+    const term = this.branchFilter().trim().toLowerCase();
+    if (!term) return this.branches();
+    return this.branches().filter((branch) => branch.toLowerCase().includes(term));
+  });
+
   selectWorkspace(kind: string): void {
     this.workspaceSelected.emit(kind);
+  }
+
+  /** Count pill for a workspace item: only "Local changes" carries one. */
+  countFor(kind: string): number | undefined {
+    return kind === 'status' ? this.changeCount() : undefined;
   }
 
   /**

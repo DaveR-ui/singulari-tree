@@ -41,9 +41,9 @@ import type { MergeResponse } from '@contracts/gitcore';
       align-items: flex-start;
       gap: 10px;
       padding: 8px 12px;
-      background: rgba(255, 197, 66, 0.12);
-      border-bottom: 1px solid rgba(255, 197, 66, 0.45);
-      color: #ffcf6b;
+      background: var(--st-color-warn-soft);
+      border-bottom: 1px solid var(--st-color-warn);
+      color: var(--st-color-warn);
       font-size: 12.5px;
     }
 
@@ -57,8 +57,8 @@ import type { MergeResponse } from '@contracts/gitcore';
     .st-merge-conflict__dismiss {
       flex: none;
       background: transparent;
-      border: 1px solid rgba(255, 197, 66, 0.45);
-      color: #ffcf6b;
+      border: 1px solid var(--st-color-warn);
+      color: var(--st-color-warn);
       border-radius: 4px;
       cursor: pointer;
       padding: 1px 6px;
@@ -66,7 +66,7 @@ import type { MergeResponse } from '@contracts/gitcore';
     }
 
     .st-merge-conflict__dismiss:hover {
-      background: rgba(255, 197, 66, 0.18);
+      background: var(--st-color-warn-soft);
     }
   `,
 })

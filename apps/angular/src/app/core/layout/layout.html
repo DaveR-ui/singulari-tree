@@ -1,32 +1,21 @@
 <div class="st-shell">
-  <st-shell-header
-    [tabs]="headerTabs()"
+  <st-top-bar
+    [tabs]="topBarTabs()"
     [activeTab]="workspaces.activeTabId()"
-    (tabSelected)="onTabSelected($event)"
-    (tabClosed)="onTabClosed($event)"
-    (addRequested)="onTabAdd()"
-  />
-
-  <st-shell-toolbar
     [hasActiveRepo]="repoState.activeId() !== null"
     [canFetchAll]="workspaces.tabs().length > 0"
     [pullPending]="repoState.currentBranchBehind()"
+    [drawerPinned]="drawerPinned()"
+    (tabSelected)="onTabSelected($event)"
+    (tabClosed)="onTabClosed($event)"
+    (addRequested)="onTabAdd()"
     (pullRequested)="remoteOps.openDialog('pull')"
     (pushRequested)="remoteOps.openDialog('push')"
     (fetchRequested)="remoteOps.openDialog('fetch')"
     (fetchAllRequested)="onFetchAll()"
     (cloneFromClipboardRequested)="onCloneFromClipboard()"
     (copyRepoUrlRequested)="onCopyRepoUrl()"
-  />
-
-  <!-- Renderer-orchestrated multi-repo fetch fan-out (ADR-024). -->
-  <st-fetch-all-status
-    [open]="fetchAllOpen()"
-    [progress]="remoteOps.fetchAllProgress()"
-    [status]="remoteOps.fetchAllStatus()"
-    [repos]="fetchAllRepos()"
-    [error]="remoteOps.fetchAllError()"
-    (dismissed)="remoteOps.clearFetchAll()"
+    (drawerToggled)="onDrawerToggled()"
   />
 
   <!-- Prominent, dismissible checkout-failure banner for the active repo.
@@ -42,11 +31,13 @@
     (dismiss)="repoState.dismissMergeConflict()"
   />
 
-  <!-- BODY: left | center | right -->
+  <!-- BODY: rail | workspace | drawer -->
   <div class="st-body">
-    <st-sidebar-left
-      [collapsed]="leftCollapsed()"
+    <st-nav-rail
+      [collapsed]="railCollapsed()"
       [activeWorkspace]="activeWorkspace()"
+      [repoName]="repoState.activeRepo()?.name ?? ''"
+      [repoPath]="repoState.activeRepo()?.fsPath ?? ''"
       [branches]="repoState.branches()"
       [currentBranch]="repoState.currentBranch()"
       [currentBranchBehind]="repoState.currentBranchBehind()"
@@ -60,7 +51,8 @@
       [loading]="repoState.refsLoading()"
       [offline]="repoState.refsOffline()"
       [error]="repoState.refsError()"
-      (collapseToggle)="toggleLeft()"
+      [changeCount]="0"
+      (collapseToggle)="toggleRail()"
       (workspaceSelected)="onWorkspaceSelected($event)"
       (branchSelected)="onBranchSelected($event)"
       (remoteBranchSelected)="onRemoteBranchSelected($event)"
@@ -78,7 +70,7 @@
     />
 
     <!-- CENTER: route-driven, except the cross-repo search workspace (ADR-026) -->
-    <div class="st-center">
+    <st-workspace-split>
       @if (activeWorkspace() === 'search') {
         <div class="st-router-host">
           <st-search-workspace (hitSelected)="onSearchHitSelected($event)" />
@@ -88,21 +80,20 @@
           <router-outlet />
         </div>
       }
-    </div>
+    </st-workspace-split>
 
-    <!-- RIGHT DRAWER -->
+    <!-- REPO DRAWER (pinned inline or floating popover, plan §4.7) -->
     <st-repo-drawer
       [repos]="repoCards()"
-      [collapsed]="rightCollapsed()"
-      [overlay]="isOverlay()"
-      [width]="isOverlay() || rightCollapsed() ? null : rightWidth()"
+      [pinned]="drawerPinned()"
+      [open]="drawerOpen()"
       [selectedId]="repoState.activeId()"
       [removingId]="repoState.removingId()"
       [loading]="repoState.reposLoading()"
       [offline]="repoState.reposOffline()"
       [error]="repoState.reposError()"
-      (toggleRight)="toggleRight()"
-      (resizeStart)="onDragStart($event)"
+      (pinToggled)="onDrawerToggled()"
+      (closed)="onDrawerClosed()"
       (repoSelected)="onRepoSelected($event)"
       (removeRequested)="onRemoveRepository($event)"
       (addRequested)="onAddRepository()"
@@ -110,17 +101,24 @@
   </div>
   <!-- /st-body -->
 
-  <!-- backdrop for overlay mode -->
-  @if (isOverlay() && !rightCollapsed()) {
-    <div class="st-backdrop" (click)="closeOverlay()"></div>
-  }
-
-  <!-- collapsed right peek button (desktop) -->
-  @if (!isOverlay() && rightCollapsed()) {
-    <button class="st-right-peek" type="button" (click)="toggleRight()" title="Show repositories" i18n-title>
-      ›
-    </button>
-  }
+  <!-- STATUS BAR: context | sync/online | live region + compact fetch-all -->
+  <st-status-bar
+    [repo]="repoState.activeRepo()?.name ?? ''"
+    [branch]="repoState.currentBranch()"
+    [shortHash]="''"
+    [ahead]="0"
+    [behind]="repoState.currentBranchBehind()"
+    [offline]="remoteOps.offline()"
+  >
+    <!-- Renderer-orchestrated multi-repo fetch fan-out (ADR-024). -->
+    <st-fetch-all-status
+      [open]="fetchAllOpen()"
+      [progress]="remoteOps.fetchAllProgress()"
+      [status]="remoteOps.fetchAllStatus()"
+      [error]="remoteOps.fetchAllError()"
+      (dismissed)="remoteOps.clearFetchAll()"
+    />
+  </st-status-bar>
 
   <st-pull-dialog
     [open]="remoteOps.activeDialog() === 'pull'"

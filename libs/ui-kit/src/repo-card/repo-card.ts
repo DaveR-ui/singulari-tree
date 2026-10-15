@@ -46,32 +46,28 @@ export interface RepoCardView {
     :host {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: var(--st-space-2);
       padding: 8px 10px;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      border-radius: 8px;
-      background: var(--st-color-surface, #252536);
-      color: var(--st-color-text, #d6d6de);
+      border: 1px solid var(--st-color-border);
+      border-radius: var(--st-radius-4);
+      background: var(--st-color-surface);
+      color: var(--st-color-text);
       cursor: pointer;
       font-size: 12px;
     }
 
     :host(:hover) {
-      border-color: var(--st-color-accent, #0a84ff);
+      border-color: var(--st-color-accent);
     }
 
     :host:focus-visible {
-      outline: 1px solid var(--st-color-accent, #0a84ff);
+      outline: 1px solid var(--st-color-focus);
       outline-offset: -1px;
     }
 
     :host(.st-repo-card--selected) {
-      border-color: var(--st-color-accent, #0a84ff);
-      background: color-mix(
-        in srgb,
-        var(--st-color-accent, #0a84ff) 18%,
-        var(--st-color-surface, #252536)
-      );
+      border-color: var(--st-color-accent);
+      background: color-mix(in srgb, var(--st-color-accent) 18%, var(--st-color-surface));
     }
 
     .st-repo-card__icon {
@@ -102,7 +98,7 @@ export interface RepoCardView {
     }
 
     .st-repo-card__subtitle {
-      font-size: 11px;
+      font-size: var(--st-font-11);
       opacity: 0.6;
       overflow: hidden;
       text-overflow: ellipsis;

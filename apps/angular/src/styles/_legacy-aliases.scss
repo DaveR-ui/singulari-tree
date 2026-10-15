@@ -1,0 +1,23 @@
+/*
+ * Legacy aliases — temporary shim.
+ *
+ * P2 (shell rebuild) deleted the geometry alias group: every consumer died
+ * with the retired shell chrome, and the P2 components consume `--st-size-*`
+ * directly.
+ *
+ * The eight color aliases below survive one more phase. They feed only the
+ * dialogs and secondary surfaces retokenized in P5 (`pull-dialog`,
+ * `git-flow-dialog`, `stash-drop-confirm-dialog`, …); each consumer switches
+ * to the semantic token directly when it is retokenized, and this block is
+ * deleted in P5.
+ */
+:root {
+  --bg: var(--st-color-bg);
+  --panel: var(--st-color-surface);
+  --panel-2: var(--st-color-surface-2);
+  --border: var(--st-color-border);
+  --text: var(--st-color-text);
+  --muted: var(--st-color-muted);
+  --accent: var(--st-color-accent);
+  --accent-soft: var(--st-color-accent-soft);
+}

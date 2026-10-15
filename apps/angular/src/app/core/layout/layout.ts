@@ -2,7 +2,6 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  HostListener,
   OnInit,
   computed,
   effect,
@@ -11,7 +10,7 @@ import {
   untracked,
 } from '@angular/core';
 import { Router, RouterOutlet, NavigationEnd } from '@angular/router';
-import type { RepoCardView } from '@singularitree/ui-kit';
+import { LiveRegionService, type RepoCardView, WorkspaceSplitComponent } from '@singularitree/ui-kit';
 import type { Repository, Stash } from '@contracts/domain';
 import type { CommitSearchHit, GitFlowConfig } from '@contracts/gitcore';
 import { CommitFocusService } from '@core/services/commit-focus.service';
@@ -50,11 +49,11 @@ import type {
 import { toLocalRepoCardView } from './local-repo-card-view';
 import { CheckoutErrorBanner } from './ui/checkout-error-banner/checkout-error-banner';
 import { MergeConflictBanner } from './ui/merge-conflict-banner/merge-conflict-banner';
+import { NavRail } from './ui/nav-rail/nav-rail';
 import { RepoDrawer } from './ui/repo-drawer/repo-drawer';
-import { ShellHeader, type ShellHeaderTab } from './ui/shell-header/shell-header';
-import { ShellToolbar } from './ui/shell-toolbar/shell-toolbar';
-import { SidebarLeft } from './ui/sidebar-left/sidebar-left';
+import { StatusBar } from './ui/status-bar/status-bar';
 import { SwitchBranchConfirmDialog } from './ui/switch-branch-confirm-dialog/switch-branch-confirm-dialog';
+import { TopBar, type TopBarTab } from './ui/top-bar/top-bar';
 
 /** Branch-switch attempt awaiting confirmation, either pre-checkout or blocked. */
 interface CheckoutPrompt {
@@ -65,20 +64,21 @@ interface CheckoutPrompt {
 }
 
 /**
- * Application shell: header + toolbar chrome, a route-driven center region and
- * the local-repository drawer. Layout state (width/collapse) is persisted to
- * localStorage; drawer data AND the left sidebar's ref lists both come from the
- * root `RepoState`, the active-local-repository source of truth. The top-level
- * menu is the OS-native one, so it is not rendered here.
+ * Application shell: top bar + nav rail + workspace + repo drawer + status bar.
+ * The drawer pin state is persisted to localStorage; ref data AND the nav rail's
+ * ref lists both come from the root `RepoState`, the active-local-repository
+ * source of truth. The top-level menu is the OS-native one, so it is not
+ * rendered here.
  */
 @Component({
   selector: 'st-layout',
   standalone: true,
   imports: [
     RouterOutlet,
-    ShellHeader,
-    ShellToolbar,
-    SidebarLeft,
+    TopBar,
+    NavRail,
+    StatusBar,
+    WorkspaceSplitComponent,
     RepoDrawer,
     CheckoutErrorBanner,
     PullDialog,
@@ -111,8 +111,9 @@ export class LayoutComponent implements OnInit {
   private readonly bridge = inject(IpcBridge);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly liveRegion = inject(LiveRegionService);
 
-  /** Current router URL, mirrored into a signal so the sidebar highlight can react. */
+  /** Current router URL, mirrored into a signal so the rail highlight can react. */
   private readonly currentUrl = signal(this.router.url);
 
   /** Top-level routes the OS-native menu may request. */
@@ -122,19 +123,18 @@ export class LayoutComponent implements OnInit {
     '/github-account',
   ]);
 
-  // -- responsive --
-  private readonly MOBILE_BP = 1024;
-  private readonly LS_RIGHT_W = 'st:rightWidth';
-  private readonly LS_RIGHT_COL = 'st:rightCollapsed';
+  private readonly LS_DRAWER_PINNED = 'st:drawerPinned';
 
-  readonly rightWidth = signal(320);
-  readonly rightCollapsed = signal(false);
-  readonly leftCollapsed = signal(false);
-  /** Controlled workspace selection for `<st-sidebar-left>`. */
+  /** Whether the repo drawer is docked inline (true) or floats as a popover (false). */
+  readonly drawerPinned = signal(true);
+  /** Whether the unpinned floating drawer popover is shown. */
+  readonly drawerOpen = signal(false);
+  /** Whether the nav rail is collapsed to its 40px strip. Not persisted. */
+  readonly railCollapsed = signal(false);
+  /** Whether the drawer is visible at all (docked or floating). */
+  readonly drawerExpanded = computed(() => this.drawerPinned() || this.drawerOpen());
+  /** Controlled workspace selection for `<st-nav-rail>`. */
   readonly activeWorkspace = signal('history');
-  readonly viewportW = signal(typeof window !== 'undefined' ? window.innerWidth : 1280);
-  readonly isMobile = computed(() => this.viewportW() < this.MOBILE_BP);
-  readonly isOverlay = computed(() => this.isMobile());
 
   /**
    * Branch-switch confirmation currently awaiting the user, or null. Opened on
@@ -177,9 +177,16 @@ export class LayoutComponent implements OnInit {
   /** Local tracked repos mapped to the drawer's presentational view model. */
   readonly repoCards = computed<RepoCardView[]>(() => this.repoState.repos().map(toLocalRepoCardView));
 
-  /** Open repository tabs mapped to the header's presentational view model. */
-  readonly headerTabs = computed<ShellHeaderTab[]>(() =>
-    this.workspaces.tabs().map((tab) => ({ id: tab.repoId, label: tab.name })),
+  /** Open repository tabs mapped to the top bar's tab strip view model. */
+  readonly topBarTabs = computed<TopBarTab[]>(() =>
+    this.workspaces.tabs().map((tab) => ({
+      id: tab.repoId,
+      label: tab.name,
+      branch:
+        tab.repoId === this.workspaces.activeTabId()
+          ? this.repoState.currentBranch() || undefined
+          : undefined,
+    })),
   );
 
   /** Open tabs mapped to the multi-repo fetch fan-out targets (ADR-024). */
@@ -187,33 +194,22 @@ export class LayoutComponent implements OnInit {
     this.workspaces.tabs().map((tab) => ({ repoId: tab.repoId, name: tab.name })),
   );
 
-  /** Whether the fetch-all status panel should be visible. */
+  /** Whether the fetch-all status line should be visible. */
   readonly fetchAllOpen = computed(
     () => this.remoteOps.fetchAllRunning() || this.remoteOps.fetchAllProgress() !== null,
   );
 
-  // drag state
-  private dragging = false;
-  private dragStartX = 0;
-  private dragStartW = 320;
-
   constructor() {
-    // persist side effects
+    // Persist the drawer pin state (the previous width/collapse pair is gone).
     effect(() => {
-      const w = this.rightWidth();
+      const pinned = this.drawerPinned();
       try {
-        localStorage.setItem(this.LS_RIGHT_W, String(w));
-      } catch {}
-    });
-    effect(() => {
-      const c = this.rightCollapsed();
-      try {
-        localStorage.setItem(this.LS_RIGHT_COL, String(c));
+        localStorage.setItem(this.LS_DRAWER_PINNED, String(pinned));
       } catch {}
     });
 
-    // Keep the sidebar WORKSPACE highlight truthful when navigation originates
-    // outside the sidebar (e.g. the graph/WIP "Changes" hand-off to File status):
+    // Keep the nav-rail WORKSPACE highlight truthful when navigation originates
+    // outside the rail (e.g. the graph/WIP "Changes" hand-off to File status):
     // mirror the router URL and derive the active workspace from it. This never
     // touches `onWorkspaceSelected`, which still sets the highlight eagerly for
     // the non-routed Search workspace.
@@ -229,6 +225,17 @@ export class LayoutComponent implements OnInit {
       // Every other route has no WORKSPACE entry (repos manager `/repos`, github
       // account, settings, and the tab-close fallback): clear any stale highlight.
       else this.activeWorkspace.set('');
+    });
+
+    // Publish fetch-all progress to the status-bar's single live region.
+    effect(() => {
+      if (!this.fetchAllOpen()) return;
+      const progress = this.remoteOps.fetchAllProgress();
+      this.liveRegion.announce(
+        progress
+          ? $localize`Fetching repositories ${progress.done}/${progress.total}`
+          : $localize`Fetching repositories…`,
+      );
     });
 
     // Take over from the fallback banner whenever a blocked checkout needs a
@@ -288,20 +295,14 @@ export class LayoutComponent implements OnInit {
 
   async ngOnInit(): Promise<void> {
     try {
-      const w = localStorage.getItem(this.LS_RIGHT_W);
-      if (w) {
-        const n = parseInt(w, 10);
-        if (!isNaN(n) && n >= 240 && n <= 560) this.rightWidth.set(n);
-      }
-      const c = localStorage.getItem(this.LS_RIGHT_COL);
-      if (c !== null) this.rightCollapsed.set(c === 'true');
+      const pinned = localStorage.getItem(this.LS_DRAWER_PINNED);
+      if (pinned !== null) this.drawerPinned.set(pinned === 'true');
     } catch {}
-    this.viewportW.set(typeof window !== 'undefined' ? window.innerWidth : 1280);
 
     // Restore the renderer-only workspace tabs before the core list arrives.
     this.workspaces.rehydrate();
-    // Best-effort: publish persisted repositories so the drawer and sidebar
-    // can resolve local repos and their refs.
+    // Best-effort: publish persisted repositories so the drawer and rail can
+    // resolve local repos and their refs.
     await this.repoState.loadRepositories();
     // Drop stale tab ids, then re-activate the restored tab so the shell and the
     // active-repo source of truth stay in sync across restarts (ADR-024).
@@ -312,6 +313,34 @@ export class LayoutComponent implements OnInit {
     }
     // Best-effort, non-blocking: connect the Git account once at startup.
     void this.githubAccount.autoConnectOnce();
+  }
+
+  // -- drawer interaction --------------------------------------------------
+
+  /**
+   * Pin toggle: from pinned, unpin and open the floating popover; from
+   * unpinned, pin it back (which closes the popover).
+   */
+  onDrawerToggled(): void {
+    if (this.drawerPinned()) {
+      this.drawerPinned.set(false);
+      this.drawerOpen.set(true);
+    } else {
+      this.drawerPinned.set(true);
+      this.drawerOpen.set(false);
+    }
+  }
+
+  /** Close the floating popover (only reachable while unpinned) and restore focus. */
+  onDrawerClosed(): void {
+    this.drawerOpen.set(false);
+    if (typeof document !== 'undefined') {
+      document.getElementById('st-drawer-toggle')?.focus();
+    }
+  }
+
+  toggleRail(): void {
+    this.railCollapsed.update((value) => !value);
   }
 
   /**
@@ -728,7 +757,7 @@ export class LayoutComponent implements OnInit {
   }
 
   /**
-   * Sidebar WORKSPACE selection (ADR-024 tabs, ADR-026 search, ADR-0029 file
+   * Rail WORKSPACE selection (ADR-024 tabs, ADR-026 search, ADR-0029 file
    * status). History is the routed repository screen and File status is a routed
    * child of it, so both leave the center region to the `router-outlet`; Search
    * stays an in-shell workspace rendered next to that outlet.
@@ -756,7 +785,7 @@ export class LayoutComponent implements OnInit {
     }
   }
 
-  /** "+" in the header: route to the repository manager to open another repo. */
+  /** "+" in the top bar: route to the repository manager to open another repo. */
   onTabAdd(): void {
     void this.router.navigate(['/repos']);
   }
@@ -782,45 +811,5 @@ export class LayoutComponent implements OnInit {
     this.commitFocus.request(hit.repoId, hit.oid);
     this.activeWorkspace.set('history');
     void this.router.navigate(['/repo']);
-  }
-
-  @HostListener('window:resize')
-  onResize(): void {
-    this.viewportW.set(window.innerWidth);
-  }
-
-  toggleRight(): void {
-    this.rightCollapsed.update((v) => !v);
-  }
-
-  toggleLeft(): void {
-    this.leftCollapsed.update((v) => !v);
-  }
-
-  // -- resizable drag handle
-  onDragStart(event: MouseEvent): void {
-    if (this.isOverlay()) return;
-    this.dragging = true;
-    this.dragStartX = event.clientX;
-    this.dragStartW = this.rightWidth();
-    event.preventDefault();
-    const onMove = (e: MouseEvent) => {
-      if (!this.dragging) return;
-      const dx = this.dragStartX - e.clientX;
-      let nw = this.dragStartW + dx;
-      nw = Math.max(240, Math.min(560, nw));
-      this.rightWidth.set(nw);
-    };
-    const onUp = () => {
-      this.dragging = false;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  }
-
-  closeOverlay(): void {
-    if (this.isOverlay()) this.rightCollapsed.set(true);
   }
 }
