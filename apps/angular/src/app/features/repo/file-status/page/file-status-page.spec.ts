@@ -4,6 +4,7 @@ import { By } from '@angular/platform-browser';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Branch, Commit, Diff, FileDiff, FileStatus, Hunk, Repository } from '@contracts/domain';
 import { DiffViewer } from '@singularitree/ui-kit';
+import { DiffModeService } from '@core/services/diff-mode.service';
 import { IpcBridge } from '@core/services/ipc-bridge.service';
 import { RepoState } from '@core/services/repo-state.service';
 import { GraphStore, WIP_OID } from '../../graph/graph.store';
@@ -247,21 +248,26 @@ function lastPayload(mock: { mock: { calls: unknown[][] } }): Record<string, unk
 
 /**
  * The diff pane must render to the RIGHT of the variant-body left column, never
- * swapped: assert both the DOM order (the pane FOLLOWS the left column) and
- * that it is the last flex child of the screen container. Fails if the two
- * panes are reordered.
+ * swapped: the workspace split projects the `detail` slot (file list) into the
+ * detail/left pane and the default slot (diff) into the primary/right pane.
+ * Fails if the two panes are reordered.
  */
 function assertDiffOnRight(fixture: ComponentFixture<FileStatusPage>): void {
   const host = fixture.nativeElement as HTMLElement;
-  const left = host.querySelector<HTMLElement>('.st-file-status__left');
+  const detail = host.querySelector('[data-testid="workspace-detail"]');
+  const primary = host.querySelector('[data-testid="workspace-primary"]');
   const right = query(fixture, 'file-status-diff');
+  const left = host.querySelector('.st-file-status__left');
+  expect(detail).not.toBeNull();
+  expect(primary).not.toBeNull();
   expect(left).not.toBeNull();
   expect(right).not.toBeNull();
-  expect(left!.compareDocumentPosition(right!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  const screen = host.querySelector<HTMLElement>('.st-file-status');
-  expect(screen).not.toBeNull();
-  const flexChildren = Array.from(screen!.children);
-  expect(flexChildren[flexChildren.length - 1]).toBe(right);
+  // detail (file list) precedes primary (diff); the split puts detail left/primary right.
+  expect(detail!.compareDocumentPosition(primary!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  // The file list is inside the detail; the diff is inside the primary, never swapped.
+  expect(detail!.contains(left!)).toBe(true);
+  expect(primary!.contains(right!)).toBe(true);
+  expect(detail!.contains(right!)).toBe(false);
 }
 
 describe('FileStatusPage', () => {
@@ -312,13 +318,13 @@ describe('FileStatusPage', () => {
     const { fixture, fs } = await setup({ selection: HEAD_HEX });
     await waitForDiff(fixture, fs);
 
-    all(fixture, 'variant-pr')[0].click();
+    all(fixture, 'toggle-segment-pr')[0].click();
     await vi.waitFor(() => expect(fs.variant()).toBe('pr'));
     await vi.waitFor(() => expect(fs.baseRef()).toBe('main'));
     fixture.detectChanges();
     expect(fs.targetRef()).toBe('develop');
 
-    all(fixture, 'variant-local')[0].click();
+    all(fixture, 'toggle-segment-local')[0].click();
     await vi.waitFor(() => expect(fs.variant()).toBe('local'));
   });
 
@@ -354,20 +360,66 @@ describe('FileStatusPage', () => {
     expect(rows[1].getAttribute('data-selected')).toBe('true');
   });
 
+  it('mounts the diff-mode toggle in the diff (primary) pane once a file is selected', async () => {
+    const { fixture, fs } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+
+    fs.selectFile('a.ts');
+    await settle(fixture);
+
+    const primary = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="workspace-primary"]',
+    );
+    const toggle = query(fixture, 'diff-mode-toggle');
+    expect(primary).not.toBeNull();
+    expect(toggle).not.toBeNull();
+    expect(primary!.contains(toggle!)).toBe(true);
+    assertDiffOnRight(fixture);
+  });
+
+  it('flips the diff-mode preference from the pane toggle', async () => {
+    const { fixture, fs } = await setup({ selection: HEAD_HEX });
+    const diffMode = TestBed.inject(DiffModeService);
+    await waitForDiff(fixture, fs);
+
+    fs.selectFile('a.ts');
+    await settle(fixture);
+
+    // Unified is the default: the viewer starts without side-by-side.
+    expect(diffMode.mode()).toBe('unified');
+    expect(viewer(fixture).renderSideBySide()).toBe(false);
+
+    all(fixture, 'toggle-segment-side-by-side')[0].click();
+    await settle(fixture);
+
+    expect(diffMode.mode()).toBe('side-by-side');
+    // The viewer reads the shared preference through the diff-mode service.
+    expect(viewer(fixture).renderSideBySide()).toBe(true);
+
+    all(fixture, 'toggle-segment-unified')[0].click();
+    await settle(fixture);
+
+    expect(diffMode.mode()).toBe('unified');
+    expect(viewer(fixture).renderSideBySide()).toBe(false);
+  });
+
   it('populates the PR base/target controls from the loaded branches', async () => {
     const { fixture, fs } = await setup({ selection: HEAD_HEX });
     await waitForDiff(fixture, fs);
 
-    all(fixture, 'variant-pr')[0].click();
+    all(fixture, 'toggle-segment-pr')[0].click();
     await vi.waitFor(() => expect(fs.variant()).toBe('pr'));
     await vi.waitFor(() => expect(fs.branches().length).toBe(3));
     fixture.detectChanges();
 
     expect(fs.branches().map((branch) => branch.name)).toEqual(['origin/main', 'main', 'develop']);
-    const target = query<HTMLSelectElement>(fixture, 'pr-target-select');
+    // The target is the st-select primitive: query its inner `<select>`.
+    const target = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(
+      '.st-select',
+    );
     expect(target).not.toBeNull();
     const options = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLOptionElement>(
-      'select[data-testid="pr-target-select"] option',
+      '.st-select option',
     );
     expect(Array.from(options).map((option) => option.value)).toEqual([
       'origin/main',
@@ -414,7 +466,7 @@ describe('FileStatusPage', () => {
     expect(getDiff.mock.calls.length).toBe(before);
 
     // The local variant is the one the working-tree refresh invalidates.
-    all(fixture, 'variant-local')[0].click();
+    all(fixture, 'toggle-segment-local')[0].click();
     await vi.waitFor(() => expect(fs.variant()).toBe('local'));
     const localCalls = getDiff.mock.calls.length;
 
@@ -472,21 +524,21 @@ describe('FileStatusPage', () => {
     assertDiffOnRight(fixture);
 
     // PR variant.
-    all(fixture, 'variant-pr')[0].click();
+    all(fixture, 'toggle-segment-pr')[0].click();
     await vi.waitFor(() => expect(fs.variant()).toBe('pr'));
     await vi.waitFor(() => expect(fs.baseRef()).toBe('main'));
     fixture.detectChanges();
     assertDiffOnRight(fixture);
 
     // Local variant.
-    all(fixture, 'variant-local')[0].click();
+    all(fixture, 'toggle-segment-local')[0].click();
     await vi.waitFor(() => expect(fs.variant()).toBe('local'));
     await vi.waitFor(() => expect(fs.wholeDiff()).not.toBeNull());
     fixture.detectChanges();
     assertDiffOnRight(fixture);
 
     // Switching back to the commit variant keeps the diff on the right too.
-    all(fixture, 'variant-commit')[0].click();
+    all(fixture, 'toggle-segment-commit')[0].click();
     await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
     fixture.detectChanges();
     assertDiffOnRight(fixture);
@@ -498,7 +550,7 @@ describe('FileStatusPage', () => {
 
     // No active commit and no graph selection: onVariantChange('commit') resolves
     // to nothing and must fall back to the working tree, not open an empty screen.
-    all(fixture, 'variant-commit')[0].click();
+    all(fixture, 'toggle-segment-commit')[0].click();
     fixture.detectChanges();
     await fixture.whenStable();
 
@@ -527,7 +579,7 @@ describe('FileStatusPage', () => {
     const { fixture, fs } = await setup({ selection: HEAD_HEX });
     await waitForDiff(fixture, fs);
 
-    all(fixture, 'variant-pr')[0].click();
+    all(fixture, 'toggle-segment-pr')[0].click();
     await vi.waitFor(() => expect(fs.variant()).toBe('pr'));
     await vi.waitFor(() => expect(fs.commitDiff()).not.toBeNull());
     fixture.detectChanges();

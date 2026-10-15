@@ -9,7 +9,7 @@ const OPTIONS: ToggleOption[] = [
 ];
 
 async function setup(
-  inputs: { value?: string; disabled?: boolean; options?: ToggleOption[] } = {},
+  inputs: { value?: string; disabled?: boolean; options?: ToggleOption[]; ariaLabel?: string } = {},
 ): Promise<ComponentFixture<ToggleGroupComponent>> {
   await TestBed.configureTestingModule({
     providers: [provideZonelessChangeDetection()],
@@ -18,6 +18,7 @@ async function setup(
   fixture.componentRef.setInput('options', inputs.options ?? OPTIONS);
   if (inputs.value !== undefined) fixture.componentRef.setInput('value', inputs.value);
   if (inputs.disabled !== undefined) fixture.componentRef.setInput('disabled', inputs.disabled);
+  if (inputs.ariaLabel !== undefined) fixture.componentRef.setInput('ariaLabel', inputs.ariaLabel);
   fixture.detectChanges();
   return fixture;
 }
@@ -59,5 +60,23 @@ describe('ToggleGroupComponent', () => {
 
     expect(segment(fixture, 'dark').disabled).toBe(true);
     expect(segment(fixture, 'light').disabled).toBe(true);
+  });
+
+  it('forwards an accessible name to the group', async () => {
+    const named = await setup({ ariaLabel: 'Diff layout' });
+    expect(
+      (named.nativeElement as HTMLElement)
+        .querySelector('[role="group"]')
+        ?.getAttribute('aria-label'),
+    ).toBe('Diff layout');
+  });
+
+  it('leaves the group without an accessible name by default', async () => {
+    const unnamed = await setup();
+    expect(
+      (unnamed.nativeElement as HTMLElement)
+        .querySelector('[role="group"]')
+        ?.getAttribute('aria-label'),
+    ).toBeNull();
   });
 });

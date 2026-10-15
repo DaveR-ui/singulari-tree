@@ -6,4 +6,4 @@ export {
   shouldInitializeMonaco,
 } from './diff-viewer';
 export type { MonacoDecisionState, MonacoLoader, MonacoModule } from './diff-viewer';
-export { hunksToTexts, type DiffTexts } from './hunks-to-texts';
+export { diffToGridRows, hunksToTexts, type DiffGridRow, type DiffTexts } from './hunks-to-texts';

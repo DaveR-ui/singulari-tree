@@ -141,7 +141,9 @@ describe('ChangesPanel', () => {
     const changes: string[] = [];
     fixture.componentInstance.messageChange.subscribe((value) => changes.push(value));
 
-    const textarea = query(fixture, 'commit-message-input') as HTMLTextAreaElement;
+    const textarea = (query(fixture, 'commit-message-input')?.querySelector(
+      'textarea',
+    )) as HTMLTextAreaElement;
     textarea.value = 'feat: graph';
     textarea.dispatchEvent(new Event('input'));
 
@@ -150,16 +152,25 @@ describe('ChangesPanel', () => {
 
   it('keeps Commit disabled until there is a staged file and a non-blank message', () => {
     const noStaged = render({ stagedFiles: [], message: 'feat' });
-    expect(button(noStaged, 'commit-button').disabled).toBe(true);
+    expect(
+      ((query(noStaged, 'commit-button')?.querySelector('button')) as HTMLButtonElement).disabled,
+    ).toBe(true);
 
     const blankMessage = render({ stagedFiles: [file('a.ts', true)], message: '   ' });
-    expect(button(blankMessage, 'commit-button').disabled).toBe(true);
+    expect(
+      ((query(blankMessage, 'commit-button')?.querySelector('button')) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
 
     const ready = render({ stagedFiles: [file('a.ts', true)], message: 'feat' });
-    expect(button(ready, 'commit-button').disabled).toBe(false);
+    expect(
+      ((query(ready, 'commit-button')?.querySelector('button')) as HTMLButtonElement).disabled,
+    ).toBe(false);
 
     const busy = render({ stagedFiles: [file('a.ts', true)], message: 'feat', busy: true });
-    expect(button(busy, 'commit-button').disabled).toBe(true);
+    expect(
+      ((query(busy, 'commit-button')?.querySelector('button')) as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 
   it('emits commit when the button is enabled', () => {

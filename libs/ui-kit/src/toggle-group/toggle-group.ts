@@ -15,7 +15,7 @@ export interface ToggleOption {
   selector: 'st-toggle-group',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="st-toggle-group" role="group" data-testid="toggle-group">
+    <div class="st-toggle-group" role="group" [attr.aria-label]="ariaLabel() || null" data-testid="toggle-group">
       @for (option of options(); track option.value) {
         <button
           type="button"
@@ -77,6 +77,8 @@ export class ToggleGroupComponent {
   readonly options = input<readonly ToggleOption[]>([]);
   readonly value = input('');
   readonly disabled = input(false);
+  /** Optional accessible name for the segmented group (a11y). */
+  readonly ariaLabel = input('');
 
   readonly valueChange = output<string>();
 }

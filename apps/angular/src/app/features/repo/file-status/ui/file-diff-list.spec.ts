@@ -99,6 +99,9 @@ describe('FileDiffList', () => {
     expect(rows[1].classList.contains('st-file-diff-list__row--selected')).toBe(true);
     expect(rows[0].getAttribute('data-selected')).toBe('false');
     expect(rows[1].getAttribute('data-selected')).toBe('true');
+    // The selectable-row directive supplies the shared 3px inset selection bar.
+    expect(rows[0].classList.contains('st-selection-bar')).toBe(false);
+    expect(rows[1].classList.contains('st-selection-bar')).toBe(true);
   });
 
   it('emits the path of the clicked row', () => {

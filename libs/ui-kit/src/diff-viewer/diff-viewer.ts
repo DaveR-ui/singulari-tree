@@ -13,7 +13,8 @@ import {
   viewChild,
 } from '@angular/core';
 import type { Diff } from '@contracts/domain';
-import { hunksToTexts } from './hunks-to-texts';
+import { diffToGridRows, hunksToTexts } from './hunks-to-texts';
+import { singularitreeThemeName } from './monaco-theme';
 
 type MonacoDiffEditor = import('monaco-editor').editor.IStandaloneDiffEditor;
 type MonacoTextModel = import('monaco-editor').editor.ITextModel;
@@ -71,7 +72,7 @@ export const MONACO_LOADER = new InjectionToken<MonacoLoader>('MONACO_LOADER', {
 
 /**
  * Read-only diff viewer. Renders a lazily-loaded Monaco `DiffEditor` when
- * possible and a plain unified `<pre>` fallback otherwise (before the chunk
+ * possible and a 4-column grid fallback otherwise (before the chunk
  * loads, in tests, or if initialization fails). Binary/conflicted/empty diffs
  * short-circuit to distinct messages.
  *
@@ -111,7 +112,25 @@ export const MONACO_LOADER = new InjectionToken<MonacoLoader>('MONACO_LOADER', {
     } @else {
       <div class="st-diff-viewer__editor" #container></div>
       @if (!monacoReady()) {
-        <pre class="st-diff-viewer__fallback" data-testid="diff-fallback">{{ unified() }}</pre>
+        <div class="st-diff-viewer__fallback" data-testid="diff-fallback">
+          @for (row of fallbackRows(); track $index) {
+            @if (row.kind === 'hunk' || row.kind === 'meta') {
+              <div
+                class="st-diff-viewer__fallback-hunk st-tabular-nums"
+                data-testid="diff-fallback-hunk"
+              >
+                {{ row.text }}
+              </div>
+            } @else {
+              <div class="st-diff-viewer__fallback-row" [attr.data-kind]="row.kind">
+                <span class="st-diff-viewer__gnum st-tabular-nums">{{ row.oldNum ?? '' }}</span>
+                <span class="st-diff-viewer__gnum st-tabular-nums">{{ row.newNum ?? '' }}</span>
+                <span class="st-diff-viewer__gsign">{{ row.sign }}</span>
+                <span class="st-diff-viewer__gtext">{{ row.text }}</span>
+              </div>
+            }
+          }
+        </div>
       }
     }
   `,
@@ -149,12 +168,47 @@ export const MONACO_LOADER = new InjectionToken<MonacoLoader>('MONACO_LOADER', {
     }
 
     .st-diff-viewer__fallback {
-      margin: 0;
-      padding: var(--st-space-2) var(--st-space-3);
       font-family: var(--st-font-mono);
       font-size: var(--st-font-12);
-      white-space: pre;
+      line-height: var(--st-leading-code);
       overflow: auto;
+    }
+
+    .st-diff-viewer__fallback-row {
+      display: grid;
+      grid-template-columns: 36px 36px 20px 1fr;
+    }
+
+    .st-diff-viewer__fallback-hunk {
+      background: var(--st-color-diff-hunk-bg);
+      color: var(--st-color-diff-hunk-fg);
+      padding: 0 var(--st-space-2);
+      font-size: var(--st-font-11);
+    }
+
+    .st-diff-viewer__gnum {
+      color: var(--st-color-diff-gutter-fg);
+      text-align: right;
+      padding: 0 var(--st-space-1) 0 var(--st-space-2);
+    }
+
+    .st-diff-viewer__gsign {
+      text-align: center;
+    }
+
+    .st-diff-viewer__gtext {
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .st-diff-viewer__fallback-row[data-kind='added'] {
+      background: var(--st-color-diff-insert-bg);
+      color: var(--st-color-diff-insert-fg);
+    }
+
+    .st-diff-viewer__fallback-row[data-kind='removed'] {
+      background: var(--st-color-diff-delete-bg);
+      color: var(--st-color-diff-delete-fg);
     }
   `,
 })
@@ -164,6 +218,11 @@ export class DiffViewer {
   readonly errorMsg = input<string | null>(null);
   /** True when the core capped the diff (ADR-0020 (c)); renders a notice. */
   readonly truncated = input(false);
+  /**
+   * Side-by-side vs unified layout. Unified is the shipped default (plan §4.6);
+   * the Settings toggle flips it live.
+   */
+  readonly renderSideBySide = input(false);
 
   private readonly loader = inject(MONACO_LOADER);
   private readonly environmentAvailable = inject(MONACO_ENVIRONMENT_AVAILABLE);
@@ -182,7 +241,8 @@ export class DiffViewer {
   protected readonly monacoReady = signal(false);
 
   protected readonly texts = computed(() => hunksToTexts(this.diff()));
-  protected readonly unified = computed(() => this.texts().unified);
+  /** Rows for the non-Monaco 4-column grid fallback. */
+  protected readonly fallbackRows = computed(() => diffToGridRows(this.diff()));
   protected readonly isBinary = computed(() => this.diff()?.isBinary === true);
   protected readonly hasConflict = computed(() => this.diff()?.hasConflictMarkers === true);
   protected readonly isEmpty = computed(() => {
@@ -209,6 +269,14 @@ export class DiffViewer {
     // `maybeInitializeMonaco` (idempotent, no-op when already mounted).
     effect(() => {
       void this.maybeInitializeMonaco();
+    });
+
+    // Live layout toggle: keep a mounted editor in sync when `renderSideBySide`
+    // changes (no-op on init, when the editor is still null). The input is read
+    // unconditionally so the effect tracks it even before the editor mounts.
+    effect(() => {
+      const renderSideBySide = this.renderSideBySide();
+      this.editor?.updateOptions({ renderSideBySide });
     });
 
     // Safety net for the first render (`#container` present on the first pass).
@@ -255,23 +323,33 @@ export class DiffViewer {
       // touching the DOM, and discard a stale load.
       if (!this.shouldInitialize() || this.container()?.nativeElement !== container) return;
 
+      // Apply the token-derived theme for the current appearance before the
+      // editor mounts, so it never flashes the default theme.
+      monaco.editor.setTheme(
+        singularitreeThemeName(document.documentElement.getAttribute('data-theme')),
+      );
+
       const { original, modified } = this.texts();
       this.originalModel = monaco.editor.createModel(original, 'plaintext');
       this.modifiedModel = monaco.editor.createModel(modified, 'plaintext');
       this.editor = monaco.editor.createDiffEditor(container, {
         readOnly: true,
         originalEditable: false,
-        renderSideBySide: true,
+        renderSideBySide: this.renderSideBySide(),
         automaticLayout: true,
         minimap: { enabled: false },
         scrollBeyondLastLine: false,
+        // 12px mono on a 24px code grid (plan §4.6/§2.3), matching the CSS
+        // fallback's `--st-leading-code`; the font family mirrors `--st-font-mono`.
+        fontFamily: "Consolas, 'Liberation Mono', ui-monospace, monospace",
         fontSize: 12,
+        lineHeight: 24,
       });
       this.editor.setModel({ original: this.originalModel, modified: this.modifiedModel });
       this.mountedContainer = container;
       this.monacoReady.set(true);
     } catch {
-      // Initialization failed: keep the plain fallback visible.
+      // Initialization failed: keep the grid fallback visible.
       this.monacoReady.set(false);
     } finally {
       this.initializing = false;

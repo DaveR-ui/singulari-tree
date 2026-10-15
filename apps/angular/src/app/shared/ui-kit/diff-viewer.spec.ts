@@ -15,7 +15,7 @@ import {
 
 // Exercises the ui-kit `<st-diff-viewer>` through the renderer test runner. Real
 // Monaco is never booted here: jsdom has no `Worker`, so the component stays on
-// its plain `<pre>` fallback unless the environment probe and loader are faked.
+// its 4-column grid fallback unless the environment probe and loader are faked.
 
 function makeDiff(overrides: Partial<Diff> = {}): Diff {
   return {
@@ -67,10 +67,20 @@ interface FakeModel {
   dispose(): void;
 }
 
+/** Options bag captured by the fake `createDiffEditor`. */
+interface FakeDiffEditorOptions {
+  renderSideBySide?: boolean;
+}
+
 /** Minimal Monaco stand-in: records models and the diff editor without DOM. */
 function makeFakeMonaco() {
   const models: FakeModel[] = [];
-  const diffEditor = { setModel: vi.fn(), dispose: vi.fn() };
+  const diffEditor = { setModel: vi.fn(), dispose: vi.fn(), updateOptions: vi.fn() };
+  const setTheme = vi.fn();
+  const defineTheme = vi.fn();
+  const createDiffEditor = vi.fn(
+    (_container: HTMLElement, _options: FakeDiffEditorOptions) => diffEditor,
+  );
   const monaco = {
     editor: {
       createModel: vi.fn((value: string): FakeModel => {
@@ -88,10 +98,19 @@ function makeFakeMonaco() {
         models.push(model);
         return model;
       }),
-      createDiffEditor: vi.fn(() => diffEditor),
+      createDiffEditor,
+      setTheme,
+      defineTheme,
     },
   };
-  return { monaco: monaco as unknown as MonacoModule, models, diffEditor };
+  return {
+    monaco: monaco as unknown as MonacoModule,
+    models,
+    diffEditor,
+    createDiffEditor,
+    setTheme,
+    defineTheme,
+  };
 }
 
 describe('hunksToTexts', () => {
@@ -289,5 +308,89 @@ describe('DiffViewer Monaco initialization', () => {
     expect(monacoEnvironmentAvailable()).toBe(false);
     expect(loader).not.toHaveBeenCalled();
     expect(query(fixture, 'diff-fallback')).not.toBeNull();
+  });
+
+  it('defaults renderSideBySide to false (unified default)', async () => {
+    const fake = makeFakeMonaco();
+    const loader = vi.fn(() => Promise.resolve(fake.monaco));
+    await configure(loader, true);
+
+    const fixture = TestBed.createComponent(DiffViewer);
+    fixture.componentRef.setInput('diff', makeDiff());
+    fixture.detectChanges();
+    TestBed.tick();
+
+    await vi.waitFor(() => expect(fake.createDiffEditor).toHaveBeenCalledTimes(1));
+    expect(fake.createDiffEditor.mock.calls[0][1].renderSideBySide).toBe(false);
+  });
+
+  it('registers the singularitree theme before editor creation', async () => {
+    const fake = makeFakeMonaco();
+    const loader = vi.fn(() => Promise.resolve(fake.monaco));
+    await configure(loader, true);
+
+    const fixture = TestBed.createComponent(DiffViewer);
+    fixture.componentRef.setInput('diff', makeDiff());
+    fixture.detectChanges();
+    TestBed.tick();
+
+    await vi.waitFor(() => expect(fake.setTheme).toHaveBeenCalledWith('singularitree-dark'));
+  });
+
+  it('flips renderSideBySide via the input', async () => {
+    const fake = makeFakeMonaco();
+    const loader = vi.fn(() => Promise.resolve(fake.monaco));
+    await configure(loader, true);
+
+    const fixture = TestBed.createComponent(DiffViewer);
+    fixture.componentRef.setInput('diff', makeDiff());
+    fixture.detectChanges();
+    TestBed.tick();
+
+    await vi.waitFor(() => expect(fake.createDiffEditor).toHaveBeenCalledTimes(1));
+
+    fixture.componentRef.setInput('renderSideBySide', true);
+    fixture.detectChanges();
+    await vi.waitFor(() => {
+      TestBed.tick();
+      expect(fake.diffEditor.updateOptions).toHaveBeenCalledWith({ renderSideBySide: true });
+    });
+  });
+
+  it('projects a 4-column grid fallback with the hunk header and +/- signs', async () => {
+    const fake = makeFakeMonaco();
+    const loader = vi.fn(() => Promise.resolve(fake.monaco));
+    await configure(loader, false);
+
+    const diff = makeDiff({
+      hunks: [
+        {
+          fromStart: 1,
+          fromLines: 1,
+          toStart: 1,
+          toLines: 1,
+          lines: [
+            { kind: 'removed', text: 'old', noNewline: false },
+            { kind: 'added', text: 'new', noNewline: false },
+          ],
+        },
+      ],
+    });
+
+    const fixture = TestBed.createComponent(DiffViewer);
+    fixture.componentRef.setInput('diff', diff);
+    fixture.detectChanges();
+    TestBed.tick();
+
+    const fallback = query(fixture, 'diff-fallback');
+    expect(fallback).not.toBeNull();
+    const hunk = fallback?.querySelector<HTMLElement>('[data-testid="diff-fallback-hunk"]');
+    expect(hunk?.textContent).toMatch(/@@ -1,1 \+1,1 @@/);
+    expect(
+      fallback?.querySelector<HTMLElement>('[data-kind="added"]')?.textContent,
+    ).toContain('new');
+    expect(
+      fallback?.querySelector<HTMLElement>('[data-kind="removed"]')?.textContent,
+    ).toContain('old');
   });
 });

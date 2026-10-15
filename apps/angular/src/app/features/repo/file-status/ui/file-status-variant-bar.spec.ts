@@ -31,6 +31,11 @@ function query<T extends HTMLElement = HTMLElement>(
   );
 }
 
+/** The `st-select` primitive renders exactly one inner `<select class="st-select">`. */
+function targetSelect(fixture: ComponentFixture<FileStatusVariantBar>): HTMLSelectElement | null {
+  return (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>('.st-select');
+}
+
 describe('FileStatusVariantBar', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -38,14 +43,14 @@ describe('FileStatusVariantBar', () => {
     }).compileComponents();
   });
 
-  it('renders the three variant buttons', () => {
+  it('renders the three variant segments', () => {
     const fixture = render();
 
     const el = fixture.nativeElement as HTMLElement;
-    expect(query(fixture, 'variant-local')?.textContent?.trim()).toBe('Local');
-    expect(query(fixture, 'variant-commit')?.textContent?.trim()).toBe('Commit');
-    expect(query(fixture, 'variant-pr')?.textContent?.trim()).toBe('Pull request');
-    expect(el.querySelectorAll('[role="group"] [data-testid^="variant-"]')).toHaveLength(3);
+    expect(query(fixture, 'toggle-segment-local')?.textContent?.trim()).toBe('Local');
+    expect(query(fixture, 'toggle-segment-commit')?.textContent?.trim()).toBe('Commit');
+    expect(query(fixture, 'toggle-segment-pr')?.textContent?.trim()).toBe('Pull request');
+    expect(el.querySelectorAll('[role="group"] [data-testid^="toggle-segment-"]')).toHaveLength(3);
   });
 
   it('emits the variant picked by the user', () => {
@@ -53,9 +58,9 @@ describe('FileStatusVariantBar', () => {
     const emitted: FileStatusVariant[] = [];
     fixture.componentInstance.variantChange.subscribe((variant) => emitted.push(variant));
 
-    query(fixture, 'variant-local')?.click();
-    query(fixture, 'variant-commit')?.click();
-    query(fixture, 'variant-pr')?.click();
+    query(fixture, 'toggle-segment-local')?.click();
+    query(fixture, 'toggle-segment-commit')?.click();
+    query(fixture, 'toggle-segment-pr')?.click();
 
     expect(emitted).toEqual(['local', 'commit', 'pr']);
   });
@@ -63,31 +68,30 @@ describe('FileStatusVariantBar', () => {
   it('marks the active variant visually and for assistive tech', () => {
     const fixture = render({ variant: 'pr' });
 
-    const pr = query(fixture, 'variant-pr');
-    const local = query(fixture, 'variant-local');
-    expect(pr?.classList.contains('st-file-status-variant__button--active')).toBe(true);
+    const pr = query(fixture, 'toggle-segment-pr');
+    const local = query(fixture, 'toggle-segment-local');
+    expect(pr?.classList.contains('st-toggle-group__segment--active')).toBe(true);
     expect(pr?.getAttribute('aria-pressed')).toBe('true');
-    expect(local?.classList.contains('st-file-status-variant__button--active')).toBe(false);
+    expect(local?.classList.contains('st-toggle-group__segment--active')).toBe(false);
     expect(local?.getAttribute('aria-pressed')).toBe('false');
   });
 
   it('renders the PR ref controls only in the PR variant', () => {
     const local = render({ variant: 'local' });
     expect(query(local, 'pr-base-input')).toBeNull();
-    expect(query(local, 'pr-target-select')).toBeNull();
+    expect(targetSelect(local)).toBeNull();
 
     const pr = render({ variant: 'pr' });
     expect(query(pr, 'pr-base-input')).not.toBeNull();
-    expect(query(pr, 'pr-target-select')).not.toBeNull();
+    expect(targetSelect(pr)).not.toBeNull();
   });
 
   it('populates the PR ref controls from the branch names', () => {
     const fixture = render({ variant: 'pr', branches: ['main', 'develop', 'origin/main'] });
 
-    const options = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLOptionElement>(
-      'select[data-testid="pr-target-select"] option',
-    );
-    expect(Array.from(options).map((option) => option.value)).toEqual([
+    const select = targetSelect(fixture);
+    expect(select).not.toBeNull();
+    expect(Array.from(select!.options).map((option) => option.value)).toEqual([
       'main',
       'develop',
       'origin/main',
@@ -119,7 +123,7 @@ describe('FileStatusVariantBar', () => {
     fixture.componentInstance.targetRefChange.subscribe((value) => targets.push(value));
 
     const base = query<HTMLInputElement>(fixture, 'pr-base-input');
-    const target = query<HTMLSelectElement>(fixture, 'pr-target-select');
+    const target = targetSelect(fixture);
     expect(base?.value).toBe('main');
     expect(target?.value).toBe('develop');
 

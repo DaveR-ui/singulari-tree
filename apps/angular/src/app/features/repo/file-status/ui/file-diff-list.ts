@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import type { FileDiff } from '@contracts/domain';
+import { SelectableRowDirective } from '@singularitree/ui-kit';
 
 /**
  * Changed-file list of the commit/PR variants of the "File Status" screen
@@ -15,10 +16,11 @@ import type { FileDiff } from '@contracts/domain';
 @Component({
   selector: 'st-file-diff-list',
   standalone: true,
+  imports: [SelectableRowDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="st-file-diff-list">
-      <h3 class="st-file-diff-list__heading" i18n>Changed files</h3>
+      <h3 class="st-file-diff-list__heading st-eyebrow" i18n>Changed files</h3>
 
       @if (files().length === 0) {
         <p class="st-file-diff-list__empty" data-testid="file-list-empty" i18n>No changed files.</p>
@@ -26,12 +28,14 @@ import type { FileDiff } from '@contracts/domain';
         <ul class="st-file-diff-list__list">
           @for (file of files(); track file.path) {
             <li
+              stSelectableRow
               class="st-file-diff-list__row"
               data-testid="file-diff-row"
+              [selected]="file.path === selectedPath()"
               [attr.data-path]="file.path"
               [attr.data-selected]="file.path === selectedPath()"
               [class.st-file-diff-list__row--selected]="file.path === selectedPath()"
-              (click)="fileSelect.emit(file.path)"
+              (rowActivated)="fileSelect.emit(file.path)"
             >
               <span
                 class="st-file-diff-list__badge"
@@ -43,7 +47,7 @@ import type { FileDiff } from '@contracts/domain';
               @if (file.isBinary) {
                 <span class="st-file-diff-list__binary" data-testid="file-diff-binary" i18n>binary</span>
               } @else {
-                <span class="st-file-diff-list__counts">
+                <span class="st-file-diff-list__counts st-mono st-tabular-nums">
                   <span class="st-file-diff-list__additions" data-testid="file-diff-additions"
                     >+{{ file.additions }}</span
                   >
@@ -62,23 +66,18 @@ import type { FileDiff } from '@contracts/domain';
     :host {
       display: block;
       min-height: 0;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
     }
 
     .st-file-diff-list {
       display: flex;
       flex-direction: column;
-      gap: 6px;
-      font-size: 12px;
+      gap: var(--st-space-2);
+      font-size: var(--st-font-12);
     }
 
     .st-file-diff-list__heading {
       margin: 0;
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      opacity: 0.6;
     }
 
     .st-file-diff-list__list {
@@ -91,46 +90,42 @@ import type { FileDiff } from '@contracts/domain';
     .st-file-diff-list__row {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: var(--st-space-2);
       padding: 2px 4px;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-
-    .st-file-diff-list__row:hover {
-      background: color-mix(in srgb, var(--st-color-text, #d6d6de) 8%, transparent);
+      border-radius: var(--st-radius-1);
     }
 
     .st-file-diff-list__row--selected {
-      background: color-mix(in srgb, var(--st-color-accent, #0a84ff) 22%, transparent);
+      background: var(--st-color-selected);
+      box-shadow: none;
     }
 
     .st-file-diff-list__badge {
       flex: 0 0 auto;
       min-width: 18px;
       padding: 0 4px;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      border-radius: 3px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      border: var(--st-hairline) solid var(--st-color-border);
+      border-radius: var(--st-radius-1);
+      font-family: var(--st-font-mono);
       font-size: 10px;
       text-align: center;
       text-transform: uppercase;
     }
 
     .st-file-diff-list__badge[data-status='M'] {
-      color: #e0a458;
+      color: var(--st-color-warn);
     }
 
     .st-file-diff-list__badge[data-status='A'] {
-      color: #30d158;
+      color: var(--st-color-add);
     }
 
     .st-file-diff-list__badge[data-status='D'] {
-      color: #ff6b6b;
+      color: var(--st-color-remove);
     }
 
     .st-file-diff-list__badge[data-status='R'] {
-      color: #0a84ff;
+      color: var(--st-color-accent);
     }
 
     .st-file-diff-list__path {
@@ -142,17 +137,16 @@ import type { FileDiff } from '@contracts/domain';
     .st-file-diff-list__counts {
       flex: 0 0 auto;
       display: flex;
-      gap: 6px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      gap: var(--st-space-2);
       font-size: 11px;
     }
 
     .st-file-diff-list__additions {
-      color: #30d158;
+      color: var(--st-color-add);
     }
 
     .st-file-diff-list__deletions {
-      color: #ff6b6b;
+      color: var(--st-color-remove);
     }
 
     .st-file-diff-list__binary {

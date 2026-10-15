@@ -1,6 +1,8 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject } from '@angular/core';
 import type { Commit, Diff } from '@contracts/domain';
-import { DiffViewer } from '@singularitree/ui-kit';
+import { DiffViewer, ToggleGroupComponent, WorkspaceSplitComponent } from '@singularitree/ui-kit';
+import { DiffModeService } from '@core/services/diff-mode.service';
+import type { DiffMode } from '@core/services/diff-mode.service';
 import { IpcBridge } from '@core/services/ipc-bridge.service';
 import { RepoState } from '@core/services/repo-state.service';
 import { GraphStore, WIP_OID } from '../../graph/graph.store';
@@ -38,12 +40,14 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
     DiffViewer,
     FileDiffList,
     FileStatusVariantBar,
+    ToggleGroupComponent,
+    WorkspaceSplitComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <section class="st-file-status">
-      <!-- LEFT: variant bar + the variant body -->
-      <div class="st-file-status__left">
+    <st-workspace-split [showDetail]="true" detailTitle="">
+      <!-- pinned LEFT: variant bar + the variant body -->
+      <div class="st-file-status__left" detail>
         <st-file-status-variant-bar
           [variant]="fs.variant()"
           [branches]="branchNames()"
@@ -104,60 +108,80 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
         </div>
       </div>
 
-      <!-- RIGHT: the selected file's diff, always -->
+      <!-- flexible RIGHT: the selected file's diff, always -->
       <div class="st-file-status__right" data-testid="file-status-diff">
         @if (untrackedSelected()) {
           <p class="st-file-status__notice" data-testid="file-status-untracked" i18n>
             Untracked file — nothing to diff until it is staged.
           </p>
         }
+        @if (fs.selectedPath() && rightFileDiff()) {
+          <header class="st-file-status__diff-header st-hairline">
+            <span class="st-file-status__diff-path st-mono">{{ fs.selectedPath() }}</span>
+            @if (!rightFileDiff()!.isBinary && !rightFileDiff()!.hasConflictMarkers) {
+              <span
+                class="st-file-status__diff-stats st-mono st-tabular-nums"
+                data-testid="file-status-diff-stats"
+              >
+                <span class="st-file-status__diff-add">+{{ rightFileDiff()!.additions }}</span>
+                <span class="st-file-status__diff-del">−{{ rightFileDiff()!.deletions }}</span>
+              </span>
+            }
+            <st-toggle-group
+              class="st-file-status__diff-mode"
+              data-testid="diff-mode-toggle"
+              [ariaLabel]="diffModeLabel"
+              [options]="diffModeOptions()"
+              [value]="diffMode.mode()"
+              (valueChange)="onDiffMode($event)"
+            />
+          </header>
+        }
         <st-diff-viewer
           [diff]="rightFileDiff()"
           [loading]="fs.rightLoading()"
           [errorMsg]="fs.rightError()"
           [truncated]="fs.truncated()"
+          [renderSideBySide]="diffMode.sideBySide()"
         />
       </div>
-    </section>
+    </st-workspace-split>
   `,
   styles: `
     :host {
-      display: block;
-      height: 100%;
-      min-height: 0;
-      color: var(--st-color-text, #d6d6de);
-    }
-
-    .st-file-status {
       display: flex;
       height: 100%;
+      min-height: 0;
+      color: var(--st-color-text);
+    }
+
+    :host st-workspace-split {
+      flex: 1 1 auto;
       min-height: 0;
     }
 
     .st-file-status__left {
       display: flex;
-      flex: 0 0 380px;
       flex-direction: column;
       min-width: 0;
       min-height: 0;
-      border-right: 1px solid var(--st-color-border, #2f2f44);
     }
 
     .st-file-status__body {
       display: flex;
       flex: 1 1 auto;
       flex-direction: column;
-      gap: 10px;
+      gap: var(--st-space-2);
       min-height: 0;
-      padding: 8px 12px;
+      padding: var(--st-space-2) var(--st-space-3);
       overflow: auto;
-      font-size: 12px;
+      font-size: var(--st-font-12);
     }
 
     .st-file-status__summary {
       margin: 0;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 11px;
+      font-family: var(--st-font-mono);
+      font-size: var(--st-font-11);
       opacity: 0.75;
     }
 
@@ -172,20 +196,58 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
     .st-file-status__notice {
       flex: none;
       margin: 0;
-      padding: 12px;
-      font-size: 12px;
+      padding: var(--st-space-3);
+      font-size: var(--st-font-12);
       opacity: 0.75;
     }
 
-    .st-file-status__right st-diff-viewer {
+    :host st-diff-viewer {
       flex: 1 1 auto;
       min-width: 0;
       min-height: 0;
+    }
+
+    .st-file-status__diff-header {
+      display: flex;
+      align-items: center;
+      gap: var(--st-space-3);
+      flex: none;
+      padding: 0 var(--st-space-3);
+      min-height: var(--st-size-row-tree-dense);
+      font-size: var(--st-font-12);
+      color: var(--st-color-muted);
+    }
+
+    .st-file-status__diff-path {
+      flex: 1 1 auto;
+      min-width: 0;
+      word-break: break-all;
+    }
+
+    .st-file-status__diff-stats {
+      display: flex;
+      gap: var(--st-space-2);
+      flex: none;
+    }
+
+    .st-file-status__diff-add {
+      color: var(--st-color-add);
+    }
+
+    .st-file-status__diff-del {
+      color: var(--st-color-remove);
+    }
+
+    .st-file-status__diff-mode {
+      flex: none;
+      margin-left: auto;
     }
   `,
 })
 export class FileStatusPage {
   readonly fs = inject(FileStatusStore);
+  /** Renderer-local diff-layout preference (unified by default). */
+  readonly diffMode = inject(DiffModeService);
 
   private readonly graph = inject(GraphStore);
   private readonly repoState = inject(RepoState);
@@ -231,6 +293,15 @@ export class FileStatusPage {
 
   /** Branch names offered by the PR base/target controls. */
   readonly branchNames = computed<string[]>(() => this.fs.branches().map((branch) => branch.name));
+
+  /** Segments of the diff-pane layout toggle. */
+  readonly diffModeOptions = computed(() => [
+    { value: 'unified', label: $localize`Unified` },
+    { value: 'side-by-side', label: $localize`Side by side` },
+  ]);
+
+  /** Accessible name for the diff-pane layout toggle. */
+  readonly diffModeLabel = $localize`Diff layout`;
 
   /** Count-only summary of the diff shown by the commit/PR variants. */
   readonly changeSummary = computed(() => commitChangeSummary(this.fs.wholeDiff()));
@@ -330,6 +401,11 @@ export class FileStatusPage {
     // empty screen: the variant state only changes through `openCommit`.
     if (commit) void this.fs.openCommit(commit);
     else void this.fs.openLocal();
+  }
+
+  /** Apply a diff-layout picked by the user (renderer-local preference). */
+  onDiffMode(value: string): void {
+    this.diffMode.setMode(value as DiffMode);
   }
 
   onStageHunk(event: HunkActionEvent): void {

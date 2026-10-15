@@ -60,3 +60,60 @@ export function hunksToTexts(diff: Diff | null | undefined): DiffTexts {
     unified: unified.join('\n'),
   };
 }
+
+/** One row of the sketch's 4-column grid fallback (plan §4.6/D13). */
+export interface DiffGridRow {
+  kind: 'hunk' | 'context' | 'added' | 'removed' | 'meta';
+  oldNum: number | null;
+  newNum: number | null;
+  sign: ' ' | '+' | '-' | '@' | '\\';
+  text: string;
+}
+
+/**
+ * Pure projection of a `Diff` into the 4-column grid rows for the non-Monaco
+ * fallback (old-num | new-num | sign | code). Gutter numbers walk the hunk's
+ * `fromStart`/`toStart` per side; added lines advance the new side only,
+ * removed the old side only.
+ */
+export function diffToGridRows(diff: Diff | null | undefined): DiffGridRow[] {
+  const rows: DiffGridRow[] = [];
+  for (const hunk of diff?.hunks ?? []) {
+    rows.push({ kind: 'hunk', oldNum: null, newNum: null, sign: '@', text: hunkHeader(hunk) });
+    let oldLine = hunk.fromStart - 1;
+    let newLine = hunk.toStart - 1;
+    for (const line of hunk.lines ?? []) {
+      switch (line.kind) {
+        case 'added':
+          newLine++;
+          rows.push({ kind: 'added', oldNum: null, newNum: newLine, sign: '+', text: line.text });
+          break;
+        case 'removed':
+          oldLine++;
+          rows.push({ kind: 'removed', oldNum: oldLine, newNum: null, sign: '-', text: line.text });
+          break;
+        default:
+          oldLine++;
+          newLine++;
+          rows.push({
+            kind: 'context',
+            oldNum: oldLine,
+            newNum: newLine,
+            sign: ' ',
+            text: line.text,
+          });
+          break;
+      }
+      if (line.noNewline) {
+        rows.push({
+          kind: 'meta',
+          oldNum: null,
+          newNum: null,
+          sign: '\\',
+          text: NO_NEWLINE_MARKER,
+        });
+      }
+    }
+  }
+  return rows;
+}
