@@ -121,7 +121,9 @@ describe('SearchWorkspace', () => {
 
     const input = query<HTMLInputElement>(fixture, 'search-input')!;
     input.value = 'fix';
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    // The Enter binding now lives on the `st-input` host, so the synthetic key
+    // event must bubble (a real keypress does) to reach the host listener.
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await Promise.resolve();
 
     expect(store.search).toHaveBeenCalledWith('fix', ['repo-1']);

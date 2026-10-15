@@ -34,6 +34,14 @@ function query<T extends Element>(
   return (fixture.nativeElement as HTMLElement).querySelector<T>(`[data-testid="${testId}"]`);
 }
 
+/** `st-button` forwards the control to its inner native `<button>` (repo-relocate-panel convention). */
+function innerButton(
+  fixture: ComponentFixture<SwitchBranchConfirmDialog>,
+  testId: string,
+): HTMLButtonElement {
+  return query(fixture, testId)!.querySelector('button') as HTMLButtonElement;
+}
+
 /** Collapse template whitespace so copy assertions do not depend on wrapping. */
 function textOf(
   fixture: ComponentFixture<SwitchBranchConfirmDialog>,
@@ -80,14 +88,14 @@ describe('SwitchBranchConfirmDialog', () => {
   it('arms Force checkout only after the force checkbox is ticked', async () => {
     const fixture = await setup();
 
-    expect(query<HTMLButtonElement>(fixture, 'switch-branch-force')!.disabled).toBe(true);
+    expect(innerButton(fixture, 'switch-branch-force').disabled).toBe(true);
 
     const checkbox = query<HTMLInputElement>(fixture, 'switch-branch-force-checkbox')!;
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change'));
     fixture.detectChanges();
 
-    expect(query<HTMLButtonElement>(fixture, 'switch-branch-force')!.disabled).toBe(false);
+    expect(innerButton(fixture, 'switch-branch-force').disabled).toBe(false);
   });
 
   it('emits forceCheckout when the armed Force checkout button is clicked', async () => {
@@ -100,7 +108,7 @@ describe('SwitchBranchConfirmDialog', () => {
     checkbox.dispatchEvent(new Event('change'));
     fixture.detectChanges();
 
-    query<HTMLButtonElement>(fixture, 'switch-branch-force')!.click();
+    innerButton(fixture, 'switch-branch-force').click();
 
     expect(emitted).toBe(1);
   });
@@ -110,7 +118,7 @@ describe('SwitchBranchConfirmDialog', () => {
     let emitted = 0;
     fixture.componentInstance.saveChanges.subscribe(() => emitted++);
 
-    query<HTMLButtonElement>(fixture, 'switch-branch-save')!.click();
+    innerButton(fixture, 'switch-branch-save').click();
 
     expect(emitted).toBe(1);
   });
@@ -120,7 +128,7 @@ describe('SwitchBranchConfirmDialog', () => {
     let emitted = 0;
     fixture.componentInstance.cancel.subscribe(() => emitted++);
 
-    query<HTMLButtonElement>(fixture, 'switch-branch-cancel')!.click();
+    innerButton(fixture, 'switch-branch-cancel').click();
 
     expect(emitted).toBe(1);
   });
@@ -149,7 +157,7 @@ describe('SwitchBranchConfirmDialog', () => {
 
     let emitted = 0;
     fixture.componentInstance.forceCheckout.subscribe(() => emitted++);
-    query<HTMLButtonElement>(fixture, 'switch-branch-force')!.click();
+    innerButton(fixture, 'switch-branch-force').click();
     expect(emitted).toBe(1);
   });
 
@@ -171,7 +179,7 @@ describe('SwitchBranchConfirmDialog', () => {
 
   it('keeps the Switch action enabled regardless of the force checkbox', async () => {
     const fixture = await setup({ mode: 'confirm' });
-    const button = query<HTMLButtonElement>(fixture, 'switch-branch-confirm')!;
+    const button = innerButton(fixture, 'switch-branch-confirm');
 
     expect(button.disabled).toBe(false);
 
@@ -188,7 +196,7 @@ describe('SwitchBranchConfirmDialog', () => {
     const emitted: boolean[] = [];
     fixture.componentInstance.confirmed.subscribe((v) => emitted.push(v));
 
-    query<HTMLButtonElement>(fixture, 'switch-branch-confirm')!.click();
+    innerButton(fixture, 'switch-branch-confirm').click();
 
     expect(emitted).toEqual([false]);
   });
@@ -203,7 +211,7 @@ describe('SwitchBranchConfirmDialog', () => {
     checkbox.dispatchEvent(new Event('change'));
     fixture.detectChanges();
 
-    query<HTMLButtonElement>(fixture, 'switch-branch-confirm')!.click();
+    innerButton(fixture, 'switch-branch-confirm').click();
 
     expect(emitted).toEqual([true]);
   });
@@ -215,7 +223,7 @@ describe('SwitchBranchConfirmDialog', () => {
     fixture.componentInstance.cancel.subscribe(() => cancels++);
     fixture.componentInstance.confirmed.subscribe(() => confirms++);
 
-    query<HTMLButtonElement>(fixture, 'switch-branch-cancel')!.click();
+    innerButton(fixture, 'switch-branch-cancel').click();
 
     expect(cancels).toBe(1);
     expect(confirms).toBe(0);

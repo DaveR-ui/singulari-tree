@@ -18,6 +18,11 @@ function query(fixture: ReturnType<typeof render>, testId: string): HTMLElement 
   );
 }
 
+/** `st-button` forwards the control to its inner native `<button>` (repo-relocate-panel convention). */
+function innerButton(fixture: ReturnType<typeof render>, testId: string): HTMLButtonElement {
+  return query(fixture, testId)!.querySelector('button') as HTMLButtonElement;
+}
+
 describe('ResetConfirmDialog', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -44,7 +49,7 @@ describe('ResetConfirmDialog', () => {
     let confirmed = 0;
     fixture.componentInstance.confirmed.subscribe(() => (confirmed += 1));
 
-    query(fixture, 'reset-confirm-confirm')?.click();
+    innerButton(fixture, 'reset-confirm-confirm').click();
 
     expect(confirmed).toBe(1);
   });
@@ -54,7 +59,7 @@ describe('ResetConfirmDialog', () => {
     let cancelled = 0;
     fixture.componentInstance.cancelled.subscribe(() => (cancelled += 1));
 
-    query(fixture, 'reset-confirm-cancel')?.click();
+    innerButton(fixture, 'reset-confirm-cancel').click();
 
     expect(cancelled).toBe(1);
   });
@@ -72,7 +77,7 @@ describe('ResetConfirmDialog', () => {
   it('disables both actions while busy', () => {
     const fixture = render(true, 'a'.repeat(40), true);
 
-    expect(query(fixture, 'reset-confirm-confirm')?.hasAttribute('disabled')).toBe(true);
-    expect(query(fixture, 'reset-confirm-cancel')?.hasAttribute('disabled')).toBe(true);
+    expect(innerButton(fixture, 'reset-confirm-confirm').disabled).toBe(true);
+    expect(innerButton(fixture, 'reset-confirm-cancel').disabled).toBe(true);
   });
 });

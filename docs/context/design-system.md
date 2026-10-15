@@ -8,7 +8,7 @@ tags:
 - tokens
 - theming
 - ui-kit
-version: 1.2
+version: 1.3
 related:
 - renderer-redesign-plan
 - renderer-slice
@@ -251,7 +251,7 @@ Two slots: an element marked `[header]` composes the header strip (eyebrow + tit
 ### `st-input` / `st-textarea` / `st-select`
 **Role:** controlled form fields
 
-The parent owns the state; each control re-emits its value on input/change. Surface-2 background, hairline border, `--st-radius-2`, and a border-to-accent focus state. `st-input` is `text | search | password`; `st-textarea` is the commit-message box; `st-select` projects native `<option>` children.
+The parent owns the state; each control re-emits its value on input/change. Surface-2 background, hairline border, `--st-radius-2`, and a border-to-accent focus state. `st-input` is `text | search | password`; `st-textarea` is the commit-message box; `st-select` projects native `<option>` children. All three accept an additive `testId` input, forwarded to the inner native control with the previous default preserved; `st-input` also accepts `readonly` (used by the read-only remote-URL displays).
 
 ### `st-toggle-group`
 **Role:** segmented control
@@ -297,6 +297,11 @@ A fixed 28px row (`GRAPH_ROW_HEIGHT`, matching `--st-size-row-graph`) holding an
 **Role:** read-only diff surface
 
 Mounts a lazily-loaded Monaco `DiffEditor` when a real textual diff is available, and a plain tokenized grid fallback otherwise (a 4-column insert/delete/context grid, shown before the chunk loads, in tests, or if initialization fails). Distinct notices cover truncated, error, loading, binary, conflict and empty diffs. Monaco renders read-only `plaintext` models at `fontSize: 12` on a `lineHeight: 24` grid with the `--st-font-mono` family and is unified by default (`renderSideBySide: false`). Two token-derived custom themes — `singularitree-dark` and `singularitree-light` in `libs/ui-kit/src/diff-viewer/monaco-theme.ts`, mirroring the `--st-color-*` diff, gutter and surface values in both themes — are registered by the lazy loader (`defineTheme`) before it hands back the module, and `setTheme` follows the current `data-theme` so the editor never flashes the built-in theme. The layout persists through `DiffModeService` (`st:diffMode`, default `unified`); the file-status diff-pane header toggle (`st-toggle-group`, Unified / Side by side) flips it live.
+
+### `st-modal` (app-level, not ui-kit)
+**Role:** shared dialog shell
+
+Lives at `apps/angular/src/app/shared/ui/modal/modal.ts` — the application layer, not the ui-kit barrel. It renders on `--st-color-raised` over a `--st-color-overlay` backdrop at `--st-z-modal`, with `--st-radius-4` corners and hairline structure (the elevation shadow was removed), and a 180ms fade+rise open motion. It owns a **focus trap + focus restore**: focus moves into the dialog on open and returns to the previously focused element on every close path, with Tab/Shift+Tab cycling inside.
 
 ## Do's and Don'ts
 

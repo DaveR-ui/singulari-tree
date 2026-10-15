@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { ButtonComponent } from '@singularitree/ui-kit';
 import { ModalComponent } from '@shared/ui/modal/modal';
 import type { AppError } from '@core/services/ipc-bridge.service';
 
@@ -11,7 +12,7 @@ import type { AppError } from '@core/services/ipc-bridge.service';
 @Component({
   selector: 'st-stash-drop-confirm-dialog',
   standalone: true,
-  imports: [ModalComponent],
+  imports: [ModalComponent, ButtonComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <st-modal [open]="open()" title="Drop stash" i18n-title [closeOnBackdrop]="!running()" (closed)="cancel()">
@@ -28,25 +29,24 @@ import type { AppError } from '@core/services/ipc-bridge.service';
         <p class="st-stash-dialog__error" data-testid="stash-drop-error">{{ err.message }}</p>
       }
 
-      <button
+      <st-button
         st-modal-footer
-        type="button"
+        variant="default"
         data-testid="stash-drop-cancel"
         [disabled]="running()"
         (click)="cancel()"
       >
         <span i18n>Cancel</span>
-      </button>
-      <button
+      </st-button>
+      <st-button
         st-modal-footer
-        type="button"
-        class="st-stash-dialog__danger"
+        variant="danger"
         data-testid="stash-drop-confirm"
         [disabled]="running()"
         (click)="confirm()"
       >
         <span i18n>Drop</span>
-      </button>
+      </st-button>
     </st-modal>
   `,
   styles: `
@@ -56,30 +56,20 @@ import type { AppError } from '@core/services/ipc-bridge.service';
 
     .st-stash-dialog__warning {
       margin: 0;
-      font-size: 13px;
-      line-height: 1.5;
+      font-size: var(--st-font-13);
+      line-height: var(--st-leading-ui);
     }
 
     .st-stash-dialog__message {
-      margin: 10px 0 0;
-      color: var(--muted, #8a8a9a);
-      font-size: 12px;
+      margin: var(--st-space-3) 0 0;
+      color: var(--st-color-muted);
+      font-size: var(--st-font-12);
     }
 
     .st-stash-dialog__error {
-      margin: 12px 0 0;
-      color: #ff8a80;
-      font-size: 12px;
-    }
-
-    .st-stash-dialog__danger {
-      background: #ff453a;
-      border-color: #ff453a;
-      color: #fff;
-    }
-
-    .st-stash-dialog__danger:disabled {
-      opacity: 0.5;
+      margin: var(--st-space-3) 0 0;
+      color: var(--st-color-danger);
+      font-size: var(--st-font-12);
     }
   `,
 })

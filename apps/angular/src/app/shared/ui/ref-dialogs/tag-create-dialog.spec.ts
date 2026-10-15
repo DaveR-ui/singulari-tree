@@ -27,6 +27,11 @@ function query(fixture: ReturnType<typeof render>, testId: string): HTMLElement 
   );
 }
 
+/** `st-button` forwards disabled/click to its inner native `<button>` (repo-relocate-panel convention). */
+function innerButton(fixture: ReturnType<typeof render>, testId: string): HTMLButtonElement {
+  return query(fixture, testId)!.querySelector('button') as HTMLButtonElement;
+}
+
 function setValue(el: HTMLInputElement | HTMLTextAreaElement, value: string): void {
   el.value = value;
   el.dispatchEvent(new Event('input'));
@@ -56,7 +61,7 @@ describe('TagCreateDialog', () => {
 
     setValue(query(fixture, 'tag-create-name') as HTMLInputElement, 'v1.0.0');
     fixture.detectChanges();
-    query(fixture, 'tag-create-submit')?.click();
+    innerButton(fixture, 'tag-create-submit').click();
 
     expect(emitted).toEqual([
       { name: 'v1.0.0', target: 'HEAD', annotated: false, message: '', force: false },
@@ -75,7 +80,7 @@ describe('TagCreateDialog', () => {
     fixture.detectChanges();
 
     // Message required → submit stays disabled.
-    expect(query(fixture, 'tag-create-submit')?.hasAttribute('disabled')).toBe(true);
+    expect(innerButton(fixture, 'tag-create-submit').disabled).toBe(true);
 
     setValue(query(fixture, 'tag-create-message') as HTMLTextAreaElement, '  release notes  ');
     const force = query(fixture, 'tag-create-force') as HTMLInputElement;
@@ -83,7 +88,7 @@ describe('TagCreateDialog', () => {
     force.dispatchEvent(new Event('change'));
     fixture.detectChanges();
 
-    query(fixture, 'tag-create-submit')?.click();
+    innerButton(fixture, 'tag-create-submit').click();
 
     expect(emitted).toEqual([
       { name: 'v2.0.0', target: 'HEAD', annotated: true, message: 'release notes', force: true },
@@ -94,8 +99,8 @@ describe('TagCreateDialog', () => {
     const fixture = render({ running: true, error: { code: 'TAG_EXISTS', message: 'tag exists' } });
 
     expect(query(fixture, 'tag-create-error')?.textContent).toContain('tag exists');
-    expect(query(fixture, 'tag-create-submit')?.hasAttribute('disabled')).toBe(true);
-    expect(query(fixture, 'tag-create-cancel')?.hasAttribute('disabled')).toBe(true);
+    expect(innerButton(fixture, 'tag-create-submit').disabled).toBe(true);
+    expect(innerButton(fixture, 'tag-create-cancel').disabled).toBe(true);
   });
 
   it('emits cancelled on dismiss', () => {
@@ -103,7 +108,7 @@ describe('TagCreateDialog', () => {
     let cancelled = 0;
     fixture.componentInstance.cancelled.subscribe(() => (cancelled += 1));
 
-    query(fixture, 'tag-create-cancel')?.click();
+    innerButton(fixture, 'tag-create-cancel').click();
 
     expect(cancelled).toBe(1);
   });
@@ -115,7 +120,7 @@ describe('TagCreateDialog', () => {
 
     setValue(query(fixture, 'tag-create-name') as HTMLInputElement, 'v9');
     fixture.detectChanges();
-    query(fixture, 'tag-create-submit')?.click();
+    innerButton(fixture, 'tag-create-submit').click();
 
     expect(submitted).toBe(0);
   });

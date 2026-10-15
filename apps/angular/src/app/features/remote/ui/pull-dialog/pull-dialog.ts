@@ -8,6 +8,12 @@ import {
   signal,
 } from '@angular/core';
 import { ModalComponent } from '@shared/ui/modal/modal';
+import {
+  ButtonComponent,
+  IconComponent,
+  InputComponent,
+  SelectComponent,
+} from '@singularitree/ui-kit';
 import type { AppError } from '@core/services/ipc-bridge.service';
 import {
   type PullIntent,
@@ -45,7 +51,7 @@ function deriveBranchOptions(
 @Component({
   selector: 'st-pull-dialog',
   standalone: true,
-  imports: [ModalComponent],
+  imports: [ModalComponent, ButtonComponent, IconComponent, InputComponent, SelectComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <st-modal [open]="open()" title="Pull" (closed)="closed.emit()">
@@ -56,29 +62,25 @@ function deriveBranchOptions(
 
         <label class="st-pull__field">
           <span class="st-pull__label">Remote</span>
-          <select
-            class="st-pull__control"
-            data-testid="pull-remote-select"
+          <st-select
+            [testId]="'pull-remote-select'"
             [value]="selectedRemote()"
-            (change)="onRemoteChange($event)"
+            (valueChange)="onRemoteChange($event)"
           >
             @for (remote of remotes(); track remote.name) {
               <option [value]="remote.name" [selected]="remote.name === selectedRemote()">
                 {{ remote.name }}
               </option>
             }
-          </select>
+          </st-select>
         </label>
 
         <label class="st-pull__field">
           <span class="st-pull__label">Remote URL</span>
-          <input
-            class="st-pull__control"
-            type="text"
-            data-testid="pull-remote-url"
+          <st-input
+            [testId]="'pull-remote-url'"
             [value]="selectedRemoteUrl()"
-            readonly
-            aria-readonly="true"
+            [readonly]="true"
           />
         </label>
 
@@ -87,38 +89,34 @@ function deriveBranchOptions(
           <!-- Options come from the real remote-tracking branches known for the
                selected remote (plus upstream-derived fallbacks), so the select
                stays in sync with the remote. -->
-          <select
-            class="st-pull__control"
-            data-testid="pull-branch-select"
+          <st-select
+            [testId]="'pull-branch-select'"
             [value]="selectedBranch()"
-            (change)="onBranchChange($event)"
+            (valueChange)="onBranchChange($event)"
           >
             @for (branch of branchOptions(); track branch) {
               <option [value]="branch" [selected]="branch === selectedBranch()">{{ branch }}</option>
             }
-          </select>
+          </st-select>
         </label>
 
         <div class="st-pull__field">
           <span class="st-pull__label">&nbsp;</span>
-          <button
-            class="st-pull__refresh"
-            type="button"
+          <st-button
+            variant="default"
             data-testid="pull-refresh"
             (click)="refreshRequested.emit()"
           >
-            Refresh
-          </button>
+            <st-icon name="sync" />Refresh
+          </st-button>
         </div>
 
         <label class="st-pull__field">
           <span class="st-pull__label">Local branch</span>
-          <input
-            class="st-pull__control"
-            type="text"
-            data-testid="pull-into-local"
+          <st-input
+            [testId]="'pull-into-local'"
             [value]="intoLocalBranch()"
-            (input)="onIntoLocalBranchChange($event)"
+            (valueChange)="onIntoLocalBranchChange($event)"
           />
         </label>
 
@@ -183,25 +181,23 @@ function deriveBranchOptions(
         }
       </div>
 
-      <button
-        class="st-pull__btn"
-        type="button"
-        data-testid="pull-cancel"
+      <st-button
         st-modal-footer
+        variant="default"
+        data-testid="pull-cancel"
         (click)="closed.emit()"
       >
         Cancel
-      </button>
-      <button
-        class="st-pull__btn st-pull__btn--primary"
-        type="button"
-        data-testid="pull-submit"
+      </st-button>
+      <st-button
         st-modal-footer
-        (click)="onSubmit()"
+        variant="primary"
+        data-testid="pull-submit"
         [disabled]="running() || offline() || !selectedRemote() || !selectedBranch()"
+        (click)="onSubmit()"
       >
         Pull
-      </button>
+      </st-button>
     </st-modal>
   `,
   styles: `
@@ -212,132 +208,77 @@ function deriveBranchOptions(
     .st-pull {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: var(--st-space-3);
       color: var(--st-color-text);
     }
 
+    /* Inline label + control. The label column is two space-8 units — wide
+       enough for the longest label ("Local branch") without a raw length. */
     .st-pull__field {
       display: grid;
-      grid-template-columns: 110px 1fr auto;
+      grid-template-columns: calc(var(--st-space-8) * 2) minmax(0, 1fr);
       align-items: center;
-      gap: 8px;
+      gap: var(--st-space-2);
     }
 
     .st-pull__label {
-      color: var(--muted, #8a8a9a);
-      font-size: 12px;
-    }
-
-    .st-pull__control {
-      min-width: 0;
-      background: #1a1a2a;
-      border: 1px solid var(--st-color-border);
-      color: var(--st-color-text);
-      border-radius: 6px;
-      padding: 6px 10px;
-      font-size: 12px;
-      outline: none;
-    }
-
-    .st-pull__control:focus {
-      border-color: var(--st-color-accent);
-    }
-
-    .st-pull__control:disabled {
-      color: var(--muted, #8a8a9a);
-      opacity: 0.7;
-      cursor: not-allowed;
-    }
-
-    .st-pull__refresh {
-      background: transparent;
-      border: 1px solid var(--st-color-border);
-      color: var(--st-color-text);
-      border-radius: 6px;
-      padding: 6px 12px;
-      font-size: 12px;
-      cursor: pointer;
-    }
-
-    .st-pull__refresh:hover {
-      border-color: var(--st-color-accent);
-      color: var(--st-color-accent);
+      color: var(--st-color-muted);
+      font-size: var(--st-font-12);
     }
 
     .st-pull__options {
-      margin: 4px 0 0;
-      padding: 10px 12px;
-      border: 1px solid var(--st-color-border);
-      border-radius: 8px;
+      margin: var(--st-space-1) 0 0;
+      padding: var(--st-space-3);
+      border: var(--st-hairline) solid var(--st-color-border);
+      border-radius: var(--st-radius-3);
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: var(--st-space-2);
     }
 
     .st-pull__options legend {
-      padding: 0 4px;
-      color: var(--muted, #8a8a9a);
-      font-size: 11px;
+      padding: 0 var(--st-space-1);
+      color: var(--st-color-muted);
+      font-size: var(--st-font-11);
       text-transform: uppercase;
-      letter-spacing: 0.4px;
+      letter-spacing: 0.04em;
     }
 
     .st-pull__option {
       display: flex;
       align-items: center;
-      gap: 8px;
-      font-size: 12px;
+      gap: var(--st-space-2);
+      font-size: var(--st-font-12);
       cursor: pointer;
+    }
+
+    .st-pull__option input[type='checkbox'] {
+      accent-color: var(--st-color-accent);
+      margin: 0;
     }
 
     .st-pull__note {
       margin: 0;
-      color: var(--muted, #8a8a9a);
-      font-size: 12px;
+      color: var(--st-color-muted);
+      font-size: var(--st-font-12);
     }
 
     .st-pull__progress {
       margin: 0;
       color: var(--st-color-accent);
-      font-size: 12px;
+      font-size: var(--st-font-12);
     }
 
     .st-pull__error {
       margin: 0;
-      color: #ff6b6b;
-      font-size: 12px;
+      color: var(--st-color-danger);
+      font-size: var(--st-font-12);
     }
 
     .st-pull__offline {
       margin: 0;
-      color: var(--muted, #8a8a9a);
-      font-size: 12px;
-    }
-
-    .st-pull__btn {
-      background: transparent;
-      border: 1px solid var(--st-color-border);
-      color: var(--st-color-text);
-      border-radius: 6px;
-      padding: 6px 14px;
-      font-size: 12px;
-      cursor: pointer;
-    }
-
-    .st-pull__btn:hover {
-      border-color: var(--muted, #8a8a9a);
-    }
-
-    .st-pull__btn--primary {
-      background: var(--st-color-accent);
-      border-color: var(--st-color-accent);
-      color: #fff;
-      font-weight: 600;
-    }
-
-    .st-pull__btn--primary:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
+      color: var(--st-color-muted);
+      font-size: var(--st-font-12);
     }
   `,
 })
@@ -416,19 +357,19 @@ export class PullDialog {
     });
   }
 
-  onRemoteChange(event: Event): void {
-    this.selectedRemote.set((event.target as HTMLSelectElement).value);
+  onRemoteChange(value: string): void {
+    this.selectedRemote.set(value);
     const options = this.branchOptions();
     const current = this.currentBranch();
     this.selectedBranch.set(current && options.includes(current) ? current : (options[0] ?? ''));
   }
 
-  onBranchChange(event: Event): void {
-    this.selectedBranch.set((event.target as HTMLSelectElement).value);
+  onBranchChange(value: string): void {
+    this.selectedBranch.set(value);
   }
 
-  onIntoLocalBranchChange(event: Event): void {
-    this.intoLocalBranch.set((event.target as HTMLInputElement).value);
+  onIntoLocalBranchChange(value: string): void {
+    this.intoLocalBranch.set(value);
   }
 
   onCommitMergedChange(event: Event): void {

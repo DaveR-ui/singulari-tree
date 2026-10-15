@@ -7,6 +7,8 @@ export type InputType = 'text' | 'search' | 'password';
  * search): wraps a native `<input>` and re-emits its value on every keystroke.
  * The parent owns the state — `value` is written back into the field, so the
  * control stays a pure function of its input.
+ * `testId` lets a consumer own the inner control's `data-testid` (defaults to
+ * `input`); `readonly` renders the field read-only (surface kept, text dimmed).
  */
 @Component({
   selector: 'st-input',
@@ -14,11 +16,12 @@ export type InputType = 'text' | 'search' | 'password';
   template: `
     <input
       class="st-input st-focus-ring"
-      data-testid="input"
+      [attr.data-testid]="testId() || 'input'"
       [type]="type()"
       [placeholder]="placeholder()"
       [value]="value()"
       [disabled]="disabled()"
+      [readonly]="readonly()"
       [attr.aria-label]="ariaLabel() || null"
       (input)="onInput($event)"
     />
@@ -53,6 +56,11 @@ export type InputType = 'text' | 'search' | 'password';
       opacity: 0.45;
       cursor: default;
     }
+
+    .st-input[readonly] {
+      color: var(--st-color-muted);
+      cursor: default;
+    }
   `,
 })
 export class InputComponent {
@@ -61,6 +69,8 @@ export class InputComponent {
   readonly value = input('');
   readonly disabled = input(false);
   readonly ariaLabel = input('');
+  readonly testId = input('');
+  readonly readonly = input(false);
 
   readonly valueChange = output<string>();
 

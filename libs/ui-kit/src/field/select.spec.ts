@@ -8,7 +8,7 @@ import { SelectComponent } from './select';
   imports: [SelectComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <st-select [(value)]="value" (valueChange)="onValue($event)">
+    <st-select [(value)]="value" [testId]="testId" (valueChange)="onValue($event)">
       <option value="en">English</option>
       <option value="es">Spanish</option>
     </st-select>
@@ -16,18 +16,20 @@ import { SelectComponent } from './select';
 })
 class SelectTestHost {
   value = 'en';
+  testId = '';
   emitted: string[] = [];
   onValue(value: string): void {
     this.emitted.push(value);
   }
 }
 
-async function setup(value = 'en'): Promise<ComponentFixture<SelectTestHost>> {
+async function setup(value = 'en', testId = ''): Promise<ComponentFixture<SelectTestHost>> {
   await TestBed.configureTestingModule({
     providers: [provideZonelessChangeDetection()],
   }).compileComponents();
   const fixture = TestBed.createComponent(SelectTestHost);
   fixture.componentInstance.value = value;
+  fixture.componentInstance.testId = testId;
   fixture.detectChanges();
   return fixture;
 }
@@ -58,5 +60,19 @@ describe('SelectComponent', () => {
     el.dispatchEvent(new Event('change'));
 
     expect(fixture.componentInstance.emitted).toEqual(['es']);
+  });
+
+  it('keeps the default testid when no consumer testId is set', async () => {
+    const fixture = await setup('en');
+
+    expect(field(fixture).getAttribute('data-testid')).toBe('select');
+  });
+
+  it('lets a consumer own the native testid', async () => {
+    const fixture = await setup('en', 'pull-remote-select');
+
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('[data-testid="pull-remote-select"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="select"]')).toBeNull();
   });
 });

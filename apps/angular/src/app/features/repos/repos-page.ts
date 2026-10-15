@@ -11,6 +11,12 @@ import type { Repository } from '@contracts/domain';
 import { IpcBridge, toAppError, type AppError } from '@core/services/ipc-bridge.service';
 import { RepoState } from '@core/services/repo-state.service';
 import { WorkspacesStore } from '@core/services/workspaces.store';
+import {
+  ButtonComponent,
+  EmptyStateComponent,
+  InputComponent,
+  PanelComponent,
+} from '@singularitree/ui-kit';
 
 /**
  * Dedicated repository-list page: add, open and remove persisted repositories.
@@ -19,90 +25,93 @@ import { WorkspacesStore } from '@core/services/workspaces.store';
  * delegates list/selection to the root `RepoState` plus the open/remove RPCs to
  * the `IpcBridge` (the renderer never talks to Git directly). Opening navigates
  * to `/repo` where the graph is provided.
+ *
+ * Presentation follows the P5 language (plan §4.10): the page lives in an
+ * `st-panel`, the path field is a shared `st-input`, every action is an
+ * `st-button`, and the loading/error/offline/empty states are `st-empty-state`.
+ * Deviation: the rows are deliberately **not** `[stSelectableRow]` — each row
+ * carries its own Open/Remove buttons, so making the row itself activatable
+ * would double-fire the open action (the spec asserts `setActive` runs once).
  */
 @Component({
   selector: 'st-repos-page',
   standalone: true,
+  imports: [ButtonComponent, EmptyStateComponent, InputComponent, PanelComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <section class="st-repos-page" data-testid="repos-page" aria-label="Repositories">
-      <header class="st-repos-page__head">
+    <st-panel class="st-repos-page" data-testid="repos-page" aria-label="Repositories">
+      <div header class="st-repos-page__head">
+        <span class="st-eyebrow">Local repositories</span>
         <h1 class="st-repos-page__title">Repositories</h1>
-      </header>
-
-      <div class="st-repos-page__add">
-        <label class="st-repos-page__label" for="repos-add-input">Repository path</label>
-        <input
-          id="repos-add-input"
-          type="text"
-          class="st-repos-page__input"
-          placeholder="/path/to/repository"
-          aria-label="Repository filesystem path"
-          data-testid="repos-add-input"
-          [value]="path()"
-          (input)="onInput($event)"
-          (keydown.enter)="add()"
-        />
-        <button
-          type="button"
-          class="st-repos-page__button"
-          data-testid="repos-browse"
-          [disabled]="browsing()"
-          (click)="browse()"
-        >
-          Browse…
-        </button>
-        <button
-          type="button"
-          class="st-repos-page__button"
-          data-testid="repos-add"
-          [disabled]="!path().trim() || adding()"
-          (click)="add()"
-        >
-          Add repository
-        </button>
       </div>
 
-      @if (repoState.reposLoading() && repoState.repos().length === 0) {
-        <p class="st-repos-page__status" data-testid="repos-loading">Loading repositories…</p>
-      } @else if (error(); as err) {
-        <p class="st-repos-page__error" data-testid="repos-error">{{ err.message }}</p>
-      } @else if (offline()) {
-        <p class="st-repos-page__status" data-testid="repos-offline">
-          Git core offline — manage repositories inside the desktop app.
-        </p>
-      } @else if (repoState.repos().length === 0) {
-        <p class="st-repos-page__empty" data-testid="repos-empty">
-          No repositories yet. Add one to get started.
-        </p>
-      } @else {
-        <ul class="st-repos-page__list">
-          @for (repo of repoState.repos(); track repo.id) {
-            <li class="st-repos-page__row" data-testid="repos-row">
-              <span class="st-repos-page__name">{{ repo.name }}</span>
-              <span class="st-repos-page__path">{{ repo.fsPath }}</span>
-              <button
-                type="button"
-                class="st-repos-page__action"
-                data-testid="repos-open"
-                (click)="open(repo)"
-              >
-                Open
-              </button>
-              <button
-                type="button"
-                class="st-repos-page__action st-repos-page__action--danger"
-                data-testid="repos-remove"
-                [disabled]="isRemoving(repo.id)"
-                (click)="remove(repo.id)"
-              >
-                Remove
-              </button>
-            </li>
-          }
-        </ul>
-      }
-    </section>
+      <div class="st-repos-page__body">
+        <div class="st-repos-page__add">
+          <span class="st-repos-page__label">Repository path</span>
+          <st-input
+            [testId]="'repos-add-input'"
+            placeholder="/path/to/repository"
+            ariaLabel="Repository filesystem path"
+            [value]="path()"
+            (valueChange)="onInput($event)"
+            (keydown.enter)="add()"
+          />
+          <st-button
+            data-testid="repos-browse"
+            [disabled]="browsing()"
+            (click)="browse()"
+          >
+            Browse…
+          </st-button>
+          <st-button
+            data-testid="repos-add"
+            [disabled]="!path().trim() || adding()"
+            (click)="add()"
+          >
+            Add repository
+          </st-button>
+        </div>
+
+        @if (repoState.reposLoading() && repoState.repos().length === 0) {
+          <st-empty-state data-testid="repos-loading" title="Loading repositories…" tone="muted" />
+        } @else if (error(); as err) {
+          <st-empty-state data-testid="repos-error" tone="error" [message]="err.message" />
+        } @else if (offline()) {
+          <st-empty-state
+            data-testid="repos-offline"
+            tone="muted"
+            message="Git core offline — manage repositories inside the desktop app."
+          />
+        } @else if (repoState.repos().length === 0) {
+          <st-empty-state
+            data-testid="repos-empty"
+            tone="muted"
+            message="No repositories yet. Add one to get started."
+          />
+        } @else {
+          <ul class="st-repos-page__list">
+            @for (repo of repoState.repos(); track repo.id) {
+              <li class="st-repos-page__row" data-testid="repos-row">
+                <span class="st-repos-page__name">{{ repo.name }}</span>
+                <span class="st-repos-page__path">{{ repo.fsPath }}</span>
+                <st-button size="sm" data-testid="repos-open" (click)="open(repo)">
+                  Open
+                </st-button>
+                <st-button
+                  variant="danger"
+                  size="sm"
+                  data-testid="repos-remove"
+                  [disabled]="isRemoving(repo.id)"
+                  (click)="remove(repo.id)"
+                >
+                  Remove
+                </st-button>
+              </li>
+            }
+          </ul>
+        }
+      </div>
+    </st-panel>
   `,
   styles: `
     :host {
@@ -114,65 +123,51 @@ import { WorkspacesStore } from '@core/services/workspaces.store';
     }
 
     .st-repos-page {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      padding: 12px 16px;
+      margin: var(--st-space-4);
     }
 
     .st-repos-page__head {
       display: flex;
-      align-items: center;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
     }
 
     .st-repos-page__title {
       margin: 0;
-      font-size: 14px;
+      font-size: var(--st-font-13);
       font-weight: 600;
+      line-height: var(--st-leading-tight);
+    }
+
+    .st-repos-page__body {
+      display: flex;
+      flex-direction: column;
+      gap: var(--st-space-3);
+      padding: var(--st-space-3);
     }
 
     .st-repos-page__add {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: var(--st-space-2);
     }
 
     .st-repos-page__label {
-      font-size: 12px;
+      font-size: var(--st-font-12);
       font-weight: 600;
       white-space: nowrap;
     }
 
-    .st-repos-page__input {
+    .st-repos-page__add st-input {
       flex: 1 1 auto;
       min-width: 120px;
-      padding: 4px 8px;
-      border-radius: 4px;
-      border: 1px solid var(--st-color-border);
-      background: var(--st-color-surface);
-      color: inherit;
-      font-size: 12px;
-    }
-
-    .st-repos-page__button {
-      padding: 4px 12px;
-      border-radius: 4px;
-      border: 1px solid var(--st-color-border);
-      background: var(--st-color-surface);
-      color: inherit;
-      font-size: 12px;
-      cursor: pointer;
-    }
-
-    .st-repos-page__button:disabled {
-      opacity: 0.5;
-      cursor: default;
     }
 
     .st-repos-page__list {
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: var(--st-space-1);
       margin: 0;
       padding: 0;
       list-style: none;
@@ -181,16 +176,19 @@ import { WorkspacesStore } from '@core/services/workspaces.store';
     .st-repos-page__row {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 6px 8px;
-      border: 1px solid var(--st-color-border);
-      border-radius: 6px;
+      gap: var(--st-space-2);
+      height: var(--st-size-row-tree);
+      padding: 0 var(--st-space-2);
+      border: var(--st-hairline) solid var(--st-color-border);
+      border-radius: var(--st-radius-2);
       background: var(--st-color-surface);
+      color: var(--st-color-text);
     }
 
     .st-repos-page__name {
-      font-size: 13px;
+      font-size: var(--st-font-13);
       font-weight: 600;
+      white-space: nowrap;
     }
 
     .st-repos-page__path {
@@ -199,40 +197,9 @@ import { WorkspacesStore } from '@core/services/workspaces.store';
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      font-size: 12px;
-      opacity: 0.6;
-    }
-
-    .st-repos-page__action {
-      padding: 3px 10px;
-      border-radius: 4px;
-      border: 1px solid var(--st-color-border);
-      background: transparent;
-      color: inherit;
-      font-size: 12px;
-      cursor: pointer;
-    }
-
-    .st-repos-page__action--danger {
-      color: #ff6b6b;
-    }
-
-    .st-repos-page__action:disabled {
-      opacity: 0.5;
-      cursor: default;
-    }
-
-    .st-repos-page__status,
-    .st-repos-page__empty {
-      margin: 0;
-      font-size: 12px;
-      opacity: 0.6;
-    }
-
-    .st-repos-page__error {
-      margin: 0;
-      font-size: 12px;
-      color: #ff6b6b;
+      font-family: var(--st-font-mono);
+      font-size: var(--st-font-11);
+      color: var(--st-color-muted);
     }
   `,
 })
@@ -267,8 +234,9 @@ export class ReposPage implements OnInit {
     void this.repoState.loadRepositories();
   }
 
-  onInput(event: Event): void {
-    this.path.set((event.target as HTMLInputElement).value);
+  /** Template entry point for the `st-input` primitive's `valueChange` output. */
+  onInput(value: string): void {
+    this.path.set(value);
   }
 
   /**

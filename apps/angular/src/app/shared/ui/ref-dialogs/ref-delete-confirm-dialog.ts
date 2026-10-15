@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
+import { ButtonComponent } from '@singularitree/ui-kit';
 import { ModalComponent } from '@shared/ui/modal/modal';
 import type { AppError } from '@core/services/ipc-bridge.service';
 
@@ -16,7 +17,7 @@ export type RefDeleteKind = 'branch' | 'tag';
 @Component({
   selector: 'st-ref-delete-confirm-dialog',
   standalone: true,
-  imports: [ModalComponent],
+  imports: [ModalComponent, ButtonComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <st-modal [open]="open()" [title]="title()" [closeOnBackdrop]="!running()" (closed)="cancel()">
@@ -40,25 +41,24 @@ export type RefDeleteKind = 'branch' | 'tag';
         <p class="st-ref-dialog__error" data-testid="ref-delete-error">{{ err.message }}</p>
       }
 
-      <button
+      <st-button
         st-modal-footer
-        type="button"
+        variant="default"
         data-testid="ref-delete-cancel"
         [disabled]="running()"
         (click)="cancel()"
       >
         Cancel
-      </button>
-      <button
+      </st-button>
+      <st-button
         st-modal-footer
-        type="button"
-        class="st-ref-dialog__danger"
+        variant="danger"
         data-testid="ref-delete-confirm"
         [disabled]="running()"
         (click)="confirm()"
       >
         Delete
-      </button>
+      </st-button>
     </st-modal>
   `,
   styles: `
@@ -68,32 +68,26 @@ export type RefDeleteKind = 'branch' | 'tag';
 
     .st-ref-dialog__warning {
       margin: 0;
-      font-size: 13px;
-      line-height: 1.5;
+      font-size: var(--st-font-13);
+      line-height: var(--st-leading-ui);
     }
 
     .st-ref-dialog__check {
       display: flex;
       align-items: center;
-      gap: 6px;
-      margin-top: 12px;
-      font-size: 12px;
+      gap: var(--st-space-2);
+      margin-top: var(--st-space-3);
+      font-size: var(--st-font-12);
+    }
+
+    .st-ref-dialog__check input {
+      accent-color: var(--st-color-accent);
     }
 
     .st-ref-dialog__error {
-      margin: 12px 0 0;
-      color: #ff8a80;
-      font-size: 12px;
-    }
-
-    .st-ref-dialog__danger {
-      background: #ff453a;
-      border-color: #ff453a;
-      color: #fff;
-    }
-
-    .st-ref-dialog__danger:disabled {
-      opacity: 0.5;
+      margin: var(--st-space-3) 0 0;
+      color: var(--st-color-danger);
+      font-size: var(--st-font-12);
     }
   `,
 })

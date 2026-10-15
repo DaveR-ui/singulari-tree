@@ -3,7 +3,8 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
 /**
  * Dumb controlled textarea (plan §4.4 commit message box): the multi-line
  * sibling of `<st-input>`. Re-emits its value on every keystroke; the parent
- * owns the state.
+ * owns the state. `testId` lets a consumer own the inner control's
+ * `data-testid` (defaults to `textarea`).
  */
 @Component({
   selector: 'st-textarea',
@@ -11,7 +12,7 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
   template: `
     <textarea
       class="st-textarea st-focus-ring"
-      data-testid="textarea"
+      [attr.data-testid]="testId() || 'textarea'"
       [rows]="rows()"
       [placeholder]="placeholder()"
       [value]="value()"
@@ -59,6 +60,7 @@ export class TextareaComponent {
   readonly value = input('');
   readonly disabled = input(false);
   readonly ariaLabel = input('');
+  readonly testId = input('');
 
   readonly valueChange = output<string>();
 

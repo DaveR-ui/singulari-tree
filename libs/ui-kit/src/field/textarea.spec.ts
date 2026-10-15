@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { TextareaComponent } from './textarea';
 
 async function setup(
-  inputs: { value?: string; disabled?: boolean; rows?: number } = {},
+  inputs: { value?: string; disabled?: boolean; rows?: number; testId?: string } = {},
 ): Promise<ComponentFixture<TextareaComponent>> {
   await TestBed.configureTestingModule({
     providers: [provideZonelessChangeDetection()],
@@ -13,6 +13,7 @@ async function setup(
   if (inputs.value !== undefined) fixture.componentRef.setInput('value', inputs.value);
   if (inputs.disabled !== undefined) fixture.componentRef.setInput('disabled', inputs.disabled);
   if (inputs.rows !== undefined) fixture.componentRef.setInput('rows', inputs.rows);
+  if (inputs.testId !== undefined) fixture.componentRef.setInput('testId', inputs.testId);
   fixture.detectChanges();
   return fixture;
 }
@@ -51,5 +52,19 @@ describe('TextareaComponent', () => {
     const fixture = await setup({ disabled: true });
 
     expect(field(fixture).disabled).toBe(true);
+  });
+
+  it('keeps the default testid when no consumer testId is set', async () => {
+    const fixture = await setup();
+
+    expect(field(fixture).getAttribute('data-testid')).toBe('textarea');
+  });
+
+  it('lets a consumer own the native testid', async () => {
+    const fixture = await setup({ testId: 'commit-message-input' });
+
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('[data-testid="commit-message-input"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="textarea"]')).toBeNull();
   });
 });

@@ -81,44 +81,45 @@ const SOURCE_LABELS: Record<AuthSource, string> = {
   styles: `
     :host {
       display: block;
-      padding: 16px;
+      padding: var(--st-space-4);
       color: var(--st-color-text);
     }
 
     .st-gh-account__header {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: var(--st-space-2);
       flex-wrap: wrap;
     }
 
     .st-gh-account__title {
       margin: 0;
-      font-size: 18px;
+      font-size: var(--st-font-22);
       font-weight: 600;
+      line-height: var(--st-leading-tight);
     }
 
     .st-gh-account__subtitle {
-      margin: 18px 0 8px;
-      font-size: 14px;
+      margin: var(--st-space-4) 0 var(--st-space-2);
+      font-size: var(--st-font-13);
       font-weight: 600;
     }
 
     .st-gh-account__status {
-      font-size: 12px;
-      opacity: 0.6;
+      font-size: var(--st-font-12);
+      color: var(--st-color-muted);
     }
 
     .st-gh-account__error {
-      margin: 8px 0 0;
-      font-size: 12px;
-      color: #ff6b6b;
+      margin: var(--st-space-2) 0 0;
+      font-size: var(--st-font-12);
+      color: var(--st-color-danger);
     }
 
     .st-gh-account__rate {
-      margin: 10px 0 0;
-      font-size: 12px;
-      opacity: 0.7;
+      margin: var(--st-space-2) 0 0;
+      font-size: var(--st-font-12);
+      color: var(--st-color-muted);
     }
   `,
 })

@@ -3,7 +3,8 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
 /**
  * Dumb controlled `<select>` (plan §4.9 language picker, P4 ref/PR pickers):
  * projects native `<option>` children and re-emits the picked value. The parent
- * owns the state.
+ * owns the state. `testId` lets a consumer own the inner control's
+ * `data-testid` (defaults to `select`).
  */
 @Component({
   selector: 'st-select',
@@ -11,7 +12,7 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
   template: `
     <select
       class="st-select st-focus-ring"
-      data-testid="select"
+      [attr.data-testid]="testId() || 'select'"
       [value]="value()"
       [disabled]="disabled()"
       [attr.aria-label]="ariaLabel() || null"
@@ -57,6 +58,7 @@ export class SelectComponent {
   readonly value = input('');
   readonly disabled = input(false);
   readonly ariaLabel = input('');
+  readonly testId = input('');
 
   readonly valueChange = output<string>();
 

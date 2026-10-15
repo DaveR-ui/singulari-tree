@@ -7,6 +7,7 @@ import {
   signal,
 } from '@angular/core';
 import { ModalComponent } from '@shared/ui/modal/modal';
+import { ButtonComponent, InputComponent } from '@singularitree/ui-kit';
 
 /**
  * Clone dialog stub (ADR-025).
@@ -20,19 +21,17 @@ import { ModalComponent } from '@shared/ui/modal/modal';
 @Component({
   selector: 'st-clone-dialog',
   standalone: true,
-  imports: [ModalComponent],
+  imports: [ModalComponent, ButtonComponent, InputComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <st-modal [open]="open()" title="Clone repository" i18n-title (closed)="cancelled.emit()">
       <label class="st-clone-dialog__field">
         <span i18n>Repository URL</span>
-        <input
-          type="text"
-          data-testid="clone-url"
+        <st-input
+          [testId]="'clone-url'"
           [value]="urlValue()"
-          (input)="onUrl($event)"
-          placeholder="https://example.com/me/app.git"
-          i18n-placeholder
+          [placeholder]="urlPlaceholder"
+          (valueChange)="onUrl($event)"
         />
       </label>
 
@@ -44,25 +43,22 @@ import { ModalComponent } from '@shared/ui/modal/modal';
         </p>
       }
 
-      <button
+      <st-button
         st-modal-footer
-        type="button"
+        variant="default"
         data-testid="clone-cancel"
         (click)="cancelled.emit()"
         i18n
+        >Cancel</st-button
       >
-        Cancel
-      </button>
-      <button
+      <st-button
         st-modal-footer
-        type="button"
-        class="st-clone-dialog__primary"
+        variant="primary"
         data-testid="clone-submit"
-        disabled
+        [disabled]="true"
         i18n
+        >Clone</st-button
       >
-        Clone
-      </button>
     </st-modal>
   `,
   styles: `
@@ -73,40 +69,21 @@ import { ModalComponent } from '@shared/ui/modal/modal';
     .st-clone-dialog__field {
       display: flex;
       flex-direction: column;
-      gap: 4px;
-      margin-bottom: 12px;
-      font-size: 12px;
-    }
-
-    .st-clone-dialog__field input {
-      padding: 6px 8px;
-      border-radius: 5px;
-      border: 1px solid var(--st-color-border);
-      background: var(--st-color-surface);
-      color: inherit;
-      font: inherit;
+      gap: var(--st-space-1);
+      margin-bottom: var(--st-space-3);
+      font-size: var(--st-font-12);
     }
 
     .st-clone-dialog__note {
-      margin: 12px 0 0;
+      margin: var(--st-space-3) 0 0;
       color: var(--st-color-muted);
-      font-size: 12px;
+      font-size: var(--st-font-12);
     }
 
     .st-clone-dialog__error {
-      margin: 12px 0 0;
-      color: #ff8a80;
-      font-size: 12px;
-    }
-
-    .st-clone-dialog__primary {
-      background: rgba(90, 140, 255, 0.2);
-      border-color: rgba(90, 140, 255, 0.6);
-      color: #9db8ff;
-    }
-
-    .st-clone-dialog__primary:disabled {
-      opacity: 0.5;
+      margin: var(--st-space-3) 0 0;
+      color: var(--st-color-danger);
+      font-size: var(--st-font-12);
     }
   `,
 })
@@ -121,6 +98,8 @@ export class CloneDialog {
 
   /** Editable copy of the prefilled URL; re-seeded on every open. */
   readonly urlValue = signal('');
+  /** Translated placeholder for the URL field. */
+  readonly urlPlaceholder = $localize`https://example.com/me/app.git`;
 
   constructor() {
     effect(() => {
@@ -128,7 +107,7 @@ export class CloneDialog {
     });
   }
 
-  onUrl(event: Event): void {
-    this.urlValue.set((event.target as HTMLInputElement).value);
+  onUrl(value: string): void {
+    this.urlValue.set(value);
   }
 }

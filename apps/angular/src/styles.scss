@@ -4,10 +4,6 @@
 @use '../../../libs/ui-kit/src/styles/tokens';
 @use '../../../libs/ui-kit/src/styles/utilities';
 
-/* Legacy color aliases — temporary shim for the P5 dialogs; the geometry
-   group was deleted with the P2 shell rebuild. */
-@use './styles/legacy-aliases';
-
 /* Base */
 * {
   box-sizing: border-box;

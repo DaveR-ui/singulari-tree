@@ -6,6 +6,7 @@ import {
   output,
   signal,
 } from '@angular/core';
+import { ButtonComponent, InputComponent, TextareaComponent } from '@singularitree/ui-kit';
 import { ModalComponent } from '@shared/ui/modal/modal';
 import type { AppError } from '@core/services/ipc-bridge.service';
 import type { TagCreateValue } from './ref-dialog.models';
@@ -21,29 +22,27 @@ import type { TagCreateValue } from './ref-dialog.models';
 @Component({
   selector: 'st-tag-create-dialog',
   standalone: true,
-  imports: [ModalComponent],
+  imports: [ModalComponent, ButtonComponent, InputComponent, TextareaComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <st-modal [open]="open()" title="New tag" [closeOnBackdrop]="!running()" (closed)="cancel()">
       <label class="st-ref-dialog__field">
         <span i18n>Name</span>
-        <input
-          type="text"
-          data-testid="tag-create-name"
+        <st-input
+          [testId]="'tag-create-name'"
           [value]="name()"
-          (input)="onName($event)"
           placeholder="v1.0.0"
           i18n-placeholder
+          (valueChange)="name.set($event)"
         />
       </label>
 
       <label class="st-ref-dialog__field">
         <span i18n>Target</span>
-        <input
-          type="text"
-          data-testid="tag-create-target"
+        <st-input
+          [testId]="'tag-create-target'"
           [value]="targetValue()"
-          (input)="onTarget($event)"
+          (valueChange)="targetValue.set($event)"
         />
       </label>
 
@@ -60,12 +59,12 @@ import type { TagCreateValue } from './ref-dialog.models';
       @if (annotated()) {
         <label class="st-ref-dialog__field">
           <span i18n>Message</span>
-          <textarea
-            rows="3"
-            data-testid="tag-create-message"
+          <st-textarea
+            [testId]="'tag-create-message'"
+            [rows]="3"
             [value]="message()"
-            (input)="onMessage($event)"
-          ></textarea>
+            (valueChange)="message.set($event)"
+          />
         </label>
       }
 
@@ -83,25 +82,24 @@ import type { TagCreateValue } from './ref-dialog.models';
         <p class="st-ref-dialog__error" data-testid="tag-create-error">{{ err.message }}</p>
       }
 
-      <button
+      <st-button
         st-modal-footer
-        type="button"
+        variant="default"
         data-testid="tag-create-cancel"
         [disabled]="running()"
         (click)="cancel()"
       >
         Cancel
-      </button>
-      <button
+      </st-button>
+      <st-button
         st-modal-footer
-        type="button"
-        class="st-ref-dialog__primary"
+        variant="primary"
         data-testid="tag-create-submit"
         [disabled]="!canSubmit() || running()"
         (click)="submit()"
       >
         Create tag
-      </button>
+      </st-button>
     </st-modal>
   `,
   styles: `
@@ -112,44 +110,27 @@ import type { TagCreateValue } from './ref-dialog.models';
     .st-ref-dialog__field {
       display: flex;
       flex-direction: column;
-      gap: 4px;
-      margin-bottom: 12px;
-      font-size: 12px;
-    }
-
-    .st-ref-dialog__field input,
-    .st-ref-dialog__field textarea {
-      padding: 6px 8px;
-      border-radius: 5px;
-      border: 1px solid var(--st-color-border);
-      background: var(--st-color-surface);
-      color: inherit;
-      font: inherit;
-      resize: vertical;
+      gap: var(--st-space-1);
+      margin-bottom: var(--st-space-3);
+      font-size: var(--st-font-12);
     }
 
     .st-ref-dialog__check {
       display: flex;
       align-items: center;
-      gap: 6px;
-      margin-bottom: 8px;
-      font-size: 12px;
+      gap: var(--st-space-2);
+      margin-bottom: var(--st-space-2);
+      font-size: var(--st-font-12);
+    }
+
+    .st-ref-dialog__check input {
+      accent-color: var(--st-color-accent);
     }
 
     .st-ref-dialog__error {
-      margin: 8px 0 0;
-      color: #ff8a80;
-      font-size: 12px;
-    }
-
-    .st-ref-dialog__primary {
-      background: rgba(90, 140, 255, 0.2);
-      border-color: rgba(90, 140, 255, 0.6);
-      color: #9db8ff;
-    }
-
-    .st-ref-dialog__primary:disabled {
-      opacity: 0.5;
+      margin: var(--st-space-2) 0 0;
+      color: var(--st-color-danger);
+      font-size: var(--st-font-12);
     }
   `,
 })
@@ -188,20 +169,8 @@ export class TagCreateDialog {
     });
   }
 
-  onName(event: Event): void {
-    this.name.set((event.target as HTMLInputElement).value);
-  }
-
-  onTarget(event: Event): void {
-    this.targetValue.set((event.target as HTMLInputElement).value);
-  }
-
   onAnnotated(event: Event): void {
     this.annotated.set((event.target as HTMLInputElement).checked);
-  }
-
-  onMessage(event: Event): void {
-    this.message.set((event.target as HTMLTextAreaElement).value);
   }
 
   onForce(event: Event): void {

@@ -11,6 +11,7 @@ import {
 import type { GitFlowConfig, GitFlowResult } from '@contracts/gitcore';
 import { ModalComponent } from '@shared/ui/modal/modal';
 import type { AppError } from '@core/services/ipc-bridge.service';
+import { ButtonComponent, InputComponent, SelectComponent } from '@singularitree/ui-kit';
 import {
   GIT_FLOW_DEFAULTS,
   GIT_FLOW_KINDS,
@@ -32,7 +33,7 @@ import {
 @Component({
   selector: 'st-git-flow-dialog',
   standalone: true,
-  imports: [ModalComponent],
+  imports: [ModalComponent, ButtonComponent, InputComponent, SelectComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <st-modal [open]="open()" title="Git flow" i18n-title [closeOnBackdrop]="!running()" (closed)="cancel()">
@@ -55,53 +56,56 @@ import {
       @if (mode() === 'start') {
         <label class="st-git-flow__field">
           <span i18n>Kind</span>
-          <select data-testid="git-flow-start-kind" [value]="kind()" (change)="onKind($event)">
+          <st-select
+            [testId]="'git-flow-start-kind'"
+            [value]="kind()"
+            (valueChange)="onKind($event)"
+          >
             @for (option of KINDS; track option) {
               <option [value]="option">{{ option }}</option>
             }
-          </select>
+          </st-select>
         </label>
 
         <label class="st-git-flow__field">
           <span i18n>Name</span>
-          <input
-            type="text"
-            data-testid="git-flow-start-name"
+          <st-input
+            [testId]="'git-flow-start-name'"
             [value]="name()"
-            (input)="onName($event)"
-            placeholder="login"
-            i18n-placeholder
+            [placeholder]="namePlaceholder"
+            (valueChange)="onName($event)"
           />
         </label>
 
         <label class="st-git-flow__field">
           <span i18n>Base (optional)</span>
-          <input
-            type="text"
-            data-testid="git-flow-start-base"
+          <st-input
+            [testId]="'git-flow-start-base'"
             [value]="base()"
-            (input)="onBase($event)"
+            (valueChange)="onBase($event)"
           />
         </label>
       } @else if (mode() === 'finish') {
         <label class="st-git-flow__field">
           <span i18n>Kind</span>
-          <select data-testid="git-flow-finish-kind" [value]="kind()" (change)="onKind($event)">
+          <st-select
+            [testId]="'git-flow-finish-kind'"
+            [value]="kind()"
+            (valueChange)="onKind($event)"
+          >
             @for (option of KINDS; track option) {
               <option [value]="option">{{ option }}</option>
             }
-          </select>
+          </st-select>
         </label>
 
         <label class="st-git-flow__field">
           <span i18n>Name</span>
-          <input
-            type="text"
-            data-testid="git-flow-finish-name"
+          <st-input
+            [testId]="'git-flow-finish-name'"
             [value]="name()"
-            (input)="onName($event)"
-            placeholder="login"
-            i18n-placeholder
+            [placeholder]="namePlaceholder"
+            (valueChange)="onName($event)"
           />
         </label>
 
@@ -117,68 +121,61 @@ import {
       } @else {
         <label class="st-git-flow__field">
           <span i18n>Main branch</span>
-          <input
-            type="text"
-            data-testid="git-flow-config-main"
+          <st-input
+            [testId]="'git-flow-config-main'"
             [value]="mainBranch()"
-            (input)="onMainBranch($event)"
+            (valueChange)="onMainBranch($event)"
           />
         </label>
         <label class="st-git-flow__field">
           <span i18n>Develop branch</span>
-          <input
-            type="text"
-            data-testid="git-flow-config-develop"
+          <st-input
+            [testId]="'git-flow-config-develop'"
             [value]="developBranch()"
-            (input)="onDevelopBranch($event)"
+            (valueChange)="onDevelopBranch($event)"
           />
         </label>
         <label class="st-git-flow__field">
           <span i18n>Feature prefix</span>
-          <input
-            type="text"
-            data-testid="git-flow-config-feature-prefix"
+          <st-input
+            [testId]="'git-flow-config-feature-prefix'"
             [value]="featurePrefix()"
-            (input)="onFeaturePrefix($event)"
+            (valueChange)="onFeaturePrefix($event)"
           />
         </label>
         <label class="st-git-flow__field">
           <span i18n>Release prefix</span>
-          <input
-            type="text"
-            data-testid="git-flow-config-release-prefix"
+          <st-input
+            [testId]="'git-flow-config-release-prefix'"
             [value]="releasePrefix()"
-            (input)="onReleasePrefix($event)"
+            (valueChange)="onReleasePrefix($event)"
           />
         </label>
         <label class="st-git-flow__field">
           <span i18n>Hotfix prefix</span>
-          <input
-            type="text"
-            data-testid="git-flow-config-hotfix-prefix"
+          <st-input
+            [testId]="'git-flow-config-hotfix-prefix'"
             [value]="hotfixPrefix()"
-            (input)="onHotfixPrefix($event)"
+            (valueChange)="onHotfixPrefix($event)"
           />
         </label>
         <label class="st-git-flow__field">
           <span i18n>Version tag prefix</span>
-          <input
-            type="text"
-            data-testid="git-flow-config-version-prefix"
+          <st-input
+            [testId]="'git-flow-config-version-prefix'"
             [value]="versionTagPrefix()"
-            (input)="onVersionTagPrefix($event)"
+            (valueChange)="onVersionTagPrefix($event)"
           />
         </label>
 
-        <button
-          type="button"
-          class="st-git-flow__reset"
+        <st-button
+          variant="default"
           data-testid="git-flow-config-reset"
           [disabled]="running()"
           (click)="resetConfig()"
+          i18n
+          >Reset to defaults</st-button
         >
-          <span i18n>Reset to defaults</span>
-        </button>
       }
 
       @if (result(); as res) {
@@ -203,48 +200,45 @@ import {
         <p class="st-git-flow__error" data-testid="git-flow-error">{{ err.message }}</p>
       }
 
-      <button
+      <st-button
         st-modal-footer
-        type="button"
+        variant="default"
         data-testid="git-flow-cancel"
         [disabled]="running()"
         (click)="cancel()"
+        i18n
+        >Close</st-button
       >
-        <span i18n>Close</span>
-      </button>
       @if (mode() === 'start') {
-        <button
+        <st-button
           st-modal-footer
-          type="button"
-          class="st-git-flow__primary"
+          variant="primary"
           data-testid="git-flow-start-submit"
           [disabled]="!canSubmit() || running()"
           (click)="submitStart()"
+          i18n
+          >Start</st-button
         >
-          <span i18n>Start</span>
-        </button>
       } @else if (mode() === 'finish') {
-        <button
+        <st-button
           st-modal-footer
-          type="button"
-          class="st-git-flow__primary"
+          variant="primary"
           data-testid="git-flow-finish-submit"
           [disabled]="!canSubmit() || running()"
           (click)="submitFinish()"
+          i18n
+          >Finish</st-button
         >
-          <span i18n>Finish</span>
-        </button>
       } @else {
-        <button
+        <st-button
           st-modal-footer
-          type="button"
-          class="st-git-flow__primary"
+          variant="primary"
           data-testid="git-flow-config-submit"
           [disabled]="running()"
           (click)="submitConfig()"
+          i18n
+          >Save</st-button
         >
-          <span i18n>Save</span>
-        </button>
       }
     </st-modal>
   `,
@@ -255,20 +249,20 @@ import {
 
     .st-git-flow__tabs {
       display: flex;
-      gap: 4px;
-      margin-bottom: 14px;
-      border-bottom: 1px solid var(--st-color-border);
+      gap: var(--st-space-1);
+      margin-bottom: var(--st-space-4);
+      border-bottom: var(--st-hairline) solid var(--st-color-border);
     }
 
     .st-git-flow__tab {
       background: transparent;
       border: none;
       border-bottom: 2px solid transparent;
-      color: var(--muted, #8a8a9a);
+      color: var(--st-color-muted);
       cursor: pointer;
       font: inherit;
-      font-size: 12px;
-      padding: 6px 10px;
+      font-size: var(--st-font-12);
+      padding: var(--st-space-1) var(--st-space-3);
     }
 
     .st-git-flow__tab--active {
@@ -279,79 +273,45 @@ import {
     .st-git-flow__field {
       display: flex;
       flex-direction: column;
-      gap: 4px;
-      margin-bottom: 12px;
-      font-size: 12px;
-    }
-
-    .st-git-flow__field input,
-    .st-git-flow__field select {
-      padding: 6px 8px;
-      border-radius: 5px;
-      border: 1px solid var(--st-color-border);
-      background: var(--st-color-surface);
-      color: inherit;
-      font: inherit;
+      gap: var(--st-space-1);
+      margin-bottom: var(--st-space-3);
+      font-size: var(--st-font-12);
     }
 
     .st-git-flow__check {
       display: flex;
       align-items: center;
-      gap: 6px;
-      font-size: 12px;
-    }
-
-    .st-git-flow__reset {
-      background: transparent;
-      border: 1px solid var(--st-color-border);
-      color: var(--muted, #8a8a9a);
-      border-radius: 5px;
-      cursor: pointer;
-      font: inherit;
-      font-size: 12px;
-      padding: 5px 10px;
-    }
-
-    .st-git-flow__reset:hover {
-      color: var(--st-color-text);
+      gap: var(--st-space-2);
+      font-size: var(--st-font-12);
+      accent-color: var(--st-color-accent);
     }
 
     .st-git-flow__steps {
-      margin-top: 12px;
-      font-size: 12px;
+      margin-top: var(--st-space-3);
+      font-size: var(--st-font-12);
     }
 
     .st-git-flow__steps-title {
-      margin: 0 0 4px;
-      color: var(--muted, #8a8a9a);
+      margin: 0 0 var(--st-space-1);
+      color: var(--st-color-muted);
       font-weight: 600;
     }
 
     .st-git-flow__steps-list {
       margin: 0;
-      padding-left: 18px;
+      padding-left: var(--st-space-4);
     }
 
     .st-git-flow__conflict {
-      margin: 10px 0 0;
-      color: #ffcf6b;
-      font-size: 12px;
+      margin: var(--st-space-3) 0 0;
+      color: var(--st-color-warn);
+      font-size: var(--st-font-12);
     }
 
     .st-git-flow__error {
-      margin: 10px 0 0;
-      color: #ff8a80;
-      font-size: 12px;
-    }
-
-    .st-git-flow__primary {
-      background: rgba(90, 140, 255, 0.2);
-      border-color: rgba(90, 140, 255, 0.6);
-      color: #9db8ff;
-    }
-
-    .st-git-flow__primary:disabled {
-      opacity: 0.5;
+      margin: var(--st-space-3) 0 0;
+      color: var(--st-color-danger);
+      font-size: var(--st-font-12);
     }
   `,
 })
@@ -374,6 +334,8 @@ export class GitFlowDialog {
 
   readonly MODES: readonly GitFlowMode[] = ['start', 'finish', 'config'];
   readonly KINDS = GIT_FLOW_KINDS;
+  /** Translated placeholder shared by the Start and Finish branch-name fields. */
+  readonly namePlaceholder = $localize`login`;
 
   readonly mode = signal<GitFlowMode>('start');
   readonly kind = signal<GitFlowKindName>('FEATURE');
@@ -429,50 +391,50 @@ export class GitFlowDialog {
     }
   }
 
-  onKind(event: Event): void {
-    this.kind.set((event.target as HTMLSelectElement).value as GitFlowKindName);
+  onKind(value: string): void {
+    this.kind.set(value as GitFlowKindName);
   }
 
-  onName(event: Event): void {
-    this.name.set((event.target as HTMLInputElement).value);
+  onName(value: string): void {
+    this.name.set(value);
   }
 
-  onBase(event: Event): void {
-    this.base.set((event.target as HTMLInputElement).value);
+  onBase(value: string): void {
+    this.base.set(value);
   }
 
   onDeleteBranch(event: Event): void {
     this.deleteBranch.set((event.target as HTMLInputElement).checked);
   }
 
-  onMainBranch(event: Event): void {
+  onMainBranch(value: string): void {
     this.configEdited = true;
-    this.mainBranch.set((event.target as HTMLInputElement).value);
+    this.mainBranch.set(value);
   }
 
-  onDevelopBranch(event: Event): void {
+  onDevelopBranch(value: string): void {
     this.configEdited = true;
-    this.developBranch.set((event.target as HTMLInputElement).value);
+    this.developBranch.set(value);
   }
 
-  onFeaturePrefix(event: Event): void {
+  onFeaturePrefix(value: string): void {
     this.configEdited = true;
-    this.featurePrefix.set((event.target as HTMLInputElement).value);
+    this.featurePrefix.set(value);
   }
 
-  onReleasePrefix(event: Event): void {
+  onReleasePrefix(value: string): void {
     this.configEdited = true;
-    this.releasePrefix.set((event.target as HTMLInputElement).value);
+    this.releasePrefix.set(value);
   }
 
-  onHotfixPrefix(event: Event): void {
+  onHotfixPrefix(value: string): void {
     this.configEdited = true;
-    this.hotfixPrefix.set((event.target as HTMLInputElement).value);
+    this.hotfixPrefix.set(value);
   }
 
-  onVersionTagPrefix(event: Event): void {
+  onVersionTagPrefix(value: string): void {
     this.configEdited = true;
-    this.versionTagPrefix.set((event.target as HTMLInputElement).value);
+    this.versionTagPrefix.set(value);
   }
 
   resetConfig(): void {

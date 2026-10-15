@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import type { AppError } from '@core/services/ipc-bridge.service';
 import { ModalComponent } from '@shared/ui/modal/modal';
+import { ButtonComponent, SelectComponent } from '@singularitree/ui-kit';
 import { type FetchIntent, type RemoteOpProgress, type RemoteOption } from '../../remote-models';
 
 /**
@@ -21,7 +22,7 @@ import { type FetchIntent, type RemoteOpProgress, type RemoteOption } from '../.
 @Component({
   selector: 'st-fetch-dialog',
   standalone: true,
-  imports: [ModalComponent],
+  imports: [ModalComponent, ButtonComponent, SelectComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <st-modal [open]="open()" title="Fetch" (closed)="closed.emit()">
@@ -43,18 +44,17 @@ import { type FetchIntent, type RemoteOpProgress, type RemoteOption } from '../.
         @if (!allRemotes()) {
           <label class="st-fetch__option">
             <span class="st-fetch__label">Remote</span>
-            <select
-              class="st-fetch__select"
-              data-testid="fetch-remote-select"
+            <st-select
+              [testId]="'fetch-remote-select'"
               [value]="selectedRemote()"
-              (change)="onRemoteChange($event)"
+              (valueChange)="onRemoteChange($event)"
             >
               @for (remote of remotes(); track remote.name) {
                 <option [value]="remote.name" [selected]="remote.name === selectedRemote()">
                   {{ remote.name }}
                 </option>
               }
-            </select>
+            </st-select>
           </label>
         }
 
@@ -109,25 +109,23 @@ import { type FetchIntent, type RemoteOpProgress, type RemoteOption } from '../.
         }
       </div>
 
-      <button
+      <st-button
         st-modal-footer
-        class="st-btn"
-        type="button"
+        variant="default"
         data-testid="fetch-cancel"
         (click)="closed.emit()"
       >
         Cancel
-      </button>
-      <button
+      </st-button>
+      <st-button
         st-modal-footer
-        class="st-btn st-btn--primary"
-        type="button"
+        variant="primary"
         data-testid="fetch-submit"
         [disabled]="submitDisabled()"
         (click)="submit()"
       >
         OK
-      </button>
+      </st-button>
     </st-modal>
   `,
   styles: `
@@ -138,15 +136,15 @@ import { type FetchIntent, type RemoteOpProgress, type RemoteOption } from '../.
     .st-fetch {
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: var(--st-space-3);
       color: var(--st-color-text);
-      font-size: 13px;
+      font-size: var(--st-font-13);
     }
 
     .st-fetch__option {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: var(--st-space-2);
       cursor: pointer;
     }
 
@@ -159,70 +157,27 @@ import { type FetchIntent, type RemoteOpProgress, type RemoteOption } from '../.
       flex: 1;
     }
 
-    .st-fetch__select {
-      background: var(--st-color-bg);
-      border: 1px solid var(--st-color-border);
-      color: var(--st-color-text);
-      border-radius: 6px;
-      padding: 5px 8px;
-      font-size: 12px;
-      outline: none;
-    }
-
-    .st-fetch__select:focus {
-      border-color: var(--st-color-accent);
-    }
-
     .st-fetch__progress {
-      color: var(--muted, #8a8a9a);
-      font-size: 12px;
+      color: var(--st-color-muted);
+      font-size: var(--st-font-12);
     }
 
     .st-fetch__banner {
-      border-radius: 6px;
-      padding: 8px 10px;
-      font-size: 12px;
+      border-radius: var(--st-radius-2);
+      padding: var(--st-space-2) var(--st-space-3);
+      font-size: var(--st-font-12);
     }
 
     .st-fetch__banner--error {
-      background: rgba(255, 69, 58, 0.12);
-      border: 1px solid rgba(255, 69, 58, 0.45);
-      color: #ff8a80;
+      background: var(--st-color-danger-soft);
+      border: var(--st-hairline) solid var(--st-color-danger);
+      color: var(--st-color-danger);
     }
 
     .st-fetch__banner--offline {
-      background: rgba(255, 214, 10, 0.1);
-      border: 1px solid rgba(255, 214, 10, 0.4);
-      color: #ffd60a;
-    }
-
-    .st-btn {
-      background: transparent;
-      border: 1px solid var(--st-color-border);
-      color: var(--st-color-text);
-      border-radius: 6px;
-      padding: 6px 14px;
-      font-size: 13px;
-      cursor: pointer;
-    }
-
-    .st-btn:hover:not(:disabled) {
-      background: rgba(255, 255, 255, 0.07);
-    }
-
-    .st-btn--primary {
-      background: var(--st-color-accent);
-      border-color: var(--st-color-accent);
-      color: #fff;
-    }
-
-    .st-btn--primary:hover:not(:disabled) {
-      background: #3a9bff;
-    }
-
-    .st-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
+      background: var(--st-color-warn-soft);
+      border: var(--st-hairline) solid var(--st-color-warn);
+      color: var(--st-color-warn);
     }
   `,
 })
@@ -274,8 +229,8 @@ export class FetchDialog {
     this.allRemotes.set((event.target as HTMLInputElement).checked);
   }
 
-  onRemoteChange(event: Event): void {
-    this.selectedRemote.set((event.target as HTMLSelectElement).value);
+  onRemoteChange(value: string): void {
+    this.selectedRemote.set(value);
   }
 
   onPruneChange(event: Event): void {

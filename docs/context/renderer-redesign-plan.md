@@ -7,7 +7,7 @@ tags:
 - redesign
 - plan
 - git-client
-version: 1.4.2
+version: 1.5.0
 related:
 - renderer-slice
 - feature-gap-analysis
@@ -17,9 +17,9 @@ related:
 
 # SingulariTree Renderer Facelift — Design Plan
 
-> **Status: P0 (token foundation), P1 (primitives), P2 (shell rebuild), P3 (history workspace) and P4 (changes & diff workspace) SHIPPED as of 2026-10-15, plus P4.2 (Dark Neon / Developer Studio palette remap); P5–P6 remain planned.** Verification at P4 close: renderer vitest 79 files / 1038 tests green, coverage 94.81% statements / 88.25% branches / 89.21% functions / 96.66% lines; `ng build` exit 0 (initial 549.43 kB). This document remains the approved-direction plan governing the not-yet-shipped phases of a total facelift of the renderer's visible UI. Derived from the operator's sketch `git-client-sketch.html` (dark, offline git-client mockup, delivered 2026-10-13) treated as a **guide, not a spec**: every intentional divergence is numbered and justified in §6. Aesthetic direction is committed by the agent system (no human sign-off loop), per the operator's delegation.
+> **Status: P0 (token foundation), P1 (primitives), P2 (shell rebuild), P3 (history workspace), P4 (changes & diff workspace) and P5 (secondary surfaces & Settings) SHIPPED as of 2026-10-15, plus P4.2 (Dark Neon / Developer Studio palette remap); P6 remains planned.** Verification at P5 close: renderer vitest **82 files / 1157 tests green**, coverage **95.01% statements / 88.46% branches / 89.64% functions / 96.83% lines** (all above the 80% thresholds); `ng build` exit 0. This document remains the approved-direction plan governing the not-yet-shipped phases of a total facelift of the renderer's visible UI. Derived from the operator's sketch `git-client-sketch.html` (dark, offline git-client mockup, delivered 2026-10-13) treated as a **guide, not a spec**: every intentional divergence is numbered and justified in §6. Aesthetic direction is committed by the agent system (no human sign-off loop), per the operator's delegation.
 >
-> **Scope:** `apps/angular/**` + `libs/ui-kit/**` only. No Go core, no contracts/proto, no Electron shell/IPC, no IPC-contract change. `files_to_touch` (§8.2) is the implementation manifest — P0–P2's entries are shipped; the rest are not yet created.
+> **Scope:** `apps/angular/**` + `libs/ui-kit/**` only. No Go core, no contracts/proto, no Electron shell/IPC, no IPC-contract change. `files_to_touch` (§8.2) is the implementation manifest — P0–P5's entries are shipped; only P6's remain.
 
 > **P0 shipped (2026-10-14) — token foundation.** 13 files: `libs/ui-kit/src/styles/tokens.scss` (NEW canonical two-tier layer — `--st-prim-*` primitives + semantic tokens, dark defaults in `:root` with a matched `[data-theme=light]` block carrying every semantic token), `libs/ui-kit/src/styles/utilities.scss` (NEW — focus ring, hairlines, eyebrow, mono/tabular-nums, selectable-row + selection bar, hover surface, reduced-motion guard), `libs/ui-kit/src/styles/index.ts`, `apps/angular/src/styles.scss` (inert `@tailwind` directives removed), `apps/angular/src/styles/_legacy-aliases.scss` (NEW shim), `apps/angular/src/app/core/layout/layout.scss`, plus the re-tokenization of 7 ui-kit components (`button`, `badge`, `empty-state`, `repo-card`, `graph-row`, `lane-palette`, `diff-viewer`).
 >
@@ -68,6 +68,22 @@ related:
 > **P4.2 shipped (2026-10-15) — Dark Neon / Developer Studio palette remap.** A colour-only polish batch, NOT folded into P5/P6, shipped on `feature-rebrand-style`. At the operator's request the renderer's colour system was remapped from the P4.1 **Navy & Cyan** direction onto a near-black, slightly blue-tinted **Dark Neon / Developer Studio** one with a strict intensity budget (~70% dark surfaces, ~20% neutral structure and text, ~10% bright accents) and accents assigned per semantic role: turquoise `--st-color-accent` = interaction / selection / focus / graph connections / primary action / `HEAD`; violet = local branches; the **new** electric blue `--st-color-info` = navigation / links / history / informational and `origin/*`; amber = pending changes / warnings / tags; mint = mainline ref (the **new** `--st-color-ref-main`) / staged / sync; coral `--st-color-danger` reserved for errors.
 >
 > Files moved: `libs/ui-kit/src/styles/tokens.scss` (dark ramp + new `info`/`ref-main` tokens, light selection/graph/ref/avatar values), `libs/ui-kit/src/diff-viewer/monaco-theme.ts` (mirrored), `libs/ui-kit/src/button/button.ts` (`info` variant + the single permitted primary glow) and the shell/consumer surfaces that read the new roles (`top-bar`, `nav-rail`, `st-graph-row`, `commit-details-panel`). The two-tier `--st-*` vocabulary and **all** geometry, hairlines, radii and the type scale were kept, and the light theme's neutrals, status and diff values were left unchanged. Verification path: the renderer vitest suite + `ng build`. `node tools/docs/validate.js` 0 errors.
+
+> **P5 shipped (2026-10-15) — secondary surfaces & Settings.** `apps/angular/src/app/features/settings/settings.ts` was rewritten as five grouped `st-panel`s — **Appearance** (theme, motion), **Workspace** (density, reset pane width), **Diff** (layout, font size, word wrap), **Language** (EN/ES) and **About** (read-only) — built on `st-panel` / `st-toggle-group` / `st-field` / `st-button`. A new root service, `apps/angular/src/app/core/services/preferences.service.ts`, owns the renderer-local `st:`-prefixed preference signals for `st:motion` (`auto|on|off`), `st:density` (`compact|comfortable`), `st:paneWidth`, `st:diffFontSize` (`11|12|13`) and `st:diffWordWrap` (`on|off`), following the house pattern of `theme.service.ts` / `diff-mode.service.ts`. Theme, language and diff **layout** stayed owned by their existing services (`ThemeService`, `LanguageService`, `DiffModeService`) — no state was duplicated.
+>
+> **Consumed today:** theme, language and diff layout (the same `DiffModeService` instance the diff-pane toggle uses). **Persisted now, consuming surface still to land:** motion enforcement, density, pane width, diff font size and word wrap (the plan's own §4.9 list). The component doc comment states this plainly, and so does this note.
+>
+> Secondary surfaces were retokenized and moved onto the primitives: `repos-page` (panel header, `st-field`, `st-button`, `st-empty-state`, retokenized rows), `github-account` + `account-profile` + `repo-list`, `search-workspace` (`st-input`, `.st-eyebrow` group headers, mono accent oid, hits on `[stSelectableRow]`, `st-empty-state` for the four states), the three remote dialogs (`pull`/`push`/`fetch`), the six ref dialogs (`merge`, `branch-create`, `ref-rename`, `ref-delete-confirm`, `tag-create`, `stash-push`) plus `stash-drop-confirm`, `git-flow-dialog` and `clone-dialog`, and — as a bounded adjacent consistency pass — `switch-branch-confirm-dialog` and `reset-confirm-dialog`.
+>
+> The shared `st-modal` (`apps/angular/src/app/shared/ui/modal/modal.ts`) was retokenized onto `--st-color-raised` / `--st-color-overlay` / `--st-z-modal` / `--st-radius-4` with hairline structure and the elevation shadow removed, its `✕` glyph replaced by `st-icon`, and a 180ms fade+rise open motion added — **plus a focus trap and focus restore**: focus moves into the dialog on open and returns to the previously focused element on every close path, and Tab/Shift+Tab cycle inside (hand-rolled to match the `st-popover` pattern, not CDK `FocusTrap`).
+>
+> The ui-kit field primitives gained an additive `testId` input (`st-input` / `st-select` / `st-textarea`, forwarded to the inner native control with the previous default preserved) and `st-input` gained `readonly`.
+>
+> **Shim retired:** `apps/angular/src/styles/_legacy-aliases.scss` was deleted and its `@use` removed from `apps/angular/src/styles.scss`. Its last consumers — 11 `var(--muted, #8a8a9a)` fallbacks across the P5 dialogs — are gone, verified by grep; no `var(--st-*, #hex)` fallback and no hardcoded colour remains in the renderer sources.
+>
+> **Recorded deviations:** (1) `repos-page` rows are **not** `[stSelectableRow]` — each row owns Open/Remove buttons, so an activatable row would double-fire the open action (the spec asserts `setActive` runs exactly once); the rows were retokenized to the shared row geometry instead. (2) The git-flow dialog's `role="tablist"` / `role="tab"` / `aria-selected` mode strip keeps its semantics (retokenized only); it was not downgraded to `st-toggle-group` ahead of the P6 accessibility audit. (3) Modal/dialog footers adopted `st-button`, so `data-testid` stays on the host while `disabled`/clicks resolve on the inner native button (the `repo-relocate-panel` / `top-bar` spec convention). (4) Read-only remote-URL displays use `st-input [readonly]` rather than a bespoke style.
+>
+> Verification at P5 close: renderer vitest **82 files / 1157 tests green**, coverage **95.01% statements / 88.46% branches / 89.64% functions / 96.83% lines** (all above the 80% thresholds); `ng build` exit 0; `node tools/docs/validate.js` 0 errors.
 
 **Evidence base:** every `path:line` claim below was read from the working tree, not inferred. Two findings shaped the plan: (1) `apps/angular/src/styles.scss` imports `@tailwind base/components/utilities` but there is no `tailwind.config.*`, no `postcss.config.*`, no Tailwind dependency in any workspace `package.json` and zero Tailwind utility classes in the codebase — the directives are inert; (2) `apps/angular/src/index.html` loads no font files, so the `Inter, system-ui, ...` stack silently resolves to `system-ui`.
 
@@ -312,7 +328,7 @@ Each phase is independently shippable and reviewable; each ends with the vitest 
 **P2 — Shell rebuild. ⚠ RISKIEST. SHIPPED 2026-10-15.** New `top-bar`, `nav-rail`, `status-bar`; drawer pin/popover; retire `shell-header`, `shell-toolbar`, `sidebar-left`; `layout.html/ts/scss` rewritten. Largest single diff, most specs touched, and the only phase that deletes working components — do it behind the P0 tokens so a revert is cheap.
 **P3 — History workspace.** `workspace-split` in `repo-page`; commit-detail redesign; graph column header + footer + search/clear; `GraphStore` scroll-offset persistence. *Flagged:* the scroll/selection restore touches store behaviour, so gate on the existing `graph-page.spec.ts` and `graph.store.spec.ts`.
 **P4 — Changes & diff workspace. ⚠ LARGE.** `changes-panel` + `hunk-actions` retoken with ± affordances; `file-status-page` split; Monaco custom theme + explicit line height + **unified default** + fallback grid. *Flagged:* flipping `renderSideBySide` changes behaviour, not just paint — ship it with the Settings toggle and keep side-by-side one click away.
-**P5 — Secondary surfaces.** Settings expansion; repos / github-account / search / remote + ref dialogs / banners inherit the language; `st-modal` gains a focus trap.
+**P5 — Secondary surfaces. SHIPPED 2026-10-15.** Settings expansion; repos / github-account / search / remote + ref dialogs / banners inherit the language; `st-modal` gains a focus trap.
 **P6 — Responsive, a11y & motion polish.** Breakpoint utilities (≤1600 / ≤1100 / ≤800), rail→horizontal chip strip, drawer→full-width strip, split collapse, aria audit, motion overrides; regenerate `messages.json` + `messages.es.json`.
 
 ---
@@ -451,9 +467,11 @@ Each phase is independently shippable and reviewable; each ends with the vitest 
 - `libs/ui-kit/src/diff-viewer/monaco-loader.ts` — EDIT: register the custom themes before handing back the module.
 - `libs/ui-kit/src/diff-viewer/diff-viewer.spec.ts` — EDIT: unified default + theme registration + retokenized fallback grid.
 
-**P5 — secondary surfaces**
+**P5 — secondary surfaces — SHIPPED 2026-10-15**
 - `apps/angular/src/app/features/settings/settings.ts` — EDIT: expand to Appearance / Workspace / Diff / Language / About using the new primitives.
 - `apps/angular/src/app/features/settings/settings.spec.ts` — EDIT: new preference groups + persistence.
+- `apps/angular/src/app/core/services/preferences.service.ts` — NEW (added in P5, not in the original manifest): renderer-local `st:` preference signals (`st:motion`, `st:density`, `st:paneWidth`, `st:diffFontSize`, `st:diffWordWrap`), following the `theme.service.ts` / `diff-mode.service.ts` pattern.
+- `apps/angular/src/app/core/services/preferences.service.spec.ts` — NEW (added in P5, not in the original manifest).
 - `apps/angular/src/app/features/repos/repos-page.ts` — EDIT: inherit the new language (panel header, `st-field`, `st-button`, `st-empty-state`).
 - `apps/angular/src/app/features/github-account/github-account.ts` — EDIT: inherit the new language.
 - `apps/angular/src/app/features/github-account/ui/account-profile/account-profile.ts` — EDIT: retoken.
@@ -463,9 +481,14 @@ Each phase is independently shippable and reviewable; each ends with the vitest 
 - `apps/angular/src/app/features/remote/ui/fetch-dialog/fetch-dialog.ts` — EDIT: retoken.
 - `apps/angular/src/app/features/search/ui/search-workspace.ts` — EDIT: retoken; grouped-by-repo rows on `selectable-row`, mono oid, cyan hit affordance.
 - `apps/angular/src/app/shared/ui/modal/modal.ts` — EDIT: retoken, add a focus trap + focus restore, move to the z-scale token.
-- `apps/angular/src/app/shared/ui/ref-dialogs/*.ts` — EDIT: retoken the six ref dialogs onto modal + field + button primitives.
+- `apps/angular/src/app/shared/ui/ref-dialogs/*.ts` — EDIT: retoken the six ref dialogs (`merge`, `branch-create`, `ref-rename`, `ref-delete-confirm`, `tag-create`, `stash-push`) plus `stash-drop-confirm` onto modal + field + button primitives.
 - `apps/angular/src/app/shared/ui/git-flow-dialog/git-flow-dialog.ts` — EDIT: retoken.
 - `apps/angular/src/app/shared/ui/clone-dialog/clone-dialog.ts` — EDIT: retoken.
+- `apps/angular/src/app/core/layout/ui/switch-branch-confirm-dialog/switch-branch-confirm-dialog.ts` — EDIT (added in P5, not in the original manifest): bounded adjacent consistency pass.
+- `apps/angular/src/app/features/repo/graph/ui/reset-confirm-dialog.ts` — EDIT (added in P5, not in the original manifest): bounded adjacent consistency pass.
+- `libs/ui-kit/src/field/input.ts` / `select.ts` / `textarea.ts` — EDIT (added in P5, not in the original manifest): additive `testId` input forwarded to the inner native control with the previous default preserved; `st-input` also gained `readonly`.
+- `apps/angular/src/styles/_legacy-aliases.scss` — DELETE (added in P5, not in the original manifest): shim retired once its last 11 `var(--muted, #8a8a9a)` consumers were removed from the P5 dialogs.
+- `apps/angular/src/styles.scss` — EDIT (added in P5, not in the original manifest): remove the `_legacy-aliases` `@use`.
 
 **P6 — responsive, a11y & motion**
 - `libs/ui-kit/src/styles/utilities.scss` — EDIT: add the ≤1600 / ≤1100 / ≤800 breakpoint utilities (hide date/byline, stacked nav chips, full-width drawer strip).

@@ -8,6 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import type { MergeResponse } from '@contracts/gitcore';
+import { ButtonComponent, InputComponent, SelectComponent } from '@singularitree/ui-kit';
 import { ModalComponent } from '@shared/ui/modal/modal';
 import type { AppError } from '@core/services/ipc-bridge.service';
 import {
@@ -28,7 +29,7 @@ import {
 @Component({
   selector: 'st-merge-dialog',
   standalone: true,
-  imports: [ModalComponent],
+  imports: [ModalComponent, ButtonComponent, InputComponent, SelectComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <st-modal [open]="open()" title="Merge into current" [closeOnBackdrop]="!running()" (closed)="cancel()">
@@ -40,23 +41,27 @@ import {
 
       <label class="st-ref-dialog__field">
         <span i18n>Branch to merge</span>
-        <select data-testid="merge-ref" [value]="ref()" (change)="onRef($event)">
+        <st-select [testId]="'merge-ref'" [value]="ref()" (valueChange)="ref.set($event)">
           @if (available().length === 0) {
             <option value="" i18n>No other branch</option>
           }
           @for (branch of available(); track branch) {
             <option [value]="branch">{{ branch }}</option>
           }
-        </select>
+        </st-select>
       </label>
 
       <label class="st-ref-dialog__field">
         <span i18n>Strategy</span>
-        <select data-testid="merge-strategy" [value]="strategy()" (change)="onStrategy($event)">
+        <st-select
+          [testId]="'merge-strategy'"
+          [value]="strategy()"
+          (valueChange)="onStrategy($event)"
+        >
           @for (option of STRATEGIES; track option) {
             <option [value]="option">{{ option }}</option>
           }
-        </select>
+        </st-select>
       </label>
 
       <label class="st-ref-dialog__check">
@@ -71,11 +76,10 @@ import {
 
       <label class="st-ref-dialog__field">
         <span i18n>Message (optional)</span>
-        <input
-          type="text"
-          data-testid="merge-message"
+        <st-input
+          [testId]="'merge-message'"
           [value]="message()"
-          (input)="onMessage($event)"
+          (valueChange)="message.set($event)"
         />
       </label>
 
@@ -89,25 +93,24 @@ import {
         <p class="st-ref-dialog__error" data-testid="merge-error">{{ err.message }}</p>
       }
 
-      <button
+      <st-button
         st-modal-footer
-        type="button"
+        variant="default"
         data-testid="merge-cancel"
         [disabled]="running()"
         (click)="cancel()"
       >
         Cancel
-      </button>
-      <button
+      </st-button>
+      <st-button
         st-modal-footer
-        type="button"
-        class="st-ref-dialog__primary"
+        variant="primary"
         data-testid="merge-submit"
         [disabled]="!ref() || running()"
         (click)="submit()"
       >
         Merge
-      </button>
+      </st-button>
     </st-modal>
   `,
   styles: `
@@ -116,57 +119,42 @@ import {
     }
 
     .st-ref-dialog__current {
-      margin: 0 0 10px;
-      font-size: 12px;
-      opacity: 0.8;
+      margin: 0 0 var(--st-space-3);
+      font-family: var(--st-font-mono);
+      font-size: var(--st-font-12);
+      color: var(--st-color-muted);
     }
 
     .st-ref-dialog__field {
       display: flex;
       flex-direction: column;
-      gap: 4px;
-      margin-bottom: 12px;
-      font-size: 12px;
-    }
-
-    .st-ref-dialog__field input,
-    .st-ref-dialog__field select {
-      padding: 6px 8px;
-      border-radius: 5px;
-      border: 1px solid var(--st-color-border);
-      background: var(--st-color-surface);
-      color: inherit;
-      font: inherit;
+      gap: var(--st-space-1);
+      margin-bottom: var(--st-space-3);
+      font-size: var(--st-font-12);
     }
 
     .st-ref-dialog__check {
       display: flex;
       align-items: center;
-      gap: 6px;
-      margin-bottom: 12px;
-      font-size: 12px;
+      gap: var(--st-space-2);
+      margin-bottom: var(--st-space-3);
+      font-size: var(--st-font-12);
+    }
+
+    .st-ref-dialog__check input {
+      accent-color: var(--st-color-accent);
     }
 
     .st-ref-dialog__conflict {
-      margin: 0 0 10px;
-      color: #ffcf6b;
-      font-size: 12px;
+      margin: 0 0 var(--st-space-3);
+      color: var(--st-color-warn);
+      font-size: var(--st-font-12);
     }
 
     .st-ref-dialog__error {
-      margin: 0 0 10px;
-      color: #ff8a80;
-      font-size: 12px;
-    }
-
-    .st-ref-dialog__primary {
-      background: rgba(90, 140, 255, 0.2);
-      border-color: rgba(90, 140, 255, 0.6);
-      color: #9db8ff;
-    }
-
-    .st-ref-dialog__primary:disabled {
-      opacity: 0.5;
+      margin: 0 0 var(--st-space-3);
+      color: var(--st-color-danger);
+      font-size: var(--st-font-12);
     }
   `,
 })
@@ -211,20 +199,12 @@ export class MergeDialog {
     });
   }
 
-  onRef(event: Event): void {
-    this.ref.set((event.target as HTMLSelectElement).value);
-  }
-
-  onStrategy(event: Event): void {
-    this.strategy.set((event.target as HTMLSelectElement).value as MergeStrategyName);
+  onStrategy(value: string): void {
+    this.strategy.set(value as MergeStrategyName);
   }
 
   onNoCommit(event: Event): void {
     this.noCommit.set((event.target as HTMLInputElement).checked);
-  }
-
-  onMessage(event: Event): void {
-    this.message.set((event.target as HTMLInputElement).value);
   }
 
   submit(): void {

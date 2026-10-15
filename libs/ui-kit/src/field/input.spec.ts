@@ -9,6 +9,8 @@ async function setup(
     value?: string;
     disabled?: boolean;
     ariaLabel?: string;
+    testId?: string;
+    readonly?: boolean;
   } = {},
 ): Promise<ComponentFixture<InputComponent>> {
   await TestBed.configureTestingModule({
@@ -19,6 +21,8 @@ async function setup(
   if (inputs.value !== undefined) fixture.componentRef.setInput('value', inputs.value);
   if (inputs.disabled !== undefined) fixture.componentRef.setInput('disabled', inputs.disabled);
   if (inputs.ariaLabel !== undefined) fixture.componentRef.setInput('ariaLabel', inputs.ariaLabel);
+  if (inputs.testId !== undefined) fixture.componentRef.setInput('testId', inputs.testId);
+  if (inputs.readonly !== undefined) fixture.componentRef.setInput('readonly', inputs.readonly);
   fixture.detectChanges();
   return fixture;
 }
@@ -63,5 +67,25 @@ describe('InputComponent', () => {
     const fixture = await setup({ ariaLabel: 'Filter branches' });
 
     expect(field(fixture).getAttribute('aria-label')).toBe('Filter branches');
+  });
+
+  it('keeps the default testid when no consumer testId is set', async () => {
+    const fixture = await setup();
+
+    expect(field(fixture).getAttribute('data-testid')).toBe('input');
+  });
+
+  it('lets a consumer own the native testid', async () => {
+    const fixture = await setup({ testId: 'repos-add-input' });
+
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('[data-testid="repos-add-input"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="input"]')).toBeNull();
+  });
+
+  it('forwards the readonly state to the native control', async () => {
+    const fixture = await setup({ readonly: true });
+
+    expect(field(fixture).readOnly).toBe(true);
   });
 });
