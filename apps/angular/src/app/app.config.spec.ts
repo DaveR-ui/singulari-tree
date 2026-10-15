@@ -1,9 +1,10 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { initializeThemeAndLanguage } from './app.config';
+import { initializeShellState } from './app.config';
 import { LANGUAGE_STORAGE_KEY } from './core/i18n/language';
 import { LanguageService } from './core/services/language.service';
+import { PreferencesService } from './core/services/preferences.service';
 import { ThemeService } from './core/services/theme.service';
 
 /** In-memory Storage stand-in (jsdom's localStorage is absent on globalThis). */
@@ -51,22 +52,24 @@ function installStorage(entries: Record<string, string>): void {
  * root injector, so a regression that drops the persistence application is
  * caught here.
  */
-describe('initializeThemeAndLanguage (app-start initializer)', () => {
+describe('initializeShellState (app-start initializer)', () => {
   beforeEach(() => {
     TestBed.resetTestingModule();
     document.documentElement.removeAttribute('data-theme');
+    document.documentElement.removeAttribute('data-st-motion');
   });
 
   afterEach(() => {
     TestBed.resetTestingModule();
     document.documentElement.removeAttribute('data-theme');
+    document.documentElement.removeAttribute('data-st-motion');
   });
 
   it('applies the persisted light theme and resolves the stored language at startup', () => {
     installStorage({ 'st:theme': 'light', [LANGUAGE_STORAGE_KEY]: 'es' });
     TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection()] });
 
-    TestBed.runInInjectionContext(initializeThemeAndLanguage);
+    TestBed.runInInjectionContext(initializeShellState);
 
     expect(TestBed.inject(ThemeService).theme()).toBe('light');
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
@@ -77,10 +80,20 @@ describe('initializeThemeAndLanguage (app-start initializer)', () => {
     installStorage({});
     TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection()] });
 
-    TestBed.runInInjectionContext(initializeThemeAndLanguage);
+    TestBed.runInInjectionContext(initializeShellState);
 
     expect(TestBed.inject(ThemeService).theme()).toBe('dark');
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
     expect(TestBed.inject(LanguageService).language()).toBe('en');
+  });
+
+  it('applies a persisted motion preference at startup', () => {
+    installStorage({ 'st:motion': 'off' });
+    TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection()] });
+
+    TestBed.runInInjectionContext(initializeShellState);
+
+    expect(TestBed.inject(PreferencesService).motion()).toBe('off');
+    expect(document.documentElement.getAttribute('data-st-motion')).toBe('off');
   });
 });

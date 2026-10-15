@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-10-15
+last_updated: 2026-10-16
 status: active
 description: Total-facelift design plan for the SingulariTree renderer (app shell, navigation, workspace panes, commit/diff/graph areas, settings), derived from the operator's git-client sketch as a guide, with explicit divergences.
 tags:
@@ -7,7 +7,7 @@ tags:
 - redesign
 - plan
 - git-client
-version: 1.5.0
+version: 1.6.0
 related:
 - renderer-slice
 - feature-gap-analysis
@@ -17,9 +17,9 @@ related:
 
 # SingulariTree Renderer Facelift — Design Plan
 
-> **Status: P0 (token foundation), P1 (primitives), P2 (shell rebuild), P3 (history workspace), P4 (changes & diff workspace) and P5 (secondary surfaces & Settings) SHIPPED as of 2026-10-15, plus P4.2 (Dark Neon / Developer Studio palette remap); P6 remains planned.** Verification at P5 close: renderer vitest **82 files / 1157 tests green**, coverage **95.01% statements / 88.46% branches / 89.64% functions / 96.83% lines** (all above the 80% thresholds); `ng build` exit 0. This document remains the approved-direction plan governing the not-yet-shipped phases of a total facelift of the renderer's visible UI. Derived from the operator's sketch `git-client-sketch.html` (dark, offline git-client mockup, delivered 2026-10-13) treated as a **guide, not a spec**: every intentional divergence is numbered and justified in §6. Aesthetic direction is committed by the agent system (no human sign-off loop), per the operator's delegation.
+> **Status: P0 (token foundation), P1 (primitives), P2 (shell rebuild), P3 (history workspace), P4 (changes & diff workspace), P5 (secondary surfaces & Settings) and P6 (responsive, a11y & motion polish) SHIPPED as of 2026-10-16, plus P4.2 (Dark Neon / Developer Studio palette remap).** Verification at P6 close: renderer vitest **82 files / 1171 tests green**, coverage **95.04% statements / 88.49% branches / 89.74% functions / 96.86% lines** (all above the 80% thresholds); `ng build` exit 0 (initial total 552.19 kB raw / 128.70 kB transfer; no budget warnings); `node tools/docs/validate.js` 0 errors / 0 warnings (38 files scanned). This document is the approved-direction plan for the completed total facelift of the renderer's visible UI. Derived from the operator's sketch `git-client-sketch.html` (dark, offline git-client mockup, delivered 2026-10-13) treated as a **guide, not a spec**: every intentional divergence is numbered and justified in §6. Aesthetic direction is committed by the agent system (no human sign-off loop), per the operator's delegation.
 >
-> **Scope:** `apps/angular/**` + `libs/ui-kit/**` only. No Go core, no contracts/proto, no Electron shell/IPC, no IPC-contract change. `files_to_touch` (§8.2) is the implementation manifest — P0–P5's entries are shipped; only P6's remain.
+> **Scope:** `apps/angular/**` + `libs/ui-kit/**` only. No Go core, no contracts/proto, no Electron shell/IPC, no IPC-contract change. `files_to_touch` (§8.2) is the implementation manifest — P0–P6's entries are shipped.
 
 > **P0 shipped (2026-10-14) — token foundation.** 13 files: `libs/ui-kit/src/styles/tokens.scss` (NEW canonical two-tier layer — `--st-prim-*` primitives + semantic tokens, dark defaults in `:root` with a matched `[data-theme=light]` block carrying every semantic token), `libs/ui-kit/src/styles/utilities.scss` (NEW — focus ring, hairlines, eyebrow, mono/tabular-nums, selectable-row + selection bar, hover surface, reduced-motion guard), `libs/ui-kit/src/styles/index.ts`, `apps/angular/src/styles.scss` (inert `@tailwind` directives removed), `apps/angular/src/styles/_legacy-aliases.scss` (NEW shim), `apps/angular/src/app/core/layout/layout.scss`, plus the re-tokenization of 7 ui-kit components (`button`, `badge`, `empty-state`, `repo-card`, `graph-row`, `lane-palette`, `diff-viewer`).
 >
@@ -84,6 +84,18 @@ related:
 > **Recorded deviations:** (1) `repos-page` rows are **not** `[stSelectableRow]` — each row owns Open/Remove buttons, so an activatable row would double-fire the open action (the spec asserts `setActive` runs exactly once); the rows were retokenized to the shared row geometry instead. (2) The git-flow dialog's `role="tablist"` / `role="tab"` / `aria-selected` mode strip keeps its semantics (retokenized only); it was not downgraded to `st-toggle-group` ahead of the P6 accessibility audit. (3) Modal/dialog footers adopted `st-button`, so `data-testid` stays on the host while `disabled`/clicks resolve on the inner native button (the `repo-relocate-panel` / `top-bar` spec convention). (4) Read-only remote-URL displays use `st-input [readonly]` rather than a bespoke style.
 >
 > Verification at P5 close: renderer vitest **82 files / 1157 tests green**, coverage **95.01% statements / 88.46% branches / 89.64% functions / 96.83% lines** (all above the 80% thresholds); `ng build` exit 0; `node tools/docs/validate.js` 0 errors.
+
+> **P6 shipped (2026-10-16) — responsive, a11y & motion polish.** The final phase of the facelift; the whole §8.2 manifest is now shipped. Five groups of change:
+>
+> 1. **Responsive.** `libs/ui-kit/src/styles/utilities.scss` gained the committed breakpoint utilities — `.st-hide-at-1600` / `.st-hide-at-1100` / `.st-hide-at-800` (`display: none` inside the matching `max-width` query) and `.st-chip-strip` (the ≤1100 wrapping chip row). They are applied on the graph date column (header + row, `st-hide-at-1600`), the graph-row author byline and the top-bar tab branch byline (`st-hide-at-1100`), and the nav rail's workspace list (`st-chip-strip`). `apps/angular/src/app/core/layout/layout.scss` carries the shell rules: at ≤1100 the body wraps and the nav rail becomes a full-width chip strip above the workspace; at ≤800 the repo drawer becomes a full-width bottom strip with its hairline moved to the top edge. The ≤800 split-collapse rule lives in `libs/ui-kit/src/workspace-split/workspace-split.ts` (the pinned detail pane becomes a full-width top band capped at 40% height with a bottom hairline; one sanctioned `!important` overrides its inline width binding).
+> 2. **A11y.** The nav rail's five section disclosure heads (Workspace / Local branches / Remote references / Tags / Stashes) now bind `aria-expanded` to their signals, with a spec asserting the reflected state; the `aria-pressed` / `aria-current` / live regions shipped in P1–P5 remain intact.
+> 3. **Motion.** `PreferencesService` now enforces the persisted `st:motion` (`auto|on|off`) at runtime, mirroring `ThemeService`'s `data-theme` pattern — it writes `<html data-st-motion>` synchronously at construction and reactively from an `effect()`, and the boot initializer (`app.config.ts`, `initializeShellState`) instantiates it before first paint. `utilities.scss` extends the motion guard: the `prefers-reduced-motion` neutralisation is scoped to `:root:not([data-st-motion='on'])`, and a new `:root[data-st-motion='off']` guard neutralises unconditionally — so `auto` follows the OS, `off` kills motion, and `on` survives an OS "reduce".
+> 4. **i18n.** `apps/angular/src/locale/messages.json` was regenerated with `ng extract-i18n` (229 ids; id-stable across two runs) and `messages.es.json` rewritten to exact id parity (127 retained translations reused verbatim, 102 new Spanish renderings authored, 33 stale ids dropped; ICU placeholders preserved). `apps/angular/src/app/core/i18n/i18n-runtime.spec.ts` gained a catalogue-parity guard (the en/es id sets are equal) plus sample-id resolution checks in both locales.
+> 5. **Bounded design-system polish.** The two unpermitted `0 12px 32px` elevation shadows were removed (`repo-drawer.ts` floating popover, `graph-context-menu.ts` — exactly two shadows remain system-wide: the inset selection bar and the primary-button glow), and residual opacity-based CONTENT dimming was converted to `var(--st-color-muted)` (status-bar in-sync line, push-dialog labels/headers/status, hunk-actions header + notes, reset-confirm target, switch-branch hint, top-bar tab-close affordance, graph-context-menu hint); documented disabled-state opacity (states matrix) and the intentional graph-row dimming were left untouched.
+>
+> **Recorded deviations:** (a) the ≤800 split-collapse rule landed in `workspace-split.ts` rather than `layout.scss` — view encapsulation prevents the shell stylesheet from reaching routed-component hosts, so `layout.scss` owns only the rail/drawer rules it can actually reach; (b) `.st-hide-at-800` ships as the manifest-committed ≤800 utility slot with no current consumer (the ≤800 stacking is delivered by the shell rules + the split collapse) — kept as committed inventory; (c) `st:motion` is now enforced, while `st:density` / `st:paneWidth` / `st:diffFontSize` / `st:diffWordWrap` remain persisted-only (the plan assigns no consuming phase to them).
+>
+> Verification at P6 close: renderer vitest **82 files / 1171 tests green**, coverage **95.04% statements / 88.49% branches / 89.74% functions / 96.86% lines** (all above the 80% thresholds); `ng build` exit 0 (initial total 552.19 kB raw / 128.70 kB transfer; no budget warnings); `node tools/docs/validate.js` 0 errors / 0 warnings (38 files scanned). No commits were made — every change is in the working tree on `feature-rebrand-style`.
 
 **Evidence base:** every `path:line` claim below was read from the working tree, not inferred. Two findings shaped the plan: (1) `apps/angular/src/styles.scss` imports `@tailwind base/components/utilities` but there is no `tailwind.config.*`, no `postcss.config.*`, no Tailwind dependency in any workspace `package.json` and zero Tailwind utility classes in the codebase — the directives are inert; (2) `apps/angular/src/index.html` loads no font files, so the `Inter, system-ui, ...` stack silently resolves to `system-ui`.
 
@@ -329,7 +341,7 @@ Each phase is independently shippable and reviewable; each ends with the vitest 
 **P3 — History workspace.** `workspace-split` in `repo-page`; commit-detail redesign; graph column header + footer + search/clear; `GraphStore` scroll-offset persistence. *Flagged:* the scroll/selection restore touches store behaviour, so gate on the existing `graph-page.spec.ts` and `graph.store.spec.ts`.
 **P4 — Changes & diff workspace. ⚠ LARGE.** `changes-panel` + `hunk-actions` retoken with ± affordances; `file-status-page` split; Monaco custom theme + explicit line height + **unified default** + fallback grid. *Flagged:* flipping `renderSideBySide` changes behaviour, not just paint — ship it with the Settings toggle and keep side-by-side one click away.
 **P5 — Secondary surfaces. SHIPPED 2026-10-15.** Settings expansion; repos / github-account / search / remote + ref dialogs / banners inherit the language; `st-modal` gains a focus trap.
-**P6 — Responsive, a11y & motion polish.** Breakpoint utilities (≤1600 / ≤1100 / ≤800), rail→horizontal chip strip, drawer→full-width strip, split collapse, aria audit, motion overrides; regenerate `messages.json` + `messages.es.json`.
+**P6 — Responsive, a11y & motion polish. SHIPPED 2026-10-16.** Breakpoint utilities (≤1600 / ≤1100 / ≤800), rail→horizontal chip strip, drawer→full-width strip, split collapse, aria audit, motion overrides; regenerate `messages.json` + `messages.es.json`.
 
 ---
 
@@ -364,7 +376,7 @@ Each phase is independently shippable and reviewable; each ends with the vitest 
 - **Region → code mapping** — every proposal cites the file and line it changes, and states whether the result is reused, edited or new.
 - **Coherent visual direction traceable to the sketch** — §1 traces each feeling to a specific sketch cue; §2 commits to one palette/scale/geometry/motion set rather than offering choices.
 - **Dark and light both consistent** — §2.2 defines every semantic token in both blocks from the same names, with the accent swapped on the light theme for contrast; the token contract makes a missing light value a visible bug instead of a silent fallback.
-- **Divergences justified** — 15 numbered items, each with a reason tied to a doc, a contract or a functional constraint.
+- **Divergences justified** — 16 numbered items, each with a reason tied to a doc, a contract or a functional constraint.
 - **Gate for the operator** — D3 (retiring the toolbar entirely) is the one load-bearing choice below the designer's comfort band (0.65) and is called out here so the orchestrator can confirm it before P2, while P0/P1 remain safe to start immediately.
 
 ---
@@ -490,7 +502,7 @@ Each phase is independently shippable and reviewable; each ends with the vitest 
 - `apps/angular/src/styles/_legacy-aliases.scss` — DELETE (added in P5, not in the original manifest): shim retired once its last 11 `var(--muted, #8a8a9a)` consumers were removed from the P5 dialogs.
 - `apps/angular/src/styles.scss` — EDIT (added in P5, not in the original manifest): remove the `_legacy-aliases` `@use`.
 
-**P6 — responsive, a11y & motion**
+**P6 — responsive, a11y & motion — SHIPPED 2026-10-16**
 - `libs/ui-kit/src/styles/utilities.scss` — EDIT: add the ≤1600 / ≤1100 / ≤800 breakpoint utilities (hide date/byline, stacked nav chips, full-width drawer strip).
 - `apps/angular/src/app/core/layout/layout.scss` — EDIT: responsive rules for the rail/drawer/split collapse.
 - `apps/angular/src/locale/messages.json` — REGENERATE: new `$localize` ids from the facelift.

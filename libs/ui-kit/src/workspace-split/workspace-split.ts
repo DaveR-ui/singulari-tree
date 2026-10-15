@@ -9,6 +9,10 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
  * with the `detail` attribute are projected into the pinned detail pane, which
  * only renders while `showDetail()` is true. P2 mounts the split with the
  * primary slot only; P3 starts projecting the detail pane.
+ *
+ * At ≤800px (plan §5 P6) the two panes collapse to a column: the pinned detail
+ * becomes a full-width top band (capped height, horizontal hairline) and the
+ * primary pane takes the rest. Structural only — no colour literal is added.
  */
 @Component({
   selector: 'st-workspace-split',
@@ -73,6 +77,23 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
       flex: 1 1 auto;
       flex-direction: column;
       min-width: 0;
+    }
+
+    /* ≤800 split collapse (plan §5 P6): the pinned detail becomes a full-width
+       top band; the primary pane takes the rest. */
+    @media (max-width: 800px) {
+      :host {
+        flex-direction: column;
+      }
+
+      .st-workspace-split__detail {
+        width: 100% !important; /* inline [style.width] binding needs the sanctioned override */
+        max-width: 100%;
+        flex: 0 0 auto;
+        max-height: 40%;
+        border-right: 0;
+        border-bottom: var(--st-hairline) solid var(--st-color-border);
+      }
     }
   `,
 })

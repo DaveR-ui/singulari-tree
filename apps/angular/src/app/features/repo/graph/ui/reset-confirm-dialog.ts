@@ -56,7 +56,7 @@ import { ModalComponent } from '@shared/ui/modal/modal';
 
     .st-reset-confirm__target {
       margin: 0;
-      opacity: 0.7;
+      color: var(--st-color-muted);
     }
 
     .st-reset-confirm__target code {

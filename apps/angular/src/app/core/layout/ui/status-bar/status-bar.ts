@@ -95,10 +95,6 @@ import { LiveRegionComponent, LiveRegionService } from '@singularitree/ui-kit';
       color: var(--st-color-warn);
     }
 
-    .st-statusbar__in-sync {
-      opacity: 0.7;
-    }
-
     .st-statusbar__dot {
       flex: none;
       width: 8px;

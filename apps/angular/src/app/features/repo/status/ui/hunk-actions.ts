@@ -244,7 +244,7 @@ function confirmFileDiscard(path: string): boolean {
       gap: 8px;
       font-family: var(--st-font-mono);
       font-size: 11px;
-      opacity: 0.85;
+      color: var(--st-color-muted);
     }
 
     .st-hunk-actions__lines {
@@ -290,7 +290,7 @@ function confirmFileDiscard(path: string): boolean {
     .st-hunk-actions__selection,
     .st-hunk-actions__file-only {
       margin: 4px 0 0;
-      opacity: 0.6;
+      color: var(--st-color-muted);
     }
   `,
 })

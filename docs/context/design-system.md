@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-10-15
+last_updated: 2026-10-16
 status: active
 description: Shipped SingulariTree renderer design system — the Dark Neon / Developer Studio palette in dark and light, the two-tier CSS custom property vocabulary, typography, spacing and geometry, the ui-kit component inventory, and copy-paste usage.
 tags:
@@ -8,7 +8,7 @@ tags:
 - tokens
 - theming
 - ui-kit
-version: 1.3
+version: 1.4
 related:
 - renderer-redesign-plan
 - renderer-slice
@@ -209,7 +209,7 @@ All numeric columns set `font-variant-numeric: tabular-nums` (`.st-tabular-nums`
 | `--st-motion-slow` | 240ms | drawer width |
 | `--st-ease` | `cubic-bezier(0.2, 0.7, 0.2, 1)` | the single easing curve |
 
-One guard in `utilities.scss` neutralises the whole set under `prefers-reduced-motion: reduce`. There is no motion on selection change, scroll, or graph rows.
+Two guards in `utilities.scss` neutralise the whole set: the `prefers-reduced-motion: reduce` guard is scoped to `:root:not([data-st-motion='on'])`, so an explicit user `on` survives an OS "reduce"; and a `:root[data-st-motion='off']` guard neutralises unconditionally, with no media query. `PreferencesService` enforces the Settings `auto | on | off` choice at runtime by writing `<html data-st-motion>` (mirroring `ThemeService`'s `data-theme`) — `auto` removes the attribute and follows the OS, `on` opts back in, `off` kills motion. There is no motion on selection change, scroll, or graph rows.
 
 ### Z-index scale
 
@@ -217,7 +217,7 @@ One guard in `utilities.scss` neutralises the whole set under `prefers-reduced-m
 
 ### Utilities
 
-`libs/ui-kit/src/styles/utilities.scss` carries the shared classes that express the direction: `.st-focus-ring` (2px ring, offset 2px) and `.st-focus-ring--inset` (offset −1px, for rows); `.st-hairline` plus its `--top/--left/--right` variants; `.st-eyebrow`; `.st-mono` and `.st-tabular-nums`; `.st-hover-surface`; and the selection pair `.st-selectable-row` / `.st-selection-bar`.
+`libs/ui-kit/src/styles/utilities.scss` carries the shared classes that express the direction: `.st-focus-ring` (2px ring, offset 2px) and `.st-focus-ring--inset` (offset −1px, for rows); `.st-hairline` plus its `--top/--left/--right` variants; `.st-eyebrow`; `.st-mono` and `.st-tabular-nums`; `.st-hover-surface`; the selection pair `.st-selectable-row` / `.st-selection-bar`; and the responsive breakpoint utilities `.st-hide-at-1600` / `.st-hide-at-1100` / `.st-hide-at-800` (each `display: none` inside its `max-width` query) plus `.st-chip-strip` (the ≤1100 wrapping chip row).
 
 ## Components
 

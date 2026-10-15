@@ -77,7 +77,7 @@ export const LANE_COLUMN_WIDTH = 14;
       <span class="st-graph-row__message" [title]="message()" data-testid="graph-row-message">{{
         message()
       }}</span>
-      <span class="st-graph-row__author" data-testid="graph-row-author">{{ author() }}</span>
+      <span class="st-graph-row__author st-hide-at-1100" data-testid="graph-row-author">{{ author() }}</span>
       @if (stats(); as gauge) {
         <span class="st-graph-row__stats" data-testid="graph-row-stats" [title]="statsTitle()">
           <span class="st-graph-row__additions" data-testid="graph-row-additions"
@@ -91,7 +91,7 @@ export const LANE_COLUMN_WIDTH = 14;
           >
         </span>
       }
-      <span class="st-graph-row__date" data-testid="graph-row-date">{{ date() }}</span>
+      <span class="st-graph-row__date st-hide-at-1600" data-testid="graph-row-date">{{ date() }}</span>
     </div>
   `,
   styles: `

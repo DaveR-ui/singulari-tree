@@ -71,6 +71,11 @@ function injectPrefs(): PreferencesService {
   return TestBed.inject(PreferencesService);
 }
 
+/** The `data-st-motion` attribute the service reflects onto `<html>`. */
+function rootMotion(): string | null {
+  return document.documentElement.getAttribute('data-st-motion');
+}
+
 describe('PreferencesService', () => {
   beforeEach(() => {
     installStorage(new MemoryStorage());
@@ -79,6 +84,8 @@ describe('PreferencesService', () => {
 
   afterEach(() => {
     TestBed.resetTestingModule();
+    // Clean the singleton DOM/localStorage state so specs never leak into each other.
+    document.documentElement.removeAttribute('data-st-motion');
     try {
       localStorage.clear();
     } catch {
@@ -95,6 +102,13 @@ describe('PreferencesService', () => {
     expect(prefs.diffFontSize()).toBe('12');
     expect(prefs.diffWordWrap()).toBe('off');
     expect(prefs.hasPaneWidth()).toBe(false);
+  });
+
+  it('does not set data-st-motion when the preference is auto', () => {
+    const prefs = injectPrefs();
+
+    expect(prefs.motion()).toBe('auto');
+    expect(rootMotion()).toBeNull();
   });
 
   it('restores every persisted preference', () => {
@@ -118,6 +132,47 @@ describe('PreferencesService', () => {
     localStorage.setItem('st:motion', 'on');
 
     expect(injectPrefs().motion()).toBe('on');
+  });
+
+  it('applies data-st-motion=on on construction from a persisted value', () => {
+    localStorage.setItem('st:motion', 'on');
+
+    injectPrefs();
+
+    expect(rootMotion()).toBe('on');
+  });
+
+  it('applies data-st-motion=off on construction from a persisted value', () => {
+    localStorage.setItem('st:motion', 'off');
+
+    injectPrefs();
+
+    expect(rootMotion()).toBe('off');
+  });
+
+  it('updates data-st-motion after setMotion settles through the effect', () => {
+    const prefs = injectPrefs();
+    expect(rootMotion()).toBeNull();
+
+    prefs.setMotion('off');
+    TestBed.tick();
+    expect(rootMotion()).toBe('off');
+
+    prefs.setMotion('on');
+    TestBed.tick();
+    expect(rootMotion()).toBe('on');
+  });
+
+  it('removes data-st-motion when switching back to auto', () => {
+    localStorage.setItem('st:motion', 'off');
+    const prefs = injectPrefs();
+    expect(rootMotion()).toBe('off');
+
+    prefs.setMotion('auto');
+    TestBed.tick();
+
+    expect(prefs.motion()).toBe('auto');
+    expect(rootMotion()).toBeNull();
   });
 
   it('restores the explicit diff font size 13', () => {

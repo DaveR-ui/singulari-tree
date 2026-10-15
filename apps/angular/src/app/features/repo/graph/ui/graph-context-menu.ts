@@ -215,7 +215,6 @@ import { WIP_OID } from '../graph.store';
       background: var(--st-color-raised);
       border: var(--st-hairline) solid var(--st-color-border);
       border-radius: var(--st-radius-4);
-      box-shadow: 0 12px 32px color-mix(in srgb, var(--st-color-bg) 60%, transparent);
       color: var(--st-color-text);
       font-size: var(--st-font-12);
     }
@@ -256,7 +255,7 @@ import { WIP_OID } from '../graph.store';
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      opacity: 0.6;
+      color: var(--st-color-muted);
       font-family: var(--st-font-mono);
       font-size: var(--st-font-11);
     }

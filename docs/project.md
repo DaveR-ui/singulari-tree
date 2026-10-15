@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-10-15
+last_updated: 2026-10-16
 status: active
 description: Agent-facing entry point of SingulariTree — Angular + Electron + Go core monorepo; stack, slices, commands and corpus navigation.
 tags:
@@ -132,7 +132,7 @@ SingulariTree/
 - [`docs/protocols/new-note-protocol.md`](protocols/new-note-protocol.md) — create a new note per the contract.
 - [`docs/protocols/docs-review-protocol.md`](protocols/docs-review-protocol.md) — corpus review and validator errors.
 - [`docs/adrs/adr-index.md`](adrs/adr-index.md) — ADR hub (structural decisions, append-only).
-- [`docs/context/renderer-redesign-plan.md`](context/renderer-redesign-plan.md) — total-facelift design plan for the renderer's visible UI (shell, navigation, workspace panes, commit/diff/graph, settings), derived from the operator's git-client sketch with 15 justified divergences; P0–P5 shipped (P4.2 adds the Dark Neon / Developer Studio palette remap; P5 lands the secondary surfaces, the expanded Settings and the shared-modal focus trap), P6 still planned.
+- [`docs/context/renderer-redesign-plan.md`](context/renderer-redesign-plan.md) — total-facelift design plan for the renderer's visible UI (shell, navigation, workspace panes, commit/diff/graph, settings), derived from the operator's git-client sketch with 16 justified divergences; P0–P6 shipped (P4.2 adds the Dark Neon / Developer Studio palette remap; P5 lands the secondary surfaces, the expanded Settings and the shared-modal focus trap; P6 — responsive, a11y & motion polish — is the final phase of the facelift: the ≤1600 / ≤1100 / ≤800 breakpoint utilities and stacked shell, the nav-rail `aria-expanded` heads, runtime `st:motion` enforcement, and the regenerated en/es message catalogues).
 - [`docs/context/design-system.md`](context/design-system.md) — shipped Dark Neon / Developer Studio design system: two-tier token vocabulary (dark + light), typography, spacing and geometry, the ui-kit component inventory, and copy-paste usage.
 
 ## Common Lookups

@@ -218,7 +218,7 @@ interface PushRowState {
       width: calc(var(--st-space-7) * 2);
       font-size: var(--st-font-12);
       font-weight: 600;
-      opacity: 0.8;
+      color: var(--st-color-muted);
     }
 
     .st-push__heading {
@@ -244,7 +244,7 @@ interface PushRowState {
 
     .st-push__table th {
       font-weight: 600;
-      opacity: 0.7;
+      color: var(--st-color-muted);
       text-transform: uppercase;
       font-size: var(--st-font-11);
       letter-spacing: 0.04em;
@@ -279,7 +279,7 @@ interface PushRowState {
     .st-push__status {
       margin: 0;
       font-size: var(--st-font-12);
-      opacity: 0.7;
+      color: var(--st-color-muted);
     }
 
     .st-push__error {

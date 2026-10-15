@@ -120,17 +120,18 @@ export type SwitchBranchMode = 'confirm' | 'dirty' | 'untracked';
       color: var(--st-color-text);
     }
 
-    .st-switch__hint,
+    .st-switch__hint {
+      margin: 10px 0 0;
+      font-size: var(--st-font-12);
+      line-height: var(--st-leading-ui);
+      color: var(--st-color-muted);
+    }
+
     .st-switch__warning {
       margin: 10px 0 0;
       font-size: var(--st-font-12);
       line-height: var(--st-leading-ui);
-      opacity: 0.8;
-    }
-
-    .st-switch__warning {
       color: var(--st-color-danger);
-      opacity: 1;
     }
 
     .st-switch__check {

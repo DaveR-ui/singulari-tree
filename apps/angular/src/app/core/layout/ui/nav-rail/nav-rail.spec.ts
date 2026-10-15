@@ -125,6 +125,26 @@ describe('NavRail', () => {
     expect(all(fixture, 'st-sidebar-git-flow')).toHaveLength(1);
   });
 
+  it('exposes aria-expanded on every section head, reflecting its state', async () => {
+    const fixture = await setup();
+
+    // Workspace / Local branches / Remote references start expanded; Tags and
+    // Stashes start collapsed.
+    expect(head(fixture, 'Workspace').getAttribute('aria-expanded')).toBe('true');
+    expect(head(fixture, 'Local branches').getAttribute('aria-expanded')).toBe('true');
+    expect(head(fixture, 'Remote references').getAttribute('aria-expanded')).toBe('true');
+    expect(head(fixture, 'Tags').getAttribute('aria-expanded')).toBe('false');
+    expect(head(fixture, 'Stashes').getAttribute('aria-expanded')).toBe('false');
+
+    head(fixture, 'Tags').click();
+    fixture.detectChanges();
+    expect(head(fixture, 'Tags').getAttribute('aria-expanded')).toBe('true');
+
+    head(fixture, 'Local branches').click();
+    fixture.detectChanges();
+    expect(head(fixture, 'Local branches').getAttribute('aria-expanded')).toBe('false');
+  });
+
   it('exposes each WORKSPACE entry with a stable kind-scoped test id', async () => {
     const fixture = await setup();
 

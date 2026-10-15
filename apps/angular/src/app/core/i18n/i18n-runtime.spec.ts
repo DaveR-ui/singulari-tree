@@ -1,6 +1,9 @@
+/// <reference types="node" />
 import { ChangeDetectionStrategy, Component, provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { clearTranslations, loadTranslations, ɵcomputeMsgId } from '@angular/localize';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 @Component({
@@ -58,5 +61,78 @@ describe('runtime i18n', () => {
     fixture.detectChanges();
 
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('Untranslated probe');
+  });
+});
+
+interface MessageCatalogue {
+  locale: string;
+  translations: Record<string, string>;
+}
+
+/** Read a generated extractor catalogue from disk (`resolveJsonModule` is off, so no JSON import). */
+function readCatalogue(fileName: string): MessageCatalogue {
+  return JSON.parse(readFileSync(cataloguePath(fileName), 'utf8')) as MessageCatalogue;
+}
+
+/**
+ * Locate a generated catalogue under `src/locale/` by walking up from the runner's
+ * cwd: the unit-test builder serves specs under virtual `/src/**` URLs, so
+ * `import.meta.url` cannot reach the real files on disk.
+ */
+function cataloguePath(fileName: string): string {
+  let dir = process.cwd();
+  for (;;) {
+    const candidates = [
+      resolve(dir, 'src/locale', fileName),
+      resolve(dir, 'apps/angular/src/locale', fileName),
+    ];
+    const found = candidates.find((candidate) => existsSync(candidate));
+    if (found) return found;
+    const parent = dirname(dir);
+    if (parent === dir) throw new Error(`locale catalogue not found: ${fileName}`);
+    dir = parent;
+  }
+}
+
+const sourceCatalogue = readCatalogue('messages.json');
+const spanishCatalogue = readCatalogue('messages.es.json');
+
+/**
+ * Guards the P6 facelift contract at the catalogue level: the English and Spanish
+ * extractor outputs must carry exactly the same ids, and the newly added facelift
+ * messages must resolve in both, so a locale switch never drops a label.
+ */
+describe('locale catalogues', () => {
+  const sourceIds = Object.keys(sourceCatalogue.translations);
+  const spanishIds = Object.keys(spanishCatalogue.translations);
+
+  it('declares the expected source and target locales', () => {
+    expect(sourceCatalogue.locale).toBe('en-US');
+    expect(spanishCatalogue.locale).toBe('es-ES');
+  });
+
+  it('keeps Spanish in exact id parity with the English source', () => {
+    const sourceSet = new Set(sourceIds);
+    const spanishSet = new Set(spanishIds);
+
+    expect(spanishIds.length).toBe(sourceIds.length);
+    expect(sourceIds.filter((id) => !spanishSet.has(id))).toEqual([]);
+    expect(spanishIds.filter((id) => !sourceSet.has(id))).toEqual([]);
+  });
+
+  // Representative sample of messages introduced by the facelift phases.
+  const newMessages = [
+    'Pin repositories',
+    'Review changes',
+    'Synced',
+    'Local changes',
+    'Commit / author',
+  ];
+
+  it.each(newMessages)('resolves the new message %j in both catalogues', (message) => {
+    const id = ɵcomputeMsgId(message);
+
+    expect(sourceCatalogue.translations[id]).toBe(message);
+    expect(spanishCatalogue.translations[id]).toBeTruthy();
   });
 });

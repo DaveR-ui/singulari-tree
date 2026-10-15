@@ -70,6 +70,7 @@ interface RowMenu {
         <button
           class="st-rail__head st-eyebrow"
           type="button"
+          [attr.aria-expanded]="workspaceExpanded()"
           (click)="workspaceExpanded.set(!workspaceExpanded())"
         >
           <st-icon
@@ -79,7 +80,7 @@ interface RowMenu {
           <span i18n>Workspace</span>
         </button>
         @if (workspaceExpanded()) {
-          <ul class="st-rail__list">
+          <ul class="st-rail__list st-chip-strip">
             @for (item of WORKSPACE; track item.kind) {
               <li
                 class="st-rail__item"
@@ -104,6 +105,7 @@ interface RowMenu {
           <button
             class="st-rail__head st-eyebrow"
             type="button"
+            [attr.aria-expanded]="branchesExpanded()"
             (click)="branchesExpanded.set(!branchesExpanded())"
           >
             <st-icon
@@ -179,6 +181,7 @@ interface RowMenu {
         <button
           class="st-rail__head st-eyebrow"
           type="button"
+          [attr.aria-expanded]="remotesExpanded()"
           (click)="remotesExpanded.set(!remotesExpanded())"
         >
           <st-icon
@@ -225,6 +228,7 @@ interface RowMenu {
           <button
             class="st-rail__head st-eyebrow"
             type="button"
+            [attr.aria-expanded]="tagsExpanded()"
             (click)="tagsExpanded.set(!tagsExpanded())"
           >
             <st-icon
@@ -274,6 +278,7 @@ interface RowMenu {
           <button
             class="st-rail__head st-eyebrow"
             type="button"
+            [attr.aria-expanded]="stashesExpanded()"
             (click)="stashesExpanded.set(!stashesExpanded())"
           >
             <st-icon
@@ -757,6 +762,35 @@ interface RowMenu {
     .st-rail__collapse:hover {
       color: var(--st-color-text);
       border-color: var(--st-color-muted);
+    }
+
+    /* Responsive rail (plan §5 P6): at ≤1100 the rail leaves the left column
+       and turns into a horizontal, wrapping chip strip above the workspace. */
+    @media (max-width: 1100px) {
+      :host {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        overflow: auto;
+      }
+
+      .st-rail__repo {
+        flex: 1 1 100%;
+      }
+
+      .st-rail__section {
+        flex: 0 1 auto;
+        border-bottom: 0;
+        border-right: var(--st-hairline) solid var(--st-color-border);
+      }
+
+      .st-rail__footer {
+        margin-top: 0;
+      }
+
+      .st-rail__filter {
+        max-width: 260px;
+      }
     }
   `,
 })

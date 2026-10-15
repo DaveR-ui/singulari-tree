@@ -150,7 +150,7 @@ import { WipRow } from '../ui/wip-row';
       >
         <span class="st-graph-page__col-graph" [style.width.px]="graphWidth()" i18n>Graph</span>
         <span class="st-graph-page__col-message" i18n>Commit / author</span>
-        <span class="st-graph-page__col-date" i18n>Date</span>
+        <span class="st-graph-page__col-date st-hide-at-1600" i18n>Date</span>
       </div>
 
       <div class="st-graph-page__list">

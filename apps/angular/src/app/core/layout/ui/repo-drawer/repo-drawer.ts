@@ -170,7 +170,6 @@ import type { AppError } from '@core/services/ipc-bridge.service';
       right: 0;
       min-width: 0;
       width: 280px;
-      box-shadow: 0 12px 32px color-mix(in srgb, var(--st-color-bg) 60%, transparent);
     }
 
     .st-drawer {

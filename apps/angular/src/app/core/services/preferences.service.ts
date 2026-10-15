@@ -1,4 +1,5 @@
-import { Injectable, computed, signal } from '@angular/core';
+import { DOCUMENT } from '@angular/core';
+import { Injectable, computed, effect, inject, signal } from '@angular/core';
 
 /** User-facing motion preference (plan §2.6). `auto` follows the OS. */
 export type MotionPreference = 'auto' | 'on' | 'off';
@@ -32,11 +33,20 @@ const DIFF_WORD_WRAP_STORAGE_KEY = 'st:diffWordWrap';
  * disabled or full storage (private mode) degrades to a session-only
  * preference instead of throwing.
  *
+ * The motion preference is enforced at runtime, not merely persisted: it is
+ * applied to `document.documentElement[data-st-motion]` exactly as
+ * {@link ThemeService} applies `data-theme` — synchronously for the boot value
+ * and from an `effect()` on every change. `auto` removes the attribute so the OS
+ * `prefers-reduced-motion` query decides; `on` opts back in even under reduce;
+ * `off` neutralises motion unconditionally.
+ *
  * Invalid or unknown persisted values always fall back to the documented
  * default rather than crashing or propagating a bad value.
  */
 @Injectable({ providedIn: 'root' })
 export class PreferencesService {
+  private readonly document = inject(DOCUMENT);
+
   private readonly motionState = signal<MotionPreference>(this.readMotion());
   private readonly densityState = signal<DensityPreference>(this.readDensity());
   private readonly paneWidthState = signal<string>(this.readPaneWidth());
@@ -56,6 +66,15 @@ export class PreferencesService {
 
   /** True when an explicit pane width is persisted, so the reset can be enabled. */
   readonly hasPaneWidth = computed(() => this.paneWidthState() !== '');
+
+  constructor() {
+    // Apply the resolved motion preference as soon as the service is constructed.
+    this.applyMotion(this.motionState());
+
+    effect(() => {
+      this.applyMotion(this.motionState());
+    });
+  }
 
   /** Apply and persist the motion preference. */
   setMotion(value: MotionPreference): void {
@@ -140,6 +159,23 @@ export class PreferencesService {
       localStorage.removeItem(key);
     } catch {
       // Private mode / storage disabled: nothing to clear on disk.
+    }
+  }
+
+  /**
+   * Reflect the motion preference onto `document.documentElement`. `auto` removes
+   * the attribute so the OS `prefers-reduced-motion` query decides; `on`/`off`
+   * set it explicitly. Mirrors {@link ThemeService}'s defensive root lookup.
+   */
+  private applyMotion(motion: MotionPreference): void {
+    const root =
+      this.document?.documentElement ??
+      (globalThis as { document?: Document }).document?.documentElement;
+    if (!root) return;
+    if (motion === 'auto') {
+      root.removeAttribute('data-st-motion');
+    } else {
+      root.setAttribute('data-st-motion', motion);
     }
   }
 }

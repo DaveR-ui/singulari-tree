@@ -60,7 +60,7 @@ export interface TopBarTab {
             <span class="st-tab__body">
               <span class="st-tab__label">{{ tab.label }}</span>
               @if (tab.branch) {
-                <span class="st-tab__branch st-mono">{{ tab.branch }}</span>
+                <span class="st-tab__branch st-mono st-hide-at-1100">{{ tab.branch }}</span>
               }
             </span>
             <button
@@ -340,8 +340,7 @@ export interface TopBarTab {
       flex: none;
       background: transparent;
       border: none;
-      color: inherit;
-      opacity: 0.6;
+      color: var(--st-color-muted);
       font-size: var(--st-font-13);
       line-height: 1;
       padding: 0 2px;
@@ -351,11 +350,11 @@ export interface TopBarTab {
     /* Keep the close affordance clearly visible on the active tab and on hover. */
     .st-tab--active .st-tab__close,
     .st-tab:hover .st-tab__close {
-      opacity: 0.9;
+      color: var(--st-color-text);
     }
 
     .st-tab__close:hover {
-      opacity: 1;
+      color: var(--st-color-text);
     }
 
     .st-tab__add {
