@@ -7,13 +7,15 @@ import {
   signal,
 } from '@angular/core';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Commit, Repository } from '@contracts/domain';
 import { WorkspaceSplitComponent } from '@singularitree/ui-kit';
 import { CommitFocusService } from '@core/services/commit-focus.service';
-import { IpcBridge } from '@core/services/ipc-bridge.service';
+import { IpcBridge, type AppError } from '@core/services/ipc-bridge.service';
 import { RepoState } from '@core/services/repo-state.service';
+import { WorkspacesStore } from '@core/services/workspaces.store';
 import { GraphStore, WIP_OID } from '../graph/graph.store';
 import type { CommitRow } from '../repo-models';
 import { RepoPage } from './repo-page';
@@ -74,7 +76,7 @@ function makeGraphStore() {
   });
   const focusCommit = vi.fn(async (_oid: string) => {});
   const reload = vi.fn();
-  return { repoId, openRepository, focusCommit, reload };
+  return { repoId, openRepository, focusCommit, reload, error: signal<AppError | null>(null) };
 }
 
 /**
@@ -259,6 +261,23 @@ class GraphPageStub {}
 class RepoPickerStub {}
 
 @Component({
+  selector: 'st-repo-relocate-panel',
+  standalone: true,
+  template: `
+    <div data-testid="relocate-panel-stub">
+      <span data-testid="relocate-reason-stub">{{ reason() }}</span>
+    </div>
+  `,
+})
+class RepoRelocatePanelStub {
+  readonly repo = input<Repository | null>(null);
+  readonly reason = input<'missing' | 'not-a-repo'>('missing');
+  readonly busy = input(false);
+  readonly relocated = output<Repository>();
+  readonly removed = output<void>();
+}
+
+@Component({
   selector: 'st-commit-details-panel',
   standalone: true,
   template: `
@@ -272,13 +291,20 @@ class RepoPickerStub {}
     <button type="button" data-testid="review-changes" (click)="reviewChanges.emit()">
       Review changes
     </button>
+    <button type="button" data-testid="view-in-tree" (click)="viewInTree.emit()">
+      View in tree
+    </button>
+    <button type="button" data-testid="back" (click)="back.emit()">Back</button>
   `,
 })
 class CommitDetailsPanelStub {
   readonly commit = input<Commit | null>(null);
   readonly isWip = input(false);
   readonly showCta = input(false);
+  readonly showNavigation = input(false);
   readonly reviewChanges = output<void>();
+  readonly viewInTree = output<void>();
+  readonly back = output<void>();
 }
 
 /**
@@ -286,11 +312,18 @@ class CommitDetailsPanelStub {
  * signals `RepoPage` derives its split inputs from and keeps `selectedRow`
  * consistent with `selectedOid` (null for the WIP pseudo-oid).
  */
-function makeRenderGraphStore() {
+function makeRenderGraphStore(opts: { openError?: AppError } = {}) {
   const repoId = signal<string | null>(null);
   const commits = signal<Commit[]>([COMMIT_A]);
   const selectedOid = signal<string | null>(null);
+  const error = signal<AppError | null>(null);
   const openRepository = vi.fn(async (fsPath: string) => {
+    // A failed open leaves `repoId` null and records the error — the state that
+    // drives the recovery panel instead of the picker.
+    if (opts.openError) {
+      error.set(opts.openError);
+      return null;
+    }
     const repo = ALL_REPOS.find((r) => r.fsPath === fsPath) ?? REPO_A;
     repoId.set(repo.id);
     return repo;
@@ -298,6 +331,7 @@ function makeRenderGraphStore() {
   const focusCommit = vi.fn(async (_oid: string) => {});
   const reload = vi.fn();
   const requestScrollRestore = vi.fn();
+  const select = (oid: string | null): void => selectedOid.set(oid);
   const selectedRow = computed<CommitRow | null>(() => {
     const oid = selectedOid();
     if (!oid || oid === WIP_OID) return null;
@@ -312,12 +346,15 @@ function makeRenderGraphStore() {
       : null;
   });
   const isWipSelected = computed(() => selectedOid() === WIP_OID);
-  return { repoId, commits, selectedOid, selectedRow, isWipSelected, openRepository, focusCommit, reload, requestScrollRestore };
+  return { repoId, commits, selectedOid, selectedRow, isWipSelected, error, openRepository, focusCommit, reload, requestScrollRestore, select };
 }
 
-async function render(initial: Repository | null = REPO_A) {
+async function render(
+  initial: Repository | null = REPO_A,
+  opts: { openError?: AppError } = {},
+) {
   const repoState = makeRepoState(initial);
-  const graphStore = makeRenderGraphStore();
+  const graphStore = makeRenderGraphStore(opts);
   const bridge = makeBridge();
   const router = { navigate: vi.fn(async () => true), url: '/repo' };
 
@@ -333,13 +370,19 @@ async function render(initial: Repository | null = REPO_A) {
   })
     .overrideComponent(RepoPage, {
       set: {
-        imports: [WorkspaceSplitComponent, CommitDetailsPanelStub, GraphPageStub, RepoPickerStub],
+        imports: [
+          WorkspaceSplitComponent,
+          CommitDetailsPanelStub,
+          GraphPageStub,
+          RepoPickerStub,
+          RepoRelocatePanelStub,
+        ],
       },
     })
     .compileComponents();
 
   const fixture = TestBed.createComponent(RepoPage);
-  return { fixture, repoState, graphStore, router };
+  return { fixture, repoState, graphStore, router, workspaces: TestBed.inject(WorkspacesStore) };
 }
 
 describe('RepoPage workspace split', () => {
@@ -362,6 +405,23 @@ describe('RepoPage workspace split', () => {
       ctx.fixture.detectChanges();
       expect(ctx.graphStore.repoId()).not.toBeNull();
     });
+    return ctx;
+  }
+
+  /** The stubbed recovery panel instance (to drive its outputs). */
+  function panelStub(fixture: ComponentFixture<RepoPage>): RepoRelocatePanelStub {
+    return fixture.debugElement.query(By.directive(RepoRelocatePanelStub))
+      .componentInstance as RepoRelocatePanelStub;
+  }
+
+  /** Render with a failed open so the recovery state settles. */
+  async function renderRelocate(openError: AppError) {
+    const ctx = await render(REPO_A, { openError });
+    await vi.waitFor(() => {
+      ctx.fixture.detectChanges();
+      expect(ctx.graphStore.error()).not.toBeNull();
+    });
+    ctx.fixture.detectChanges();
     return ctx;
   }
 
@@ -435,5 +495,112 @@ describe('RepoPage workspace split', () => {
     expect(router.navigate).toHaveBeenCalledWith(['/repo', 'file-status']);
     // P3 fix: the headline CTA queues the graph's scroll restore before leaving.
     expect(graphStore.requestScrollRestore).toHaveBeenCalled();
+  });
+
+  // -- relocation recovery (P4.1) ------------------------------------------
+
+  it('shows the recovery panel instead of the picker when the recorded folder is missing', async () => {
+    const { fixture } = await renderRelocate({
+      code: 'REPO_PATH_MISSING',
+      message: 'gone',
+      details: {},
+    });
+
+    const el = host(fixture);
+    expect(el.querySelector('[data-testid="relocate-panel-stub"]')).not.toBeNull();
+    expect(el.querySelector('[data-testid="repo-picker-stub"]')).toBeNull();
+    expect(el.querySelector('[data-testid="graph-stub"]')).toBeNull();
+  });
+
+  it("reports 'not-a-repo' when the recorded folder is not a Git repository", async () => {
+    const { fixture } = await renderRelocate({
+      code: 'NOT_A_GIT_REPO',
+      message: 'not a repo',
+      details: {},
+    });
+
+    expect(
+      host(fixture).querySelector('[data-testid="relocate-reason-stub"]')?.textContent?.trim(),
+    ).toBe('not-a-repo');
+  });
+
+  it('reopens the graph and refreshes the tab after the panel relocates', async () => {
+    const { fixture, graphStore, workspaces } = await renderRelocate({
+      code: 'REPO_PATH_MISSING',
+      message: 'gone',
+      details: {},
+    });
+    graphStore.openRepository.mockClear();
+
+    const moved: Repository = { ...REPO_A, fsPath: '/tmp/a-moved' };
+    panelStub(fixture).relocated.emit(moved);
+    fixture.detectChanges();
+
+    expect(graphStore.openRepository).toHaveBeenCalledWith('/tmp/a-moved');
+    // Same id: the tab is refreshed in place, never duplicated.
+    expect(workspaces.tabs().map((tab) => tab.repoId)).toEqual(['repo-a']);
+    expect(workspaces.tabs()[0].fsPath).toBe('/tmp/a-moved');
+  });
+
+  it('opens the graph exactly once after a successful relocate', async () => {
+    const { fixture, graphStore } = await renderRelocate({
+      code: 'REPO_PATH_MISSING',
+      message: 'gone',
+      details: {},
+    });
+
+    // The relocate open succeeds this time: clear the recorded error and point
+    // the graph at the repository, as the real `openRepository` would.
+    graphStore.openRepository.mockImplementation(async (fsPath: string) => {
+      graphStore.error.set(null);
+      graphStore.repoId.set(REPO_A.id);
+      return { ...REPO_A, fsPath };
+    });
+    graphStore.openRepository.mockClear();
+
+    const moved: Repository = { ...REPO_A, fsPath: '/tmp/a-moved' };
+    panelStub(fixture).relocated.emit(moved);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    // The explicit open is the only one: the effect is gated while it runs.
+    expect(graphStore.openRepository).toHaveBeenCalledTimes(1);
+    expect(graphStore.openRepository).toHaveBeenCalledWith('/tmp/a-moved');
+  });
+
+  // -- item 7a: detail-pane navigation -------------------------------------
+
+  it('reveals the selected commit in the graph when viewInTree fires', async () => {
+    const { fixture, graphStore } = await renderWithGraph();
+    graphStore.selectedOid.set(COMMIT_OID);
+    fixture.detectChanges();
+
+    const button = host(fixture).querySelector<HTMLButtonElement>('[data-testid="view-in-tree"]');
+    expect(button).not.toBeNull();
+    button!.click();
+
+    expect(graphStore.focusCommit).toHaveBeenCalledWith(COMMIT_OID);
+  });
+
+  it('is a no-op for viewInTree when only the WIP node is selected', async () => {
+    const { fixture, graphStore } = await renderWithGraph();
+    graphStore.selectedOid.set(WIP_OID);
+    fixture.detectChanges();
+
+    host(fixture).querySelector<HTMLButtonElement>('[data-testid="view-in-tree"]')!.click();
+
+    expect(graphStore.focusCommit).not.toHaveBeenCalled();
+  });
+
+  it('clears the selection when back fires', async () => {
+    const { fixture, graphStore } = await renderWithGraph();
+    graphStore.selectedOid.set(COMMIT_OID);
+    fixture.detectChanges();
+
+    host(fixture).querySelector<HTMLButtonElement>('[data-testid="back"]')!.click();
+    fixture.detectChanges();
+
+    expect(graphStore.selectedOid()).toBeNull();
+    expect(host(fixture).querySelector('[data-testid="workspace-detail"]')).toBeNull();
   });
 });

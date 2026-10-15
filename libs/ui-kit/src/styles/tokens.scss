@@ -17,19 +17,33 @@
  * palette so its re-tokenization carried no visual delta; P2 flips them as the
  * shell surfaces land, so they now match the tier-1 primitives. Light values
  * remain the committed light palette (plan §2.2).
+ *
+ * P4.1 note: at the operator's request the DARK surfaces / structure / text
+ * moved off the charcoal ramp onto a navy/indigo ramp ("un poco más como
+ * antes", echoing the app's earlier navy family — bg #1e1e2e, surfaces
+ * #252536 / #2a2a3a, border #3a3a52). The cyan accent, the eight graph lanes,
+ * the ref pills and the status colours are deliberately UNCHANGED: the accent
+ * (--st-color-accent #69dfdc) is the documented identity token
+ * (design-system.md — brand, hashes, current branch, focus rings and the
+ * primary action) and the graph-lane palette is built on the same family. The
+ * reference accent #0a84ff reaches only ~4.3:1 against these navy surfaces and
+ * would fail WCAG AA for the 11–13px mono hash/path text that consumes
+ * --st-color-accent, whereas #69dfdc holds ~10:1. So: navy surfaces, cyan
+ * accent. Geometry and hairline structure are untouched — only the colour
+ * family changes.
  */
 
 /* ── Tier 1 — primitives (raw values, theme-independent) ──────────────── */
 :root {
-  /* neutrals */
-  --st-prim-ink-900: #1b1c1e;
-  --st-prim-ink-850: #202224;
-  --st-prim-ink-800: #222426;
-  --st-prim-ink-750: #242628;
-  --st-prim-ink-700: #292b2e;
-  --st-prim-ink-600: #3b3e41;
-  --st-prim-ink-050: #eceeef;
-  --st-prim-ink-300: #b0b5b9;
+  /* neutrals — navy/indigo ramp (P4.1) */
+  --st-prim-ink-900: #1e1e2e; /* canvas    */
+  --st-prim-ink-850: #20202f; /* rail      */
+  --st-prim-ink-800: #252536; /* surface   */
+  --st-prim-ink-750: #2a2a3a; /* surface-2 */
+  --st-prim-ink-700: #2e2e40; /* raised    */
+  --st-prim-ink-600: #3a3a52; /* border    */
+  --st-prim-ink-050: #e9e9f2; /* text      */
+  --st-prim-ink-300: #a8a8c0; /* muted     */
   /* accent */
   --st-prim-cyan-400: #69dfdc;
   --st-prim-cyan-500: #438c89;
@@ -49,7 +63,7 @@
   /* graph + avatar */
   --st-prim-graph-cyan: #67cbc7;
   --st-prim-graph-amber: #cfad78;
-  --st-prim-avatar-bg: #3d4543;
+  --st-prim-avatar-bg: #343a52; /* navy (P4.1); fg stays #cef4db */
   --st-prim-avatar-fg: #cef4db;
 }
 
@@ -58,27 +72,27 @@
   color-scheme: dark;
 
   /* surfaces & structure */
-  --st-color-bg: #1b1c1e;
-  --st-color-chrome: #242628;
-  --st-color-rail: #202224;
-  --st-color-surface: #222426;
-  --st-color-surface-2: #292b2e;
-  --st-color-raised: #292b2e;
-  --st-color-border: #3b3e41;
+  --st-color-bg: #1e1e2e;
+  --st-color-chrome: #232334;
+  --st-color-rail: #20202f;
+  --st-color-surface: #252536;
+  --st-color-surface-2: #2a2a3a;
+  --st-color-raised: #2e2e40;
+  --st-color-border: #3a3a52;
   --st-color-border-strong: color-mix(in srgb, var(--st-color-border) 94%, var(--st-color-text));
-  --st-color-text: #eceeef;
-  --st-color-muted: #b0b5b9;
+  --st-color-text: #e9e9f2;
+  --st-color-muted: #a8a8c0;
 
   /* accent */
   --st-color-accent: #69dfdc;
   --st-color-accent-soft: color-mix(in srgb, var(--st-color-accent) 18%, transparent);
-  --st-color-accent-contrast: #1b1c1e;
+  --st-color-accent-contrast: #16162a;
   --st-color-focus: #69dfdc;
 
   /* selection */
-  --st-color-selected: #164746;
+  --st-color-selected: #123a46;
   --st-color-selected-bar: #69dfdc;
-  --st-color-selected-border: #356966;
+  --st-color-selected-border: #3a7d78;
 
   /* status */
   --st-color-add: #9fe0b1;
@@ -97,8 +111,8 @@
   --st-color-diff-delete-fg: #ffd4d5;
   --st-color-diff-hunk-bg: #293638;
   --st-color-diff-hunk-fg: #aad8d7;
-  --st-color-diff-gutter-bg: #202224;
-  --st-color-diff-gutter-fg: #6f767a;
+  --st-color-diff-gutter-bg: #20202f;
+  --st-color-diff-gutter-fg: #6f7690;
 
   /* graph lanes */
   --st-color-graph-lane-1: #67cbc7;
@@ -127,9 +141,9 @@
   --st-color-badge-warning-fg: var(--st-color-warn);
 
   /* misc */
-  --st-color-avatar-bg: #3d4543;
+  --st-color-avatar-bg: #343a52;
   --st-color-avatar-fg: #cef4db;
-  --st-color-overlay: rgba(9, 10, 12, 0.62);
+  --st-color-overlay: rgba(12, 12, 24, 0.62);
 
   /* spacing — base unit 4px */
   --st-space-1: 4px;

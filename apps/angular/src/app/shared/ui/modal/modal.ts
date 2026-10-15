@@ -64,11 +64,11 @@ import { ChangeDetectionStrategy, Component, HostListener, input, output } from 
       width: min(560px, 100%);
       max-height: calc(100vh - 48px);
       overflow: auto;
-      background: var(--st-color-surface, #252536);
-      border: 1px solid var(--st-color-border, #2f2f44);
+      background: var(--st-color-surface);
+      border: 1px solid var(--st-color-border);
       border-radius: 10px;
       box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
     }
 
     .st-modal__head {
@@ -76,7 +76,7 @@ import { ChangeDetectionStrategy, Component, HostListener, input, output } from 
       align-items: center;
       gap: 8px;
       padding: 12px 16px;
-      border-bottom: 1px solid var(--st-color-border, #2f2f44);
+      border-bottom: 1px solid var(--st-color-border);
     }
 
     .st-modal__title {
@@ -89,7 +89,7 @@ import { ChangeDetectionStrategy, Component, HostListener, input, output } from 
     .st-modal__close {
       background: transparent;
       border: 1px solid transparent;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
       border-radius: 6px;
       cursor: pointer;
       padding: 4px 8px;
@@ -98,7 +98,7 @@ import { ChangeDetectionStrategy, Component, HostListener, input, output } from 
 
     .st-modal__close:hover {
       background: rgba(255, 255, 255, 0.07);
-      border-color: var(--st-color-border, #2f2f44);
+      border-color: var(--st-color-border);
     }
 
     .st-modal__body {
@@ -110,7 +110,7 @@ import { ChangeDetectionStrategy, Component, HostListener, input, output } from 
       justify-content: flex-end;
       gap: 8px;
       padding: 12px 16px;
-      border-top: 1px solid var(--st-color-border, #2f2f44);
+      border-top: 1px solid var(--st-color-border);
     }
   `,
 })

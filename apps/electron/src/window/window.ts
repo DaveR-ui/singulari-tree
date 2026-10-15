@@ -10,7 +10,11 @@ export function createMainWindow(): BrowserWindow {
     width: 1280,
     height: 800,
     show: false,
-    backgroundColor: '#0f1115',
+    // Matches the renderer's dark canvas (`--st-color-bg`, design-system.md), so
+    // the pre-paint/load backdrop is the same navy and there is no colour flash.
+    // The shell cannot read CSS custom properties, so the value is a literal and
+    // must be updated with the token.
+    backgroundColor: '#1e1e2e',
     webPreferences: {
       contextIsolation: true,
       sandbox: true,

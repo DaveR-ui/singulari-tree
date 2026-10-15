@@ -110,7 +110,7 @@ import { WorkspacesStore } from '@core/services/workspaces.store';
       height: 100%;
       min-height: 0;
       overflow: auto;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
     }
 
     .st-repos-page {
@@ -148,8 +148,8 @@ import { WorkspacesStore } from '@core/services/workspaces.store';
       min-width: 120px;
       padding: 4px 8px;
       border-radius: 4px;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      background: var(--st-color-surface, #252536);
+      border: 1px solid var(--st-color-border);
+      background: var(--st-color-surface);
       color: inherit;
       font-size: 12px;
     }
@@ -157,8 +157,8 @@ import { WorkspacesStore } from '@core/services/workspaces.store';
     .st-repos-page__button {
       padding: 4px 12px;
       border-radius: 4px;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      background: var(--st-color-surface, #252536);
+      border: 1px solid var(--st-color-border);
+      background: var(--st-color-surface);
       color: inherit;
       font-size: 12px;
       cursor: pointer;
@@ -183,9 +183,9 @@ import { WorkspacesStore } from '@core/services/workspaces.store';
       align-items: center;
       gap: 8px;
       padding: 6px 8px;
-      border: 1px solid var(--st-color-border, #2f2f44);
+      border: 1px solid var(--st-color-border);
       border-radius: 6px;
-      background: var(--st-color-surface, #252536);
+      background: var(--st-color-surface);
     }
 
     .st-repos-page__name {
@@ -206,7 +206,7 @@ import { WorkspacesStore } from '@core/services/workspaces.store';
     .st-repos-page__action {
       padding: 3px 10px;
       border-radius: 4px;
-      border: 1px solid var(--st-color-border, #2f2f44);
+      border: 1px solid var(--st-color-border);
       background: transparent;
       color: inherit;
       font-size: 12px;

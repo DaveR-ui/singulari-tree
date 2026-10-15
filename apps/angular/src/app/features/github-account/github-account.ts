@@ -82,7 +82,7 @@ const SOURCE_LABELS: Record<AuthSource, string> = {
     :host {
       display: block;
       padding: 16px;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
     }
 
     .st-gh-account__header {

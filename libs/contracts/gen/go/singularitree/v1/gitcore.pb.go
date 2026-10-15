@@ -530,6 +530,62 @@ func (*RemoveRepositoryResponse) Descriptor() ([]byte, []int) {
 	return file_gitcore_proto_rawDescGZIP(), []int{7}
 }
 
+// Repoint a tracked repository at a different filesystem path (P4.1 polish):
+// the folder was moved/renamed and the registration must follow it instead of
+// being deleted and re-created (which would mint a new repository id and drop
+// the cached rows). Validates the new path exactly like OpenRepository.
+type RelocateRepositoryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RepoId        string                 `protobuf:"bytes,1,opt,name=repo_id,json=repoId,proto3" json:"repo_id,omitempty"`
+	FsPath        string                 `protobuf:"bytes,2,opt,name=fs_path,json=fsPath,proto3" json:"fs_path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RelocateRepositoryRequest) Reset() {
+	*x = RelocateRepositoryRequest{}
+	mi := &file_gitcore_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RelocateRepositoryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RelocateRepositoryRequest) ProtoMessage() {}
+
+func (x *RelocateRepositoryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gitcore_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RelocateRepositoryRequest.ProtoReflect.Descriptor instead.
+func (*RelocateRepositoryRequest) Descriptor() ([]byte, []int) {
+	return file_gitcore_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *RelocateRepositoryRequest) GetRepoId() string {
+	if x != nil {
+		return x.RepoId
+	}
+	return ""
+}
+
+func (x *RelocateRepositoryRequest) GetFsPath() string {
+	if x != nil {
+		return x.FsPath
+	}
+	return ""
+}
+
 // Commits (windowed + streaming)
 type GetCommitsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -542,7 +598,7 @@ type GetCommitsRequest struct {
 
 func (x *GetCommitsRequest) Reset() {
 	*x = GetCommitsRequest{}
-	mi := &file_gitcore_proto_msgTypes[8]
+	mi := &file_gitcore_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -554,7 +610,7 @@ func (x *GetCommitsRequest) String() string {
 func (*GetCommitsRequest) ProtoMessage() {}
 
 func (x *GetCommitsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[8]
+	mi := &file_gitcore_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -567,7 +623,7 @@ func (x *GetCommitsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCommitsRequest.ProtoReflect.Descriptor instead.
 func (*GetCommitsRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{8}
+	return file_gitcore_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GetCommitsRequest) GetRepoId() string {
@@ -604,7 +660,7 @@ type GetCommitsResponse struct {
 
 func (x *GetCommitsResponse) Reset() {
 	*x = GetCommitsResponse{}
-	mi := &file_gitcore_proto_msgTypes[9]
+	mi := &file_gitcore_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -616,7 +672,7 @@ func (x *GetCommitsResponse) String() string {
 func (*GetCommitsResponse) ProtoMessage() {}
 
 func (x *GetCommitsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[9]
+	mi := &file_gitcore_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -629,7 +685,7 @@ func (x *GetCommitsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCommitsResponse.ProtoReflect.Descriptor instead.
 func (*GetCommitsResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{9}
+	return file_gitcore_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *GetCommitsResponse) GetCommits() []*Commit {
@@ -664,7 +720,7 @@ type StreamCommitsRequest struct {
 
 func (x *StreamCommitsRequest) Reset() {
 	*x = StreamCommitsRequest{}
-	mi := &file_gitcore_proto_msgTypes[10]
+	mi := &file_gitcore_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -676,7 +732,7 @@ func (x *StreamCommitsRequest) String() string {
 func (*StreamCommitsRequest) ProtoMessage() {}
 
 func (x *StreamCommitsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[10]
+	mi := &file_gitcore_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -689,7 +745,7 @@ func (x *StreamCommitsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamCommitsRequest.ProtoReflect.Descriptor instead.
 func (*StreamCommitsRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{10}
+	return file_gitcore_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *StreamCommitsRequest) GetRepoId() string {
@@ -723,7 +779,7 @@ type GetBranchesRequest struct {
 
 func (x *GetBranchesRequest) Reset() {
 	*x = GetBranchesRequest{}
-	mi := &file_gitcore_proto_msgTypes[11]
+	mi := &file_gitcore_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -735,7 +791,7 @@ func (x *GetBranchesRequest) String() string {
 func (*GetBranchesRequest) ProtoMessage() {}
 
 func (x *GetBranchesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[11]
+	mi := &file_gitcore_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -748,7 +804,7 @@ func (x *GetBranchesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBranchesRequest.ProtoReflect.Descriptor instead.
 func (*GetBranchesRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{11}
+	return file_gitcore_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *GetBranchesRequest) GetRepoId() string {
@@ -767,7 +823,7 @@ type GetBranchesResponse struct {
 
 func (x *GetBranchesResponse) Reset() {
 	*x = GetBranchesResponse{}
-	mi := &file_gitcore_proto_msgTypes[12]
+	mi := &file_gitcore_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -779,7 +835,7 @@ func (x *GetBranchesResponse) String() string {
 func (*GetBranchesResponse) ProtoMessage() {}
 
 func (x *GetBranchesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[12]
+	mi := &file_gitcore_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -792,7 +848,7 @@ func (x *GetBranchesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBranchesResponse.ProtoReflect.Descriptor instead.
 func (*GetBranchesResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{12}
+	return file_gitcore_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *GetBranchesResponse) GetBranches() []*Branch {
@@ -811,7 +867,7 @@ type GetRemotesRequest struct {
 
 func (x *GetRemotesRequest) Reset() {
 	*x = GetRemotesRequest{}
-	mi := &file_gitcore_proto_msgTypes[13]
+	mi := &file_gitcore_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -823,7 +879,7 @@ func (x *GetRemotesRequest) String() string {
 func (*GetRemotesRequest) ProtoMessage() {}
 
 func (x *GetRemotesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[13]
+	mi := &file_gitcore_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -836,7 +892,7 @@ func (x *GetRemotesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRemotesRequest.ProtoReflect.Descriptor instead.
 func (*GetRemotesRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{13}
+	return file_gitcore_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GetRemotesRequest) GetRepoId() string {
@@ -855,7 +911,7 @@ type GetRemotesResponse struct {
 
 func (x *GetRemotesResponse) Reset() {
 	*x = GetRemotesResponse{}
-	mi := &file_gitcore_proto_msgTypes[14]
+	mi := &file_gitcore_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -867,7 +923,7 @@ func (x *GetRemotesResponse) String() string {
 func (*GetRemotesResponse) ProtoMessage() {}
 
 func (x *GetRemotesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[14]
+	mi := &file_gitcore_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -880,7 +936,7 @@ func (x *GetRemotesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRemotesResponse.ProtoReflect.Descriptor instead.
 func (*GetRemotesResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{14}
+	return file_gitcore_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *GetRemotesResponse) GetRemotes() []*Remote {
@@ -899,7 +955,7 @@ type GetTagsRequest struct {
 
 func (x *GetTagsRequest) Reset() {
 	*x = GetTagsRequest{}
-	mi := &file_gitcore_proto_msgTypes[15]
+	mi := &file_gitcore_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -911,7 +967,7 @@ func (x *GetTagsRequest) String() string {
 func (*GetTagsRequest) ProtoMessage() {}
 
 func (x *GetTagsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[15]
+	mi := &file_gitcore_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -924,7 +980,7 @@ func (x *GetTagsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTagsRequest.ProtoReflect.Descriptor instead.
 func (*GetTagsRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{15}
+	return file_gitcore_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *GetTagsRequest) GetRepoId() string {
@@ -943,7 +999,7 @@ type GetTagsResponse struct {
 
 func (x *GetTagsResponse) Reset() {
 	*x = GetTagsResponse{}
-	mi := &file_gitcore_proto_msgTypes[16]
+	mi := &file_gitcore_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -955,7 +1011,7 @@ func (x *GetTagsResponse) String() string {
 func (*GetTagsResponse) ProtoMessage() {}
 
 func (x *GetTagsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[16]
+	mi := &file_gitcore_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -968,7 +1024,7 @@ func (x *GetTagsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTagsResponse.ProtoReflect.Descriptor instead.
 func (*GetTagsResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{16}
+	return file_gitcore_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *GetTagsResponse) GetTags() []*Tag {
@@ -987,7 +1043,7 @@ type GetStashesRequest struct {
 
 func (x *GetStashesRequest) Reset() {
 	*x = GetStashesRequest{}
-	mi := &file_gitcore_proto_msgTypes[17]
+	mi := &file_gitcore_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -999,7 +1055,7 @@ func (x *GetStashesRequest) String() string {
 func (*GetStashesRequest) ProtoMessage() {}
 
 func (x *GetStashesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[17]
+	mi := &file_gitcore_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1012,7 +1068,7 @@ func (x *GetStashesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStashesRequest.ProtoReflect.Descriptor instead.
 func (*GetStashesRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{17}
+	return file_gitcore_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *GetStashesRequest) GetRepoId() string {
@@ -1031,7 +1087,7 @@ type GetStashesResponse struct {
 
 func (x *GetStashesResponse) Reset() {
 	*x = GetStashesResponse{}
-	mi := &file_gitcore_proto_msgTypes[18]
+	mi := &file_gitcore_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1043,7 +1099,7 @@ func (x *GetStashesResponse) String() string {
 func (*GetStashesResponse) ProtoMessage() {}
 
 func (x *GetStashesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[18]
+	mi := &file_gitcore_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1056,7 +1112,7 @@ func (x *GetStashesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStashesResponse.ProtoReflect.Descriptor instead.
 func (*GetStashesResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{18}
+	return file_gitcore_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *GetStashesResponse) GetStashes() []*Stash {
@@ -1075,7 +1131,7 @@ type GetWorktreesRequest struct {
 
 func (x *GetWorktreesRequest) Reset() {
 	*x = GetWorktreesRequest{}
-	mi := &file_gitcore_proto_msgTypes[19]
+	mi := &file_gitcore_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1087,7 +1143,7 @@ func (x *GetWorktreesRequest) String() string {
 func (*GetWorktreesRequest) ProtoMessage() {}
 
 func (x *GetWorktreesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[19]
+	mi := &file_gitcore_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1100,7 +1156,7 @@ func (x *GetWorktreesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWorktreesRequest.ProtoReflect.Descriptor instead.
 func (*GetWorktreesRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{19}
+	return file_gitcore_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *GetWorktreesRequest) GetRepoId() string {
@@ -1119,7 +1175,7 @@ type GetWorktreesResponse struct {
 
 func (x *GetWorktreesResponse) Reset() {
 	*x = GetWorktreesResponse{}
-	mi := &file_gitcore_proto_msgTypes[20]
+	mi := &file_gitcore_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1131,7 +1187,7 @@ func (x *GetWorktreesResponse) String() string {
 func (*GetWorktreesResponse) ProtoMessage() {}
 
 func (x *GetWorktreesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[20]
+	mi := &file_gitcore_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1144,7 +1200,7 @@ func (x *GetWorktreesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWorktreesResponse.ProtoReflect.Descriptor instead.
 func (*GetWorktreesResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{20}
+	return file_gitcore_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *GetWorktreesResponse) GetWorktrees() []*Worktree {
@@ -1166,7 +1222,7 @@ type CreateBranchRequest struct {
 
 func (x *CreateBranchRequest) Reset() {
 	*x = CreateBranchRequest{}
-	mi := &file_gitcore_proto_msgTypes[21]
+	mi := &file_gitcore_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1178,7 +1234,7 @@ func (x *CreateBranchRequest) String() string {
 func (*CreateBranchRequest) ProtoMessage() {}
 
 func (x *CreateBranchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[21]
+	mi := &file_gitcore_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1191,7 +1247,7 @@ func (x *CreateBranchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateBranchRequest.ProtoReflect.Descriptor instead.
 func (*CreateBranchRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{21}
+	return file_gitcore_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *CreateBranchRequest) GetRepoId() string {
@@ -1233,7 +1289,7 @@ type RenameBranchRequest struct {
 
 func (x *RenameBranchRequest) Reset() {
 	*x = RenameBranchRequest{}
-	mi := &file_gitcore_proto_msgTypes[22]
+	mi := &file_gitcore_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1245,7 +1301,7 @@ func (x *RenameBranchRequest) String() string {
 func (*RenameBranchRequest) ProtoMessage() {}
 
 func (x *RenameBranchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[22]
+	mi := &file_gitcore_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1258,7 +1314,7 @@ func (x *RenameBranchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenameBranchRequest.ProtoReflect.Descriptor instead.
 func (*RenameBranchRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{22}
+	return file_gitcore_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *RenameBranchRequest) GetRepoId() string {
@@ -1293,7 +1349,7 @@ type DeleteBranchRequest struct {
 
 func (x *DeleteBranchRequest) Reset() {
 	*x = DeleteBranchRequest{}
-	mi := &file_gitcore_proto_msgTypes[23]
+	mi := &file_gitcore_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1305,7 +1361,7 @@ func (x *DeleteBranchRequest) String() string {
 func (*DeleteBranchRequest) ProtoMessage() {}
 
 func (x *DeleteBranchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[23]
+	mi := &file_gitcore_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1318,7 +1374,7 @@ func (x *DeleteBranchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteBranchRequest.ProtoReflect.Descriptor instead.
 func (*DeleteBranchRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{23}
+	return file_gitcore_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *DeleteBranchRequest) GetRepoId() string {
@@ -1350,7 +1406,7 @@ type DeleteBranchResponse struct {
 
 func (x *DeleteBranchResponse) Reset() {
 	*x = DeleteBranchResponse{}
-	mi := &file_gitcore_proto_msgTypes[24]
+	mi := &file_gitcore_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1362,7 +1418,7 @@ func (x *DeleteBranchResponse) String() string {
 func (*DeleteBranchResponse) ProtoMessage() {}
 
 func (x *DeleteBranchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[24]
+	mi := &file_gitcore_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1375,7 +1431,7 @@ func (x *DeleteBranchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteBranchResponse.ProtoReflect.Descriptor instead.
 func (*DeleteBranchResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{24}
+	return file_gitcore_proto_rawDescGZIP(), []int{25}
 }
 
 type MergeRequest struct {
@@ -1391,7 +1447,7 @@ type MergeRequest struct {
 
 func (x *MergeRequest) Reset() {
 	*x = MergeRequest{}
-	mi := &file_gitcore_proto_msgTypes[25]
+	mi := &file_gitcore_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1403,7 +1459,7 @@ func (x *MergeRequest) String() string {
 func (*MergeRequest) ProtoMessage() {}
 
 func (x *MergeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[25]
+	mi := &file_gitcore_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1416,7 +1472,7 @@ func (x *MergeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MergeRequest.ProtoReflect.Descriptor instead.
 func (*MergeRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{25}
+	return file_gitcore_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *MergeRequest) GetRepoId() string {
@@ -1464,7 +1520,7 @@ type MergeResponse struct {
 
 func (x *MergeResponse) Reset() {
 	*x = MergeResponse{}
-	mi := &file_gitcore_proto_msgTypes[26]
+	mi := &file_gitcore_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1476,7 +1532,7 @@ func (x *MergeResponse) String() string {
 func (*MergeResponse) ProtoMessage() {}
 
 func (x *MergeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[26]
+	mi := &file_gitcore_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1489,7 +1545,7 @@ func (x *MergeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MergeResponse.ProtoReflect.Descriptor instead.
 func (*MergeResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{26}
+	return file_gitcore_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *MergeResponse) GetHasConflict() bool {
@@ -1520,7 +1576,7 @@ type CreateTagRequest struct {
 
 func (x *CreateTagRequest) Reset() {
 	*x = CreateTagRequest{}
-	mi := &file_gitcore_proto_msgTypes[27]
+	mi := &file_gitcore_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1532,7 +1588,7 @@ func (x *CreateTagRequest) String() string {
 func (*CreateTagRequest) ProtoMessage() {}
 
 func (x *CreateTagRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[27]
+	mi := &file_gitcore_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1545,7 +1601,7 @@ func (x *CreateTagRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTagRequest.ProtoReflect.Descriptor instead.
 func (*CreateTagRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{27}
+	return file_gitcore_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *CreateTagRequest) GetRepoId() string {
@@ -1600,7 +1656,7 @@ type DeleteTagRequest struct {
 
 func (x *DeleteTagRequest) Reset() {
 	*x = DeleteTagRequest{}
-	mi := &file_gitcore_proto_msgTypes[28]
+	mi := &file_gitcore_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1612,7 +1668,7 @@ func (x *DeleteTagRequest) String() string {
 func (*DeleteTagRequest) ProtoMessage() {}
 
 func (x *DeleteTagRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[28]
+	mi := &file_gitcore_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1625,7 +1681,7 @@ func (x *DeleteTagRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTagRequest.ProtoReflect.Descriptor instead.
 func (*DeleteTagRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{28}
+	return file_gitcore_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *DeleteTagRequest) GetRepoId() string {
@@ -1650,7 +1706,7 @@ type DeleteTagResponse struct {
 
 func (x *DeleteTagResponse) Reset() {
 	*x = DeleteTagResponse{}
-	mi := &file_gitcore_proto_msgTypes[29]
+	mi := &file_gitcore_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1662,7 +1718,7 @@ func (x *DeleteTagResponse) String() string {
 func (*DeleteTagResponse) ProtoMessage() {}
 
 func (x *DeleteTagResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[29]
+	mi := &file_gitcore_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1675,7 +1731,7 @@ func (x *DeleteTagResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTagResponse.ProtoReflect.Descriptor instead.
 func (*DeleteTagResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{29}
+	return file_gitcore_proto_rawDescGZIP(), []int{30}
 }
 
 type StashApplyRequest struct {
@@ -1689,7 +1745,7 @@ type StashApplyRequest struct {
 
 func (x *StashApplyRequest) Reset() {
 	*x = StashApplyRequest{}
-	mi := &file_gitcore_proto_msgTypes[30]
+	mi := &file_gitcore_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1701,7 +1757,7 @@ func (x *StashApplyRequest) String() string {
 func (*StashApplyRequest) ProtoMessage() {}
 
 func (x *StashApplyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[30]
+	mi := &file_gitcore_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1714,7 +1770,7 @@ func (x *StashApplyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StashApplyRequest.ProtoReflect.Descriptor instead.
 func (*StashApplyRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{30}
+	return file_gitcore_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *StashApplyRequest) GetRepoId() string {
@@ -1746,7 +1802,7 @@ type StashApplyResponse struct {
 
 func (x *StashApplyResponse) Reset() {
 	*x = StashApplyResponse{}
-	mi := &file_gitcore_proto_msgTypes[31]
+	mi := &file_gitcore_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1758,7 +1814,7 @@ func (x *StashApplyResponse) String() string {
 func (*StashApplyResponse) ProtoMessage() {}
 
 func (x *StashApplyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[31]
+	mi := &file_gitcore_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1771,7 +1827,7 @@ func (x *StashApplyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StashApplyResponse.ProtoReflect.Descriptor instead.
 func (*StashApplyResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{31}
+	return file_gitcore_proto_rawDescGZIP(), []int{32}
 }
 
 type StashPopRequest struct {
@@ -1784,7 +1840,7 @@ type StashPopRequest struct {
 
 func (x *StashPopRequest) Reset() {
 	*x = StashPopRequest{}
-	mi := &file_gitcore_proto_msgTypes[32]
+	mi := &file_gitcore_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1796,7 +1852,7 @@ func (x *StashPopRequest) String() string {
 func (*StashPopRequest) ProtoMessage() {}
 
 func (x *StashPopRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[32]
+	mi := &file_gitcore_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1809,7 +1865,7 @@ func (x *StashPopRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StashPopRequest.ProtoReflect.Descriptor instead.
 func (*StashPopRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{32}
+	return file_gitcore_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *StashPopRequest) GetRepoId() string {
@@ -1834,7 +1890,7 @@ type StashPopResponse struct {
 
 func (x *StashPopResponse) Reset() {
 	*x = StashPopResponse{}
-	mi := &file_gitcore_proto_msgTypes[33]
+	mi := &file_gitcore_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1846,7 +1902,7 @@ func (x *StashPopResponse) String() string {
 func (*StashPopResponse) ProtoMessage() {}
 
 func (x *StashPopResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[33]
+	mi := &file_gitcore_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1859,7 +1915,7 @@ func (x *StashPopResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StashPopResponse.ProtoReflect.Descriptor instead.
 func (*StashPopResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{33}
+	return file_gitcore_proto_rawDescGZIP(), []int{34}
 }
 
 type StashDropRequest struct {
@@ -1872,7 +1928,7 @@ type StashDropRequest struct {
 
 func (x *StashDropRequest) Reset() {
 	*x = StashDropRequest{}
-	mi := &file_gitcore_proto_msgTypes[34]
+	mi := &file_gitcore_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1884,7 +1940,7 @@ func (x *StashDropRequest) String() string {
 func (*StashDropRequest) ProtoMessage() {}
 
 func (x *StashDropRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[34]
+	mi := &file_gitcore_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1897,7 +1953,7 @@ func (x *StashDropRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StashDropRequest.ProtoReflect.Descriptor instead.
 func (*StashDropRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{34}
+	return file_gitcore_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *StashDropRequest) GetRepoId() string {
@@ -1922,7 +1978,7 @@ type StashDropResponse struct {
 
 func (x *StashDropResponse) Reset() {
 	*x = StashDropResponse{}
-	mi := &file_gitcore_proto_msgTypes[35]
+	mi := &file_gitcore_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1934,7 +1990,7 @@ func (x *StashDropResponse) String() string {
 func (*StashDropResponse) ProtoMessage() {}
 
 func (x *StashDropResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[35]
+	mi := &file_gitcore_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1947,7 +2003,7 @@ func (x *StashDropResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StashDropResponse.ProtoReflect.Descriptor instead.
 func (*StashDropResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{35}
+	return file_gitcore_proto_rawDescGZIP(), []int{36}
 }
 
 // Status & diff
@@ -1960,7 +2016,7 @@ type GetStatusRequest struct {
 
 func (x *GetStatusRequest) Reset() {
 	*x = GetStatusRequest{}
-	mi := &file_gitcore_proto_msgTypes[36]
+	mi := &file_gitcore_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1972,7 +2028,7 @@ func (x *GetStatusRequest) String() string {
 func (*GetStatusRequest) ProtoMessage() {}
 
 func (x *GetStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[36]
+	mi := &file_gitcore_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1985,7 +2041,7 @@ func (x *GetStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetStatusRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{36}
+	return file_gitcore_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *GetStatusRequest) GetRepoId() string {
@@ -2004,7 +2060,7 @@ type GetStatusResponse struct {
 
 func (x *GetStatusResponse) Reset() {
 	*x = GetStatusResponse{}
-	mi := &file_gitcore_proto_msgTypes[37]
+	mi := &file_gitcore_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2016,7 +2072,7 @@ func (x *GetStatusResponse) String() string {
 func (*GetStatusResponse) ProtoMessage() {}
 
 func (x *GetStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[37]
+	mi := &file_gitcore_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2029,7 +2085,7 @@ func (x *GetStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStatusResponse.ProtoReflect.Descriptor instead.
 func (*GetStatusResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{37}
+	return file_gitcore_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *GetStatusResponse) GetFiles() []*FileStatus {
@@ -2055,7 +2111,7 @@ type GetDiffRequest struct {
 
 func (x *GetDiffRequest) Reset() {
 	*x = GetDiffRequest{}
-	mi := &file_gitcore_proto_msgTypes[38]
+	mi := &file_gitcore_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2067,7 +2123,7 @@ func (x *GetDiffRequest) String() string {
 func (*GetDiffRequest) ProtoMessage() {}
 
 func (x *GetDiffRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[38]
+	mi := &file_gitcore_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2080,7 +2136,7 @@ func (x *GetDiffRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDiffRequest.ProtoReflect.Descriptor instead.
 func (*GetDiffRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{38}
+	return file_gitcore_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *GetDiffRequest) GetRepoId() string {
@@ -2129,7 +2185,7 @@ type StageRequest struct {
 
 func (x *StageRequest) Reset() {
 	*x = StageRequest{}
-	mi := &file_gitcore_proto_msgTypes[39]
+	mi := &file_gitcore_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2141,7 +2197,7 @@ func (x *StageRequest) String() string {
 func (*StageRequest) ProtoMessage() {}
 
 func (x *StageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[39]
+	mi := &file_gitcore_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2154,7 +2210,7 @@ func (x *StageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StageRequest.ProtoReflect.Descriptor instead.
 func (*StageRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{39}
+	return file_gitcore_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *StageRequest) GetRepoId() string {
@@ -2179,7 +2235,7 @@ type StageResponse struct {
 
 func (x *StageResponse) Reset() {
 	*x = StageResponse{}
-	mi := &file_gitcore_proto_msgTypes[40]
+	mi := &file_gitcore_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2191,7 +2247,7 @@ func (x *StageResponse) String() string {
 func (*StageResponse) ProtoMessage() {}
 
 func (x *StageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[40]
+	mi := &file_gitcore_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2204,7 +2260,7 @@ func (x *StageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StageResponse.ProtoReflect.Descriptor instead.
 func (*StageResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{40}
+	return file_gitcore_proto_rawDescGZIP(), []int{41}
 }
 
 type UnstageRequest struct {
@@ -2217,7 +2273,7 @@ type UnstageRequest struct {
 
 func (x *UnstageRequest) Reset() {
 	*x = UnstageRequest{}
-	mi := &file_gitcore_proto_msgTypes[41]
+	mi := &file_gitcore_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2229,7 +2285,7 @@ func (x *UnstageRequest) String() string {
 func (*UnstageRequest) ProtoMessage() {}
 
 func (x *UnstageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[41]
+	mi := &file_gitcore_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2242,7 +2298,7 @@ func (x *UnstageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnstageRequest.ProtoReflect.Descriptor instead.
 func (*UnstageRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{41}
+	return file_gitcore_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *UnstageRequest) GetRepoId() string {
@@ -2267,7 +2323,7 @@ type UnstageResponse struct {
 
 func (x *UnstageResponse) Reset() {
 	*x = UnstageResponse{}
-	mi := &file_gitcore_proto_msgTypes[42]
+	mi := &file_gitcore_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2279,7 +2335,7 @@ func (x *UnstageResponse) String() string {
 func (*UnstageResponse) ProtoMessage() {}
 
 func (x *UnstageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[42]
+	mi := &file_gitcore_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2292,7 +2348,7 @@ func (x *UnstageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnstageResponse.ProtoReflect.Descriptor instead.
 func (*UnstageResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{42}
+	return file_gitcore_proto_rawDescGZIP(), []int{43}
 }
 
 // Hunk/line staging and discard (ADR-0020).
@@ -2316,7 +2372,7 @@ type StageHunkRequest struct {
 
 func (x *StageHunkRequest) Reset() {
 	*x = StageHunkRequest{}
-	mi := &file_gitcore_proto_msgTypes[43]
+	mi := &file_gitcore_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2328,7 +2384,7 @@ func (x *StageHunkRequest) String() string {
 func (*StageHunkRequest) ProtoMessage() {}
 
 func (x *StageHunkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[43]
+	mi := &file_gitcore_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2341,7 +2397,7 @@ func (x *StageHunkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StageHunkRequest.ProtoReflect.Descriptor instead.
 func (*StageHunkRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{43}
+	return file_gitcore_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *StageHunkRequest) GetRepoId() string {
@@ -2380,7 +2436,7 @@ type StageHunkResponse struct {
 
 func (x *StageHunkResponse) Reset() {
 	*x = StageHunkResponse{}
-	mi := &file_gitcore_proto_msgTypes[44]
+	mi := &file_gitcore_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2392,7 +2448,7 @@ func (x *StageHunkResponse) String() string {
 func (*StageHunkResponse) ProtoMessage() {}
 
 func (x *StageHunkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[44]
+	mi := &file_gitcore_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2405,7 +2461,7 @@ func (x *StageHunkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StageHunkResponse.ProtoReflect.Descriptor instead.
 func (*StageHunkResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{44}
+	return file_gitcore_proto_rawDescGZIP(), []int{45}
 }
 
 type UnstageHunkRequest struct {
@@ -2420,7 +2476,7 @@ type UnstageHunkRequest struct {
 
 func (x *UnstageHunkRequest) Reset() {
 	*x = UnstageHunkRequest{}
-	mi := &file_gitcore_proto_msgTypes[45]
+	mi := &file_gitcore_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2432,7 +2488,7 @@ func (x *UnstageHunkRequest) String() string {
 func (*UnstageHunkRequest) ProtoMessage() {}
 
 func (x *UnstageHunkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[45]
+	mi := &file_gitcore_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2445,7 +2501,7 @@ func (x *UnstageHunkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnstageHunkRequest.ProtoReflect.Descriptor instead.
 func (*UnstageHunkRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{45}
+	return file_gitcore_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *UnstageHunkRequest) GetRepoId() string {
@@ -2484,7 +2540,7 @@ type UnstageHunkResponse struct {
 
 func (x *UnstageHunkResponse) Reset() {
 	*x = UnstageHunkResponse{}
-	mi := &file_gitcore_proto_msgTypes[46]
+	mi := &file_gitcore_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2496,7 +2552,7 @@ func (x *UnstageHunkResponse) String() string {
 func (*UnstageHunkResponse) ProtoMessage() {}
 
 func (x *UnstageHunkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[46]
+	mi := &file_gitcore_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2509,7 +2565,7 @@ func (x *UnstageHunkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnstageHunkResponse.ProtoReflect.Descriptor instead.
 func (*UnstageHunkResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{46}
+	return file_gitcore_proto_rawDescGZIP(), []int{47}
 }
 
 type DiscardHunkRequest struct {
@@ -2524,7 +2580,7 @@ type DiscardHunkRequest struct {
 
 func (x *DiscardHunkRequest) Reset() {
 	*x = DiscardHunkRequest{}
-	mi := &file_gitcore_proto_msgTypes[47]
+	mi := &file_gitcore_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2536,7 +2592,7 @@ func (x *DiscardHunkRequest) String() string {
 func (*DiscardHunkRequest) ProtoMessage() {}
 
 func (x *DiscardHunkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[47]
+	mi := &file_gitcore_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2549,7 +2605,7 @@ func (x *DiscardHunkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiscardHunkRequest.ProtoReflect.Descriptor instead.
 func (*DiscardHunkRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{47}
+	return file_gitcore_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *DiscardHunkRequest) GetRepoId() string {
@@ -2588,7 +2644,7 @@ type DiscardHunkResponse struct {
 
 func (x *DiscardHunkResponse) Reset() {
 	*x = DiscardHunkResponse{}
-	mi := &file_gitcore_proto_msgTypes[48]
+	mi := &file_gitcore_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2600,7 +2656,7 @@ func (x *DiscardHunkResponse) String() string {
 func (*DiscardHunkResponse) ProtoMessage() {}
 
 func (x *DiscardHunkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[48]
+	mi := &file_gitcore_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2613,7 +2669,7 @@ func (x *DiscardHunkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiscardHunkResponse.ProtoReflect.Descriptor instead.
 func (*DiscardHunkResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{48}
+	return file_gitcore_proto_rawDescGZIP(), []int{49}
 }
 
 // File-level discard (ADR-0020). The ADR left the exact shape at decision level;
@@ -2630,7 +2686,7 @@ type DiscardRequest struct {
 
 func (x *DiscardRequest) Reset() {
 	*x = DiscardRequest{}
-	mi := &file_gitcore_proto_msgTypes[49]
+	mi := &file_gitcore_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2642,7 +2698,7 @@ func (x *DiscardRequest) String() string {
 func (*DiscardRequest) ProtoMessage() {}
 
 func (x *DiscardRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[49]
+	mi := &file_gitcore_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2655,7 +2711,7 @@ func (x *DiscardRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiscardRequest.ProtoReflect.Descriptor instead.
 func (*DiscardRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{49}
+	return file_gitcore_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *DiscardRequest) GetRepoId() string {
@@ -2680,7 +2736,7 @@ type DiscardResponse struct {
 
 func (x *DiscardResponse) Reset() {
 	*x = DiscardResponse{}
-	mi := &file_gitcore_proto_msgTypes[50]
+	mi := &file_gitcore_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2692,7 +2748,7 @@ func (x *DiscardResponse) String() string {
 func (*DiscardResponse) ProtoMessage() {}
 
 func (x *DiscardResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[50]
+	mi := &file_gitcore_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2705,7 +2761,7 @@ func (x *DiscardResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiscardResponse.ProtoReflect.Descriptor instead.
 func (*DiscardResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{50}
+	return file_gitcore_proto_rawDescGZIP(), []int{51}
 }
 
 // Reset soft/mixed/hard (ADR-0021). `to` is an oid hex or a ref, resolved to an
@@ -2722,7 +2778,7 @@ type ResetRequest struct {
 
 func (x *ResetRequest) Reset() {
 	*x = ResetRequest{}
-	mi := &file_gitcore_proto_msgTypes[51]
+	mi := &file_gitcore_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2734,7 +2790,7 @@ func (x *ResetRequest) String() string {
 func (*ResetRequest) ProtoMessage() {}
 
 func (x *ResetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[51]
+	mi := &file_gitcore_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2747,7 +2803,7 @@ func (x *ResetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResetRequest.ProtoReflect.Descriptor instead.
 func (*ResetRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{51}
+	return file_gitcore_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *ResetRequest) GetRepoId() string {
@@ -2779,7 +2835,7 @@ type ResetResponse struct {
 
 func (x *ResetResponse) Reset() {
 	*x = ResetResponse{}
-	mi := &file_gitcore_proto_msgTypes[52]
+	mi := &file_gitcore_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2791,7 +2847,7 @@ func (x *ResetResponse) String() string {
 func (*ResetResponse) ProtoMessage() {}
 
 func (x *ResetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[52]
+	mi := &file_gitcore_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2804,7 +2860,7 @@ func (x *ResetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResetResponse.ProtoReflect.Descriptor instead.
 func (*ResetResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{52}
+	return file_gitcore_proto_rawDescGZIP(), []int{53}
 }
 
 // Commit change-size gauge (ADR-0023). Counts only; cached in SQLite.
@@ -2818,7 +2874,7 @@ type GetCommitStatsRequest struct {
 
 func (x *GetCommitStatsRequest) Reset() {
 	*x = GetCommitStatsRequest{}
-	mi := &file_gitcore_proto_msgTypes[53]
+	mi := &file_gitcore_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2830,7 +2886,7 @@ func (x *GetCommitStatsRequest) String() string {
 func (*GetCommitStatsRequest) ProtoMessage() {}
 
 func (x *GetCommitStatsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[53]
+	mi := &file_gitcore_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2843,7 +2899,7 @@ func (x *GetCommitStatsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCommitStatsRequest.ProtoReflect.Descriptor instead.
 func (*GetCommitStatsRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{53}
+	return file_gitcore_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *GetCommitStatsRequest) GetRepoId() string {
@@ -2869,7 +2925,7 @@ type GetCommitStatsResponse struct {
 
 func (x *GetCommitStatsResponse) Reset() {
 	*x = GetCommitStatsResponse{}
-	mi := &file_gitcore_proto_msgTypes[54]
+	mi := &file_gitcore_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2881,7 +2937,7 @@ func (x *GetCommitStatsResponse) String() string {
 func (*GetCommitStatsResponse) ProtoMessage() {}
 
 func (x *GetCommitStatsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[54]
+	mi := &file_gitcore_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2894,7 +2950,7 @@ func (x *GetCommitStatsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCommitStatsResponse.ProtoReflect.Descriptor instead.
 func (*GetCommitStatsResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{54}
+	return file_gitcore_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *GetCommitStatsResponse) GetStats() []*CommitStats {
@@ -2916,7 +2972,7 @@ type CommitRequest struct {
 
 func (x *CommitRequest) Reset() {
 	*x = CommitRequest{}
-	mi := &file_gitcore_proto_msgTypes[55]
+	mi := &file_gitcore_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2928,7 +2984,7 @@ func (x *CommitRequest) String() string {
 func (*CommitRequest) ProtoMessage() {}
 
 func (x *CommitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[55]
+	mi := &file_gitcore_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2941,7 +2997,7 @@ func (x *CommitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommitRequest.ProtoReflect.Descriptor instead.
 func (*CommitRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{55}
+	return file_gitcore_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *CommitRequest) GetRepoId() string {
@@ -2979,7 +3035,7 @@ type CheckoutRequest struct {
 
 func (x *CheckoutRequest) Reset() {
 	*x = CheckoutRequest{}
-	mi := &file_gitcore_proto_msgTypes[56]
+	mi := &file_gitcore_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2991,7 +3047,7 @@ func (x *CheckoutRequest) String() string {
 func (*CheckoutRequest) ProtoMessage() {}
 
 func (x *CheckoutRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[56]
+	mi := &file_gitcore_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3004,7 +3060,7 @@ func (x *CheckoutRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckoutRequest.ProtoReflect.Descriptor instead.
 func (*CheckoutRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{56}
+	return file_gitcore_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *CheckoutRequest) GetRepoId() string {
@@ -3043,7 +3099,7 @@ type CheckoutResponse struct {
 
 func (x *CheckoutResponse) Reset() {
 	*x = CheckoutResponse{}
-	mi := &file_gitcore_proto_msgTypes[57]
+	mi := &file_gitcore_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3055,7 +3111,7 @@ func (x *CheckoutResponse) String() string {
 func (*CheckoutResponse) ProtoMessage() {}
 
 func (x *CheckoutResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[57]
+	mi := &file_gitcore_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3068,7 +3124,7 @@ func (x *CheckoutResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckoutResponse.ProtoReflect.Descriptor instead.
 func (*CheckoutResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{57}
+	return file_gitcore_proto_rawDescGZIP(), []int{58}
 }
 
 // StashPush saves the working-tree changes to the stash stack. Used by the
@@ -3083,7 +3139,7 @@ type StashPushRequest struct {
 
 func (x *StashPushRequest) Reset() {
 	*x = StashPushRequest{}
-	mi := &file_gitcore_proto_msgTypes[58]
+	mi := &file_gitcore_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3095,7 +3151,7 @@ func (x *StashPushRequest) String() string {
 func (*StashPushRequest) ProtoMessage() {}
 
 func (x *StashPushRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[58]
+	mi := &file_gitcore_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3108,7 +3164,7 @@ func (x *StashPushRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StashPushRequest.ProtoReflect.Descriptor instead.
 func (*StashPushRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{58}
+	return file_gitcore_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *StashPushRequest) GetRepoId() string {
@@ -3134,7 +3190,7 @@ type StashPushResponse struct {
 
 func (x *StashPushResponse) Reset() {
 	*x = StashPushResponse{}
-	mi := &file_gitcore_proto_msgTypes[59]
+	mi := &file_gitcore_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3146,7 +3202,7 @@ func (x *StashPushResponse) String() string {
 func (*StashPushResponse) ProtoMessage() {}
 
 func (x *StashPushResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[59]
+	mi := &file_gitcore_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3159,7 +3215,7 @@ func (x *StashPushResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StashPushResponse.ProtoReflect.Descriptor instead.
 func (*StashPushResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{59}
+	return file_gitcore_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *StashPushResponse) GetStash() *Stash {
@@ -3190,7 +3246,7 @@ type FetchRequest struct {
 
 func (x *FetchRequest) Reset() {
 	*x = FetchRequest{}
-	mi := &file_gitcore_proto_msgTypes[60]
+	mi := &file_gitcore_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3202,7 +3258,7 @@ func (x *FetchRequest) String() string {
 func (*FetchRequest) ProtoMessage() {}
 
 func (x *FetchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[60]
+	mi := &file_gitcore_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3215,7 +3271,7 @@ func (x *FetchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchRequest.ProtoReflect.Descriptor instead.
 func (*FetchRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{60}
+	return file_gitcore_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *FetchRequest) GetRepoId() string {
@@ -3275,7 +3331,7 @@ type PushRequest struct {
 
 func (x *PushRequest) Reset() {
 	*x = PushRequest{}
-	mi := &file_gitcore_proto_msgTypes[61]
+	mi := &file_gitcore_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3287,7 +3343,7 @@ func (x *PushRequest) String() string {
 func (*PushRequest) ProtoMessage() {}
 
 func (x *PushRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[61]
+	mi := &file_gitcore_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3300,7 +3356,7 @@ func (x *PushRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PushRequest.ProtoReflect.Descriptor instead.
 func (*PushRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{61}
+	return file_gitcore_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *PushRequest) GetRepoId() string {
@@ -3376,7 +3432,7 @@ type PullRequest struct {
 
 func (x *PullRequest) Reset() {
 	*x = PullRequest{}
-	mi := &file_gitcore_proto_msgTypes[62]
+	mi := &file_gitcore_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3388,7 +3444,7 @@ func (x *PullRequest) String() string {
 func (*PullRequest) ProtoMessage() {}
 
 func (x *PullRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[62]
+	mi := &file_gitcore_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3401,7 +3457,7 @@ func (x *PullRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PullRequest.ProtoReflect.Descriptor instead.
 func (*PullRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{62}
+	return file_gitcore_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *PullRequest) GetRepoId() string {
@@ -3470,7 +3526,7 @@ type Progress struct {
 
 func (x *Progress) Reset() {
 	*x = Progress{}
-	mi := &file_gitcore_proto_msgTypes[63]
+	mi := &file_gitcore_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3482,7 +3538,7 @@ func (x *Progress) String() string {
 func (*Progress) ProtoMessage() {}
 
 func (x *Progress) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[63]
+	mi := &file_gitcore_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3495,7 +3551,7 @@ func (x *Progress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Progress.ProtoReflect.Descriptor instead.
 func (*Progress) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{63}
+	return file_gitcore_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *Progress) GetPercent() uint32 {
@@ -3522,7 +3578,7 @@ type WatchRequest struct {
 
 func (x *WatchRequest) Reset() {
 	*x = WatchRequest{}
-	mi := &file_gitcore_proto_msgTypes[64]
+	mi := &file_gitcore_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3534,7 +3590,7 @@ func (x *WatchRequest) String() string {
 func (*WatchRequest) ProtoMessage() {}
 
 func (x *WatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[64]
+	mi := &file_gitcore_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3547,7 +3603,7 @@ func (x *WatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchRequest.ProtoReflect.Descriptor instead.
 func (*WatchRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{64}
+	return file_gitcore_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *WatchRequest) GetRepoId() string {
@@ -3567,7 +3623,7 @@ type FsChangedEvent struct {
 
 func (x *FsChangedEvent) Reset() {
 	*x = FsChangedEvent{}
-	mi := &file_gitcore_proto_msgTypes[65]
+	mi := &file_gitcore_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3579,7 +3635,7 @@ func (x *FsChangedEvent) String() string {
 func (*FsChangedEvent) ProtoMessage() {}
 
 func (x *FsChangedEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[65]
+	mi := &file_gitcore_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3592,7 +3648,7 @@ func (x *FsChangedEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FsChangedEvent.ProtoReflect.Descriptor instead.
 func (*FsChangedEvent) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{65}
+	return file_gitcore_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *FsChangedEvent) GetRepoId() string {
@@ -3623,7 +3679,7 @@ type SearchCommitsRequest struct {
 
 func (x *SearchCommitsRequest) Reset() {
 	*x = SearchCommitsRequest{}
-	mi := &file_gitcore_proto_msgTypes[66]
+	mi := &file_gitcore_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3635,7 +3691,7 @@ func (x *SearchCommitsRequest) String() string {
 func (*SearchCommitsRequest) ProtoMessage() {}
 
 func (x *SearchCommitsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[66]
+	mi := &file_gitcore_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3648,7 +3704,7 @@ func (x *SearchCommitsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchCommitsRequest.ProtoReflect.Descriptor instead.
 func (*SearchCommitsRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{66}
+	return file_gitcore_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *SearchCommitsRequest) GetQuery() string {
@@ -3687,7 +3743,7 @@ type CommitSearchHit struct {
 
 func (x *CommitSearchHit) Reset() {
 	*x = CommitSearchHit{}
-	mi := &file_gitcore_proto_msgTypes[67]
+	mi := &file_gitcore_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3699,7 +3755,7 @@ func (x *CommitSearchHit) String() string {
 func (*CommitSearchHit) ProtoMessage() {}
 
 func (x *CommitSearchHit) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[67]
+	mi := &file_gitcore_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3712,7 +3768,7 @@ func (x *CommitSearchHit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommitSearchHit.ProtoReflect.Descriptor instead.
 func (*CommitSearchHit) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{67}
+	return file_gitcore_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *CommitSearchHit) GetRepoId() string {
@@ -3766,7 +3822,7 @@ type SearchCommitsResponse struct {
 
 func (x *SearchCommitsResponse) Reset() {
 	*x = SearchCommitsResponse{}
-	mi := &file_gitcore_proto_msgTypes[68]
+	mi := &file_gitcore_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3778,7 +3834,7 @@ func (x *SearchCommitsResponse) String() string {
 func (*SearchCommitsResponse) ProtoMessage() {}
 
 func (x *SearchCommitsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[68]
+	mi := &file_gitcore_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3791,7 +3847,7 @@ func (x *SearchCommitsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchCommitsResponse.ProtoReflect.Descriptor instead.
 func (*SearchCommitsResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{68}
+	return file_gitcore_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *SearchCommitsResponse) GetHits() []*CommitSearchHit {
@@ -3815,7 +3871,7 @@ type GitFlowConfig struct {
 
 func (x *GitFlowConfig) Reset() {
 	*x = GitFlowConfig{}
-	mi := &file_gitcore_proto_msgTypes[69]
+	mi := &file_gitcore_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3827,7 +3883,7 @@ func (x *GitFlowConfig) String() string {
 func (*GitFlowConfig) ProtoMessage() {}
 
 func (x *GitFlowConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[69]
+	mi := &file_gitcore_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3840,7 +3896,7 @@ func (x *GitFlowConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitFlowConfig.ProtoReflect.Descriptor instead.
 func (*GitFlowConfig) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{69}
+	return file_gitcore_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *GitFlowConfig) GetMainBranch() string {
@@ -3894,7 +3950,7 @@ type GetGitFlowConfigRequest struct {
 
 func (x *GetGitFlowConfigRequest) Reset() {
 	*x = GetGitFlowConfigRequest{}
-	mi := &file_gitcore_proto_msgTypes[70]
+	mi := &file_gitcore_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3906,7 +3962,7 @@ func (x *GetGitFlowConfigRequest) String() string {
 func (*GetGitFlowConfigRequest) ProtoMessage() {}
 
 func (x *GetGitFlowConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[70]
+	mi := &file_gitcore_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3919,7 +3975,7 @@ func (x *GetGitFlowConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGitFlowConfigRequest.ProtoReflect.Descriptor instead.
 func (*GetGitFlowConfigRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{70}
+	return file_gitcore_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *GetGitFlowConfigRequest) GetRepoId() string {
@@ -3939,7 +3995,7 @@ type SetGitFlowConfigRequest struct {
 
 func (x *SetGitFlowConfigRequest) Reset() {
 	*x = SetGitFlowConfigRequest{}
-	mi := &file_gitcore_proto_msgTypes[71]
+	mi := &file_gitcore_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3951,7 +4007,7 @@ func (x *SetGitFlowConfigRequest) String() string {
 func (*SetGitFlowConfigRequest) ProtoMessage() {}
 
 func (x *SetGitFlowConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[71]
+	mi := &file_gitcore_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3964,7 +4020,7 @@ func (x *SetGitFlowConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetGitFlowConfigRequest.ProtoReflect.Descriptor instead.
 func (*SetGitFlowConfigRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{71}
+	return file_gitcore_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *SetGitFlowConfigRequest) GetRepoId() string {
@@ -3995,7 +4051,7 @@ type StartGitFlowRequest struct {
 
 func (x *StartGitFlowRequest) Reset() {
 	*x = StartGitFlowRequest{}
-	mi := &file_gitcore_proto_msgTypes[72]
+	mi := &file_gitcore_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4007,7 +4063,7 @@ func (x *StartGitFlowRequest) String() string {
 func (*StartGitFlowRequest) ProtoMessage() {}
 
 func (x *StartGitFlowRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[72]
+	mi := &file_gitcore_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4020,7 +4076,7 @@ func (x *StartGitFlowRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartGitFlowRequest.ProtoReflect.Descriptor instead.
 func (*StartGitFlowRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{72}
+	return file_gitcore_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *StartGitFlowRequest) GetRepoId() string {
@@ -4063,7 +4119,7 @@ type FinishGitFlowRequest struct {
 
 func (x *FinishGitFlowRequest) Reset() {
 	*x = FinishGitFlowRequest{}
-	mi := &file_gitcore_proto_msgTypes[73]
+	mi := &file_gitcore_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4075,7 +4131,7 @@ func (x *FinishGitFlowRequest) String() string {
 func (*FinishGitFlowRequest) ProtoMessage() {}
 
 func (x *FinishGitFlowRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[73]
+	mi := &file_gitcore_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4088,7 +4144,7 @@ func (x *FinishGitFlowRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FinishGitFlowRequest.ProtoReflect.Descriptor instead.
 func (*FinishGitFlowRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{73}
+	return file_gitcore_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *FinishGitFlowRequest) GetRepoId() string {
@@ -4134,7 +4190,7 @@ type GitFlowResult struct {
 
 func (x *GitFlowResult) Reset() {
 	*x = GitFlowResult{}
-	mi := &file_gitcore_proto_msgTypes[74]
+	mi := &file_gitcore_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4146,7 +4202,7 @@ func (x *GitFlowResult) String() string {
 func (*GitFlowResult) ProtoMessage() {}
 
 func (x *GitFlowResult) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[74]
+	mi := &file_gitcore_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4159,7 +4215,7 @@ func (x *GitFlowResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitFlowResult.ProtoReflect.Descriptor instead.
 func (*GitFlowResult) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{74}
+	return file_gitcore_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *GitFlowResult) GetBranch() string {
@@ -4203,7 +4259,10 @@ const file_gitcore_proto_rawDesc = "" +
 	"\frepositories\x18\x01 \x03(\v2\x1c.singularitree.v1.RepositoryR\frepositories\"2\n" +
 	"\x17RemoveRepositoryRequest\x12\x17\n" +
 	"\arepo_id\x18\x01 \x01(\tR\x06repoId\"\x1a\n" +
-	"\x18RemoveRepositoryResponse\"Z\n" +
+	"\x18RemoveRepositoryResponse\"M\n" +
+	"\x19RelocateRepositoryRequest\x12\x17\n" +
+	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x17\n" +
+	"\afs_path\x18\x02 \x01(\tR\x06fsPath\"Z\n" +
 	"\x11GetCommitsRequest\x12\x17\n" +
 	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x16\n" +
 	"\x06offset\x18\x02 \x01(\rR\x06offset\x12\x14\n" +
@@ -4441,13 +4500,14 @@ const file_gitcore_proto_rawDesc = "" +
 	"\aFEATURE\x10\x01\x12\v\n" +
 	"\aRELEASE\x10\x02\x12\n" +
 	"\n" +
-	"\x06HOTFIX\x10\x032\xce\x1c\n" +
+	"\x06HOTFIX\x10\x032\xaf\x1d\n" +
 	"\aGitCore\x12E\n" +
 	"\x04Ping\x12\x1d.singularitree.v1.PingRequest\x1a\x1e.singularitree.v1.PingResponse\x12W\n" +
 	"\x0eOpenRepository\x12'.singularitree.v1.OpenRepositoryRequest\x1a\x1c.singularitree.v1.Repository\x12U\n" +
 	"\rGetRepository\x12&.singularitree.v1.GetRepositoryRequest\x1a\x1c.singularitree.v1.Repository\x12i\n" +
 	"\x10ListRepositories\x12).singularitree.v1.ListRepositoriesRequest\x1a*.singularitree.v1.ListRepositoriesResponse\x12i\n" +
-	"\x10RemoveRepository\x12).singularitree.v1.RemoveRepositoryRequest\x1a*.singularitree.v1.RemoveRepositoryResponse\x12W\n" +
+	"\x10RemoveRepository\x12).singularitree.v1.RemoveRepositoryRequest\x1a*.singularitree.v1.RemoveRepositoryResponse\x12_\n" +
+	"\x12RelocateRepository\x12+.singularitree.v1.RelocateRepositoryRequest\x1a\x1c.singularitree.v1.Repository\x12W\n" +
 	"\n" +
 	"GetCommits\x12#.singularitree.v1.GetCommitsRequest\x1a$.singularitree.v1.GetCommitsResponse\x12S\n" +
 	"\rStreamCommits\x12&.singularitree.v1.StreamCommitsRequest\x1a\x18.singularitree.v1.Commit0\x01\x12Z\n" +
@@ -4504,116 +4564,117 @@ func file_gitcore_proto_rawDescGZIP() []byte {
 }
 
 var file_gitcore_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_gitcore_proto_msgTypes = make([]protoimpl.MessageInfo, 75)
+var file_gitcore_proto_msgTypes = make([]protoimpl.MessageInfo, 76)
 var file_gitcore_proto_goTypes = []any{
-	(MergeStrategy)(0),               // 0: singularitree.v1.MergeStrategy
-	(ResetMode)(0),                   // 1: singularitree.v1.ResetMode
-	(GitFlowKind)(0),                 // 2: singularitree.v1.GitFlowKind
-	(*PingRequest)(nil),              // 3: singularitree.v1.PingRequest
-	(*PingResponse)(nil),             // 4: singularitree.v1.PingResponse
-	(*OpenRepositoryRequest)(nil),    // 5: singularitree.v1.OpenRepositoryRequest
-	(*GetRepositoryRequest)(nil),     // 6: singularitree.v1.GetRepositoryRequest
-	(*ListRepositoriesRequest)(nil),  // 7: singularitree.v1.ListRepositoriesRequest
-	(*ListRepositoriesResponse)(nil), // 8: singularitree.v1.ListRepositoriesResponse
-	(*RemoveRepositoryRequest)(nil),  // 9: singularitree.v1.RemoveRepositoryRequest
-	(*RemoveRepositoryResponse)(nil), // 10: singularitree.v1.RemoveRepositoryResponse
-	(*GetCommitsRequest)(nil),        // 11: singularitree.v1.GetCommitsRequest
-	(*GetCommitsResponse)(nil),       // 12: singularitree.v1.GetCommitsResponse
-	(*StreamCommitsRequest)(nil),     // 13: singularitree.v1.StreamCommitsRequest
-	(*GetBranchesRequest)(nil),       // 14: singularitree.v1.GetBranchesRequest
-	(*GetBranchesResponse)(nil),      // 15: singularitree.v1.GetBranchesResponse
-	(*GetRemotesRequest)(nil),        // 16: singularitree.v1.GetRemotesRequest
-	(*GetRemotesResponse)(nil),       // 17: singularitree.v1.GetRemotesResponse
-	(*GetTagsRequest)(nil),           // 18: singularitree.v1.GetTagsRequest
-	(*GetTagsResponse)(nil),          // 19: singularitree.v1.GetTagsResponse
-	(*GetStashesRequest)(nil),        // 20: singularitree.v1.GetStashesRequest
-	(*GetStashesResponse)(nil),       // 21: singularitree.v1.GetStashesResponse
-	(*GetWorktreesRequest)(nil),      // 22: singularitree.v1.GetWorktreesRequest
-	(*GetWorktreesResponse)(nil),     // 23: singularitree.v1.GetWorktreesResponse
-	(*CreateBranchRequest)(nil),      // 24: singularitree.v1.CreateBranchRequest
-	(*RenameBranchRequest)(nil),      // 25: singularitree.v1.RenameBranchRequest
-	(*DeleteBranchRequest)(nil),      // 26: singularitree.v1.DeleteBranchRequest
-	(*DeleteBranchResponse)(nil),     // 27: singularitree.v1.DeleteBranchResponse
-	(*MergeRequest)(nil),             // 28: singularitree.v1.MergeRequest
-	(*MergeResponse)(nil),            // 29: singularitree.v1.MergeResponse
-	(*CreateTagRequest)(nil),         // 30: singularitree.v1.CreateTagRequest
-	(*DeleteTagRequest)(nil),         // 31: singularitree.v1.DeleteTagRequest
-	(*DeleteTagResponse)(nil),        // 32: singularitree.v1.DeleteTagResponse
-	(*StashApplyRequest)(nil),        // 33: singularitree.v1.StashApplyRequest
-	(*StashApplyResponse)(nil),       // 34: singularitree.v1.StashApplyResponse
-	(*StashPopRequest)(nil),          // 35: singularitree.v1.StashPopRequest
-	(*StashPopResponse)(nil),         // 36: singularitree.v1.StashPopResponse
-	(*StashDropRequest)(nil),         // 37: singularitree.v1.StashDropRequest
-	(*StashDropResponse)(nil),        // 38: singularitree.v1.StashDropResponse
-	(*GetStatusRequest)(nil),         // 39: singularitree.v1.GetStatusRequest
-	(*GetStatusResponse)(nil),        // 40: singularitree.v1.GetStatusResponse
-	(*GetDiffRequest)(nil),           // 41: singularitree.v1.GetDiffRequest
-	(*StageRequest)(nil),             // 42: singularitree.v1.StageRequest
-	(*StageResponse)(nil),            // 43: singularitree.v1.StageResponse
-	(*UnstageRequest)(nil),           // 44: singularitree.v1.UnstageRequest
-	(*UnstageResponse)(nil),          // 45: singularitree.v1.UnstageResponse
-	(*StageHunkRequest)(nil),         // 46: singularitree.v1.StageHunkRequest
-	(*StageHunkResponse)(nil),        // 47: singularitree.v1.StageHunkResponse
-	(*UnstageHunkRequest)(nil),       // 48: singularitree.v1.UnstageHunkRequest
-	(*UnstageHunkResponse)(nil),      // 49: singularitree.v1.UnstageHunkResponse
-	(*DiscardHunkRequest)(nil),       // 50: singularitree.v1.DiscardHunkRequest
-	(*DiscardHunkResponse)(nil),      // 51: singularitree.v1.DiscardHunkResponse
-	(*DiscardRequest)(nil),           // 52: singularitree.v1.DiscardRequest
-	(*DiscardResponse)(nil),          // 53: singularitree.v1.DiscardResponse
-	(*ResetRequest)(nil),             // 54: singularitree.v1.ResetRequest
-	(*ResetResponse)(nil),            // 55: singularitree.v1.ResetResponse
-	(*GetCommitStatsRequest)(nil),    // 56: singularitree.v1.GetCommitStatsRequest
-	(*GetCommitStatsResponse)(nil),   // 57: singularitree.v1.GetCommitStatsResponse
-	(*CommitRequest)(nil),            // 58: singularitree.v1.CommitRequest
-	(*CheckoutRequest)(nil),          // 59: singularitree.v1.CheckoutRequest
-	(*CheckoutResponse)(nil),         // 60: singularitree.v1.CheckoutResponse
-	(*StashPushRequest)(nil),         // 61: singularitree.v1.StashPushRequest
-	(*StashPushResponse)(nil),        // 62: singularitree.v1.StashPushResponse
-	(*FetchRequest)(nil),             // 63: singularitree.v1.FetchRequest
-	(*PushRequest)(nil),              // 64: singularitree.v1.PushRequest
-	(*PullRequest)(nil),              // 65: singularitree.v1.PullRequest
-	(*Progress)(nil),                 // 66: singularitree.v1.Progress
-	(*WatchRequest)(nil),             // 67: singularitree.v1.WatchRequest
-	(*FsChangedEvent)(nil),           // 68: singularitree.v1.FsChangedEvent
-	(*SearchCommitsRequest)(nil),     // 69: singularitree.v1.SearchCommitsRequest
-	(*CommitSearchHit)(nil),          // 70: singularitree.v1.CommitSearchHit
-	(*SearchCommitsResponse)(nil),    // 71: singularitree.v1.SearchCommitsResponse
-	(*GitFlowConfig)(nil),            // 72: singularitree.v1.GitFlowConfig
-	(*GetGitFlowConfigRequest)(nil),  // 73: singularitree.v1.GetGitFlowConfigRequest
-	(*SetGitFlowConfigRequest)(nil),  // 74: singularitree.v1.SetGitFlowConfigRequest
-	(*StartGitFlowRequest)(nil),      // 75: singularitree.v1.StartGitFlowRequest
-	(*FinishGitFlowRequest)(nil),     // 76: singularitree.v1.FinishGitFlowRequest
-	(*GitFlowResult)(nil),            // 77: singularitree.v1.GitFlowResult
-	(*Repository)(nil),               // 78: singularitree.v1.Repository
-	(*Commit)(nil),                   // 79: singularitree.v1.Commit
-	(*Lane)(nil),                     // 80: singularitree.v1.Lane
-	(*Branch)(nil),                   // 81: singularitree.v1.Branch
-	(*Remote)(nil),                   // 82: singularitree.v1.Remote
-	(*Tag)(nil),                      // 83: singularitree.v1.Tag
-	(*Stash)(nil),                    // 84: singularitree.v1.Stash
-	(*Worktree)(nil),                 // 85: singularitree.v1.Worktree
-	(*FileStatus)(nil),               // 86: singularitree.v1.FileStatus
-	(*CommitStats)(nil),              // 87: singularitree.v1.CommitStats
-	(*Signature)(nil),                // 88: singularitree.v1.Signature
-	(*Diff)(nil),                     // 89: singularitree.v1.Diff
+	(MergeStrategy)(0),                // 0: singularitree.v1.MergeStrategy
+	(ResetMode)(0),                    // 1: singularitree.v1.ResetMode
+	(GitFlowKind)(0),                  // 2: singularitree.v1.GitFlowKind
+	(*PingRequest)(nil),               // 3: singularitree.v1.PingRequest
+	(*PingResponse)(nil),              // 4: singularitree.v1.PingResponse
+	(*OpenRepositoryRequest)(nil),     // 5: singularitree.v1.OpenRepositoryRequest
+	(*GetRepositoryRequest)(nil),      // 6: singularitree.v1.GetRepositoryRequest
+	(*ListRepositoriesRequest)(nil),   // 7: singularitree.v1.ListRepositoriesRequest
+	(*ListRepositoriesResponse)(nil),  // 8: singularitree.v1.ListRepositoriesResponse
+	(*RemoveRepositoryRequest)(nil),   // 9: singularitree.v1.RemoveRepositoryRequest
+	(*RemoveRepositoryResponse)(nil),  // 10: singularitree.v1.RemoveRepositoryResponse
+	(*RelocateRepositoryRequest)(nil), // 11: singularitree.v1.RelocateRepositoryRequest
+	(*GetCommitsRequest)(nil),         // 12: singularitree.v1.GetCommitsRequest
+	(*GetCommitsResponse)(nil),        // 13: singularitree.v1.GetCommitsResponse
+	(*StreamCommitsRequest)(nil),      // 14: singularitree.v1.StreamCommitsRequest
+	(*GetBranchesRequest)(nil),        // 15: singularitree.v1.GetBranchesRequest
+	(*GetBranchesResponse)(nil),       // 16: singularitree.v1.GetBranchesResponse
+	(*GetRemotesRequest)(nil),         // 17: singularitree.v1.GetRemotesRequest
+	(*GetRemotesResponse)(nil),        // 18: singularitree.v1.GetRemotesResponse
+	(*GetTagsRequest)(nil),            // 19: singularitree.v1.GetTagsRequest
+	(*GetTagsResponse)(nil),           // 20: singularitree.v1.GetTagsResponse
+	(*GetStashesRequest)(nil),         // 21: singularitree.v1.GetStashesRequest
+	(*GetStashesResponse)(nil),        // 22: singularitree.v1.GetStashesResponse
+	(*GetWorktreesRequest)(nil),       // 23: singularitree.v1.GetWorktreesRequest
+	(*GetWorktreesResponse)(nil),      // 24: singularitree.v1.GetWorktreesResponse
+	(*CreateBranchRequest)(nil),       // 25: singularitree.v1.CreateBranchRequest
+	(*RenameBranchRequest)(nil),       // 26: singularitree.v1.RenameBranchRequest
+	(*DeleteBranchRequest)(nil),       // 27: singularitree.v1.DeleteBranchRequest
+	(*DeleteBranchResponse)(nil),      // 28: singularitree.v1.DeleteBranchResponse
+	(*MergeRequest)(nil),              // 29: singularitree.v1.MergeRequest
+	(*MergeResponse)(nil),             // 30: singularitree.v1.MergeResponse
+	(*CreateTagRequest)(nil),          // 31: singularitree.v1.CreateTagRequest
+	(*DeleteTagRequest)(nil),          // 32: singularitree.v1.DeleteTagRequest
+	(*DeleteTagResponse)(nil),         // 33: singularitree.v1.DeleteTagResponse
+	(*StashApplyRequest)(nil),         // 34: singularitree.v1.StashApplyRequest
+	(*StashApplyResponse)(nil),        // 35: singularitree.v1.StashApplyResponse
+	(*StashPopRequest)(nil),           // 36: singularitree.v1.StashPopRequest
+	(*StashPopResponse)(nil),          // 37: singularitree.v1.StashPopResponse
+	(*StashDropRequest)(nil),          // 38: singularitree.v1.StashDropRequest
+	(*StashDropResponse)(nil),         // 39: singularitree.v1.StashDropResponse
+	(*GetStatusRequest)(nil),          // 40: singularitree.v1.GetStatusRequest
+	(*GetStatusResponse)(nil),         // 41: singularitree.v1.GetStatusResponse
+	(*GetDiffRequest)(nil),            // 42: singularitree.v1.GetDiffRequest
+	(*StageRequest)(nil),              // 43: singularitree.v1.StageRequest
+	(*StageResponse)(nil),             // 44: singularitree.v1.StageResponse
+	(*UnstageRequest)(nil),            // 45: singularitree.v1.UnstageRequest
+	(*UnstageResponse)(nil),           // 46: singularitree.v1.UnstageResponse
+	(*StageHunkRequest)(nil),          // 47: singularitree.v1.StageHunkRequest
+	(*StageHunkResponse)(nil),         // 48: singularitree.v1.StageHunkResponse
+	(*UnstageHunkRequest)(nil),        // 49: singularitree.v1.UnstageHunkRequest
+	(*UnstageHunkResponse)(nil),       // 50: singularitree.v1.UnstageHunkResponse
+	(*DiscardHunkRequest)(nil),        // 51: singularitree.v1.DiscardHunkRequest
+	(*DiscardHunkResponse)(nil),       // 52: singularitree.v1.DiscardHunkResponse
+	(*DiscardRequest)(nil),            // 53: singularitree.v1.DiscardRequest
+	(*DiscardResponse)(nil),           // 54: singularitree.v1.DiscardResponse
+	(*ResetRequest)(nil),              // 55: singularitree.v1.ResetRequest
+	(*ResetResponse)(nil),             // 56: singularitree.v1.ResetResponse
+	(*GetCommitStatsRequest)(nil),     // 57: singularitree.v1.GetCommitStatsRequest
+	(*GetCommitStatsResponse)(nil),    // 58: singularitree.v1.GetCommitStatsResponse
+	(*CommitRequest)(nil),             // 59: singularitree.v1.CommitRequest
+	(*CheckoutRequest)(nil),           // 60: singularitree.v1.CheckoutRequest
+	(*CheckoutResponse)(nil),          // 61: singularitree.v1.CheckoutResponse
+	(*StashPushRequest)(nil),          // 62: singularitree.v1.StashPushRequest
+	(*StashPushResponse)(nil),         // 63: singularitree.v1.StashPushResponse
+	(*FetchRequest)(nil),              // 64: singularitree.v1.FetchRequest
+	(*PushRequest)(nil),               // 65: singularitree.v1.PushRequest
+	(*PullRequest)(nil),               // 66: singularitree.v1.PullRequest
+	(*Progress)(nil),                  // 67: singularitree.v1.Progress
+	(*WatchRequest)(nil),              // 68: singularitree.v1.WatchRequest
+	(*FsChangedEvent)(nil),            // 69: singularitree.v1.FsChangedEvent
+	(*SearchCommitsRequest)(nil),      // 70: singularitree.v1.SearchCommitsRequest
+	(*CommitSearchHit)(nil),           // 71: singularitree.v1.CommitSearchHit
+	(*SearchCommitsResponse)(nil),     // 72: singularitree.v1.SearchCommitsResponse
+	(*GitFlowConfig)(nil),             // 73: singularitree.v1.GitFlowConfig
+	(*GetGitFlowConfigRequest)(nil),   // 74: singularitree.v1.GetGitFlowConfigRequest
+	(*SetGitFlowConfigRequest)(nil),   // 75: singularitree.v1.SetGitFlowConfigRequest
+	(*StartGitFlowRequest)(nil),       // 76: singularitree.v1.StartGitFlowRequest
+	(*FinishGitFlowRequest)(nil),      // 77: singularitree.v1.FinishGitFlowRequest
+	(*GitFlowResult)(nil),             // 78: singularitree.v1.GitFlowResult
+	(*Repository)(nil),                // 79: singularitree.v1.Repository
+	(*Commit)(nil),                    // 80: singularitree.v1.Commit
+	(*Lane)(nil),                      // 81: singularitree.v1.Lane
+	(*Branch)(nil),                    // 82: singularitree.v1.Branch
+	(*Remote)(nil),                    // 83: singularitree.v1.Remote
+	(*Tag)(nil),                       // 84: singularitree.v1.Tag
+	(*Stash)(nil),                     // 85: singularitree.v1.Stash
+	(*Worktree)(nil),                  // 86: singularitree.v1.Worktree
+	(*FileStatus)(nil),                // 87: singularitree.v1.FileStatus
+	(*CommitStats)(nil),               // 88: singularitree.v1.CommitStats
+	(*Signature)(nil),                 // 89: singularitree.v1.Signature
+	(*Diff)(nil),                      // 90: singularitree.v1.Diff
 }
 var file_gitcore_proto_depIdxs = []int32{
-	78, // 0: singularitree.v1.ListRepositoriesResponse.repositories:type_name -> singularitree.v1.Repository
-	79, // 1: singularitree.v1.GetCommitsResponse.commits:type_name -> singularitree.v1.Commit
-	80, // 2: singularitree.v1.GetCommitsResponse.lanes:type_name -> singularitree.v1.Lane
-	81, // 3: singularitree.v1.GetBranchesResponse.branches:type_name -> singularitree.v1.Branch
-	82, // 4: singularitree.v1.GetRemotesResponse.remotes:type_name -> singularitree.v1.Remote
-	83, // 5: singularitree.v1.GetTagsResponse.tags:type_name -> singularitree.v1.Tag
-	84, // 6: singularitree.v1.GetStashesResponse.stashes:type_name -> singularitree.v1.Stash
-	85, // 7: singularitree.v1.GetWorktreesResponse.worktrees:type_name -> singularitree.v1.Worktree
+	79, // 0: singularitree.v1.ListRepositoriesResponse.repositories:type_name -> singularitree.v1.Repository
+	80, // 1: singularitree.v1.GetCommitsResponse.commits:type_name -> singularitree.v1.Commit
+	81, // 2: singularitree.v1.GetCommitsResponse.lanes:type_name -> singularitree.v1.Lane
+	82, // 3: singularitree.v1.GetBranchesResponse.branches:type_name -> singularitree.v1.Branch
+	83, // 4: singularitree.v1.GetRemotesResponse.remotes:type_name -> singularitree.v1.Remote
+	84, // 5: singularitree.v1.GetTagsResponse.tags:type_name -> singularitree.v1.Tag
+	85, // 6: singularitree.v1.GetStashesResponse.stashes:type_name -> singularitree.v1.Stash
+	86, // 7: singularitree.v1.GetWorktreesResponse.worktrees:type_name -> singularitree.v1.Worktree
 	0,  // 8: singularitree.v1.MergeRequest.strategy:type_name -> singularitree.v1.MergeStrategy
-	86, // 9: singularitree.v1.GetStatusResponse.files:type_name -> singularitree.v1.FileStatus
+	87, // 9: singularitree.v1.GetStatusResponse.files:type_name -> singularitree.v1.FileStatus
 	1,  // 10: singularitree.v1.ResetRequest.mode:type_name -> singularitree.v1.ResetMode
-	87, // 11: singularitree.v1.GetCommitStatsResponse.stats:type_name -> singularitree.v1.CommitStats
-	88, // 12: singularitree.v1.CommitRequest.author:type_name -> singularitree.v1.Signature
-	84, // 13: singularitree.v1.StashPushResponse.stash:type_name -> singularitree.v1.Stash
-	70, // 14: singularitree.v1.SearchCommitsResponse.hits:type_name -> singularitree.v1.CommitSearchHit
-	72, // 15: singularitree.v1.SetGitFlowConfigRequest.config:type_name -> singularitree.v1.GitFlowConfig
+	88, // 11: singularitree.v1.GetCommitStatsResponse.stats:type_name -> singularitree.v1.CommitStats
+	89, // 12: singularitree.v1.CommitRequest.author:type_name -> singularitree.v1.Signature
+	85, // 13: singularitree.v1.StashPushResponse.stash:type_name -> singularitree.v1.Stash
+	71, // 14: singularitree.v1.SearchCommitsResponse.hits:type_name -> singularitree.v1.CommitSearchHit
+	73, // 15: singularitree.v1.SetGitFlowConfigRequest.config:type_name -> singularitree.v1.GitFlowConfig
 	2,  // 16: singularitree.v1.StartGitFlowRequest.kind:type_name -> singularitree.v1.GitFlowKind
 	2,  // 17: singularitree.v1.FinishGitFlowRequest.kind:type_name -> singularitree.v1.GitFlowKind
 	3,  // 18: singularitree.v1.GitCore.Ping:input_type -> singularitree.v1.PingRequest
@@ -4621,89 +4682,91 @@ var file_gitcore_proto_depIdxs = []int32{
 	6,  // 20: singularitree.v1.GitCore.GetRepository:input_type -> singularitree.v1.GetRepositoryRequest
 	7,  // 21: singularitree.v1.GitCore.ListRepositories:input_type -> singularitree.v1.ListRepositoriesRequest
 	9,  // 22: singularitree.v1.GitCore.RemoveRepository:input_type -> singularitree.v1.RemoveRepositoryRequest
-	11, // 23: singularitree.v1.GitCore.GetCommits:input_type -> singularitree.v1.GetCommitsRequest
-	13, // 24: singularitree.v1.GitCore.StreamCommits:input_type -> singularitree.v1.StreamCommitsRequest
-	14, // 25: singularitree.v1.GitCore.GetBranches:input_type -> singularitree.v1.GetBranchesRequest
-	16, // 26: singularitree.v1.GitCore.GetRemotes:input_type -> singularitree.v1.GetRemotesRequest
-	18, // 27: singularitree.v1.GitCore.GetTags:input_type -> singularitree.v1.GetTagsRequest
-	20, // 28: singularitree.v1.GitCore.GetStashes:input_type -> singularitree.v1.GetStashesRequest
-	22, // 29: singularitree.v1.GitCore.GetWorktrees:input_type -> singularitree.v1.GetWorktreesRequest
-	39, // 30: singularitree.v1.GitCore.GetStatus:input_type -> singularitree.v1.GetStatusRequest
-	41, // 31: singularitree.v1.GitCore.GetDiff:input_type -> singularitree.v1.GetDiffRequest
-	42, // 32: singularitree.v1.GitCore.Stage:input_type -> singularitree.v1.StageRequest
-	44, // 33: singularitree.v1.GitCore.Unstage:input_type -> singularitree.v1.UnstageRequest
-	46, // 34: singularitree.v1.GitCore.StageHunk:input_type -> singularitree.v1.StageHunkRequest
-	48, // 35: singularitree.v1.GitCore.UnstageHunk:input_type -> singularitree.v1.UnstageHunkRequest
-	50, // 36: singularitree.v1.GitCore.DiscardHunk:input_type -> singularitree.v1.DiscardHunkRequest
-	52, // 37: singularitree.v1.GitCore.Discard:input_type -> singularitree.v1.DiscardRequest
-	54, // 38: singularitree.v1.GitCore.Reset:input_type -> singularitree.v1.ResetRequest
-	56, // 39: singularitree.v1.GitCore.GetCommitStats:input_type -> singularitree.v1.GetCommitStatsRequest
-	58, // 40: singularitree.v1.GitCore.Commit:input_type -> singularitree.v1.CommitRequest
-	59, // 41: singularitree.v1.GitCore.Checkout:input_type -> singularitree.v1.CheckoutRequest
-	61, // 42: singularitree.v1.GitCore.StashPush:input_type -> singularitree.v1.StashPushRequest
-	24, // 43: singularitree.v1.GitCore.CreateBranch:input_type -> singularitree.v1.CreateBranchRequest
-	25, // 44: singularitree.v1.GitCore.RenameBranch:input_type -> singularitree.v1.RenameBranchRequest
-	26, // 45: singularitree.v1.GitCore.DeleteBranch:input_type -> singularitree.v1.DeleteBranchRequest
-	28, // 46: singularitree.v1.GitCore.Merge:input_type -> singularitree.v1.MergeRequest
-	30, // 47: singularitree.v1.GitCore.CreateTag:input_type -> singularitree.v1.CreateTagRequest
-	31, // 48: singularitree.v1.GitCore.DeleteTag:input_type -> singularitree.v1.DeleteTagRequest
-	33, // 49: singularitree.v1.GitCore.StashApply:input_type -> singularitree.v1.StashApplyRequest
-	35, // 50: singularitree.v1.GitCore.StashPop:input_type -> singularitree.v1.StashPopRequest
-	37, // 51: singularitree.v1.GitCore.StashDrop:input_type -> singularitree.v1.StashDropRequest
-	63, // 52: singularitree.v1.GitCore.Fetch:input_type -> singularitree.v1.FetchRequest
-	64, // 53: singularitree.v1.GitCore.Push:input_type -> singularitree.v1.PushRequest
-	65, // 54: singularitree.v1.GitCore.Pull:input_type -> singularitree.v1.PullRequest
-	67, // 55: singularitree.v1.GitCore.Watch:input_type -> singularitree.v1.WatchRequest
-	69, // 56: singularitree.v1.GitCore.SearchCommits:input_type -> singularitree.v1.SearchCommitsRequest
-	73, // 57: singularitree.v1.GitCore.GetGitFlowConfig:input_type -> singularitree.v1.GetGitFlowConfigRequest
-	74, // 58: singularitree.v1.GitCore.SetGitFlowConfig:input_type -> singularitree.v1.SetGitFlowConfigRequest
-	75, // 59: singularitree.v1.GitCore.StartGitFlow:input_type -> singularitree.v1.StartGitFlowRequest
-	76, // 60: singularitree.v1.GitCore.FinishGitFlow:input_type -> singularitree.v1.FinishGitFlowRequest
-	4,  // 61: singularitree.v1.GitCore.Ping:output_type -> singularitree.v1.PingResponse
-	78, // 62: singularitree.v1.GitCore.OpenRepository:output_type -> singularitree.v1.Repository
-	78, // 63: singularitree.v1.GitCore.GetRepository:output_type -> singularitree.v1.Repository
-	8,  // 64: singularitree.v1.GitCore.ListRepositories:output_type -> singularitree.v1.ListRepositoriesResponse
-	10, // 65: singularitree.v1.GitCore.RemoveRepository:output_type -> singularitree.v1.RemoveRepositoryResponse
-	12, // 66: singularitree.v1.GitCore.GetCommits:output_type -> singularitree.v1.GetCommitsResponse
-	79, // 67: singularitree.v1.GitCore.StreamCommits:output_type -> singularitree.v1.Commit
-	15, // 68: singularitree.v1.GitCore.GetBranches:output_type -> singularitree.v1.GetBranchesResponse
-	17, // 69: singularitree.v1.GitCore.GetRemotes:output_type -> singularitree.v1.GetRemotesResponse
-	19, // 70: singularitree.v1.GitCore.GetTags:output_type -> singularitree.v1.GetTagsResponse
-	21, // 71: singularitree.v1.GitCore.GetStashes:output_type -> singularitree.v1.GetStashesResponse
-	23, // 72: singularitree.v1.GitCore.GetWorktrees:output_type -> singularitree.v1.GetWorktreesResponse
-	40, // 73: singularitree.v1.GitCore.GetStatus:output_type -> singularitree.v1.GetStatusResponse
-	89, // 74: singularitree.v1.GitCore.GetDiff:output_type -> singularitree.v1.Diff
-	43, // 75: singularitree.v1.GitCore.Stage:output_type -> singularitree.v1.StageResponse
-	45, // 76: singularitree.v1.GitCore.Unstage:output_type -> singularitree.v1.UnstageResponse
-	47, // 77: singularitree.v1.GitCore.StageHunk:output_type -> singularitree.v1.StageHunkResponse
-	49, // 78: singularitree.v1.GitCore.UnstageHunk:output_type -> singularitree.v1.UnstageHunkResponse
-	51, // 79: singularitree.v1.GitCore.DiscardHunk:output_type -> singularitree.v1.DiscardHunkResponse
-	53, // 80: singularitree.v1.GitCore.Discard:output_type -> singularitree.v1.DiscardResponse
-	55, // 81: singularitree.v1.GitCore.Reset:output_type -> singularitree.v1.ResetResponse
-	57, // 82: singularitree.v1.GitCore.GetCommitStats:output_type -> singularitree.v1.GetCommitStatsResponse
-	79, // 83: singularitree.v1.GitCore.Commit:output_type -> singularitree.v1.Commit
-	60, // 84: singularitree.v1.GitCore.Checkout:output_type -> singularitree.v1.CheckoutResponse
-	62, // 85: singularitree.v1.GitCore.StashPush:output_type -> singularitree.v1.StashPushResponse
-	81, // 86: singularitree.v1.GitCore.CreateBranch:output_type -> singularitree.v1.Branch
-	81, // 87: singularitree.v1.GitCore.RenameBranch:output_type -> singularitree.v1.Branch
-	27, // 88: singularitree.v1.GitCore.DeleteBranch:output_type -> singularitree.v1.DeleteBranchResponse
-	29, // 89: singularitree.v1.GitCore.Merge:output_type -> singularitree.v1.MergeResponse
-	83, // 90: singularitree.v1.GitCore.CreateTag:output_type -> singularitree.v1.Tag
-	32, // 91: singularitree.v1.GitCore.DeleteTag:output_type -> singularitree.v1.DeleteTagResponse
-	34, // 92: singularitree.v1.GitCore.StashApply:output_type -> singularitree.v1.StashApplyResponse
-	36, // 93: singularitree.v1.GitCore.StashPop:output_type -> singularitree.v1.StashPopResponse
-	38, // 94: singularitree.v1.GitCore.StashDrop:output_type -> singularitree.v1.StashDropResponse
-	66, // 95: singularitree.v1.GitCore.Fetch:output_type -> singularitree.v1.Progress
-	66, // 96: singularitree.v1.GitCore.Push:output_type -> singularitree.v1.Progress
-	66, // 97: singularitree.v1.GitCore.Pull:output_type -> singularitree.v1.Progress
-	68, // 98: singularitree.v1.GitCore.Watch:output_type -> singularitree.v1.FsChangedEvent
-	71, // 99: singularitree.v1.GitCore.SearchCommits:output_type -> singularitree.v1.SearchCommitsResponse
-	72, // 100: singularitree.v1.GitCore.GetGitFlowConfig:output_type -> singularitree.v1.GitFlowConfig
-	72, // 101: singularitree.v1.GitCore.SetGitFlowConfig:output_type -> singularitree.v1.GitFlowConfig
-	77, // 102: singularitree.v1.GitCore.StartGitFlow:output_type -> singularitree.v1.GitFlowResult
-	77, // 103: singularitree.v1.GitCore.FinishGitFlow:output_type -> singularitree.v1.GitFlowResult
-	61, // [61:104] is the sub-list for method output_type
-	18, // [18:61] is the sub-list for method input_type
+	11, // 23: singularitree.v1.GitCore.RelocateRepository:input_type -> singularitree.v1.RelocateRepositoryRequest
+	12, // 24: singularitree.v1.GitCore.GetCommits:input_type -> singularitree.v1.GetCommitsRequest
+	14, // 25: singularitree.v1.GitCore.StreamCommits:input_type -> singularitree.v1.StreamCommitsRequest
+	15, // 26: singularitree.v1.GitCore.GetBranches:input_type -> singularitree.v1.GetBranchesRequest
+	17, // 27: singularitree.v1.GitCore.GetRemotes:input_type -> singularitree.v1.GetRemotesRequest
+	19, // 28: singularitree.v1.GitCore.GetTags:input_type -> singularitree.v1.GetTagsRequest
+	21, // 29: singularitree.v1.GitCore.GetStashes:input_type -> singularitree.v1.GetStashesRequest
+	23, // 30: singularitree.v1.GitCore.GetWorktrees:input_type -> singularitree.v1.GetWorktreesRequest
+	40, // 31: singularitree.v1.GitCore.GetStatus:input_type -> singularitree.v1.GetStatusRequest
+	42, // 32: singularitree.v1.GitCore.GetDiff:input_type -> singularitree.v1.GetDiffRequest
+	43, // 33: singularitree.v1.GitCore.Stage:input_type -> singularitree.v1.StageRequest
+	45, // 34: singularitree.v1.GitCore.Unstage:input_type -> singularitree.v1.UnstageRequest
+	47, // 35: singularitree.v1.GitCore.StageHunk:input_type -> singularitree.v1.StageHunkRequest
+	49, // 36: singularitree.v1.GitCore.UnstageHunk:input_type -> singularitree.v1.UnstageHunkRequest
+	51, // 37: singularitree.v1.GitCore.DiscardHunk:input_type -> singularitree.v1.DiscardHunkRequest
+	53, // 38: singularitree.v1.GitCore.Discard:input_type -> singularitree.v1.DiscardRequest
+	55, // 39: singularitree.v1.GitCore.Reset:input_type -> singularitree.v1.ResetRequest
+	57, // 40: singularitree.v1.GitCore.GetCommitStats:input_type -> singularitree.v1.GetCommitStatsRequest
+	59, // 41: singularitree.v1.GitCore.Commit:input_type -> singularitree.v1.CommitRequest
+	60, // 42: singularitree.v1.GitCore.Checkout:input_type -> singularitree.v1.CheckoutRequest
+	62, // 43: singularitree.v1.GitCore.StashPush:input_type -> singularitree.v1.StashPushRequest
+	25, // 44: singularitree.v1.GitCore.CreateBranch:input_type -> singularitree.v1.CreateBranchRequest
+	26, // 45: singularitree.v1.GitCore.RenameBranch:input_type -> singularitree.v1.RenameBranchRequest
+	27, // 46: singularitree.v1.GitCore.DeleteBranch:input_type -> singularitree.v1.DeleteBranchRequest
+	29, // 47: singularitree.v1.GitCore.Merge:input_type -> singularitree.v1.MergeRequest
+	31, // 48: singularitree.v1.GitCore.CreateTag:input_type -> singularitree.v1.CreateTagRequest
+	32, // 49: singularitree.v1.GitCore.DeleteTag:input_type -> singularitree.v1.DeleteTagRequest
+	34, // 50: singularitree.v1.GitCore.StashApply:input_type -> singularitree.v1.StashApplyRequest
+	36, // 51: singularitree.v1.GitCore.StashPop:input_type -> singularitree.v1.StashPopRequest
+	38, // 52: singularitree.v1.GitCore.StashDrop:input_type -> singularitree.v1.StashDropRequest
+	64, // 53: singularitree.v1.GitCore.Fetch:input_type -> singularitree.v1.FetchRequest
+	65, // 54: singularitree.v1.GitCore.Push:input_type -> singularitree.v1.PushRequest
+	66, // 55: singularitree.v1.GitCore.Pull:input_type -> singularitree.v1.PullRequest
+	68, // 56: singularitree.v1.GitCore.Watch:input_type -> singularitree.v1.WatchRequest
+	70, // 57: singularitree.v1.GitCore.SearchCommits:input_type -> singularitree.v1.SearchCommitsRequest
+	74, // 58: singularitree.v1.GitCore.GetGitFlowConfig:input_type -> singularitree.v1.GetGitFlowConfigRequest
+	75, // 59: singularitree.v1.GitCore.SetGitFlowConfig:input_type -> singularitree.v1.SetGitFlowConfigRequest
+	76, // 60: singularitree.v1.GitCore.StartGitFlow:input_type -> singularitree.v1.StartGitFlowRequest
+	77, // 61: singularitree.v1.GitCore.FinishGitFlow:input_type -> singularitree.v1.FinishGitFlowRequest
+	4,  // 62: singularitree.v1.GitCore.Ping:output_type -> singularitree.v1.PingResponse
+	79, // 63: singularitree.v1.GitCore.OpenRepository:output_type -> singularitree.v1.Repository
+	79, // 64: singularitree.v1.GitCore.GetRepository:output_type -> singularitree.v1.Repository
+	8,  // 65: singularitree.v1.GitCore.ListRepositories:output_type -> singularitree.v1.ListRepositoriesResponse
+	10, // 66: singularitree.v1.GitCore.RemoveRepository:output_type -> singularitree.v1.RemoveRepositoryResponse
+	79, // 67: singularitree.v1.GitCore.RelocateRepository:output_type -> singularitree.v1.Repository
+	13, // 68: singularitree.v1.GitCore.GetCommits:output_type -> singularitree.v1.GetCommitsResponse
+	80, // 69: singularitree.v1.GitCore.StreamCommits:output_type -> singularitree.v1.Commit
+	16, // 70: singularitree.v1.GitCore.GetBranches:output_type -> singularitree.v1.GetBranchesResponse
+	18, // 71: singularitree.v1.GitCore.GetRemotes:output_type -> singularitree.v1.GetRemotesResponse
+	20, // 72: singularitree.v1.GitCore.GetTags:output_type -> singularitree.v1.GetTagsResponse
+	22, // 73: singularitree.v1.GitCore.GetStashes:output_type -> singularitree.v1.GetStashesResponse
+	24, // 74: singularitree.v1.GitCore.GetWorktrees:output_type -> singularitree.v1.GetWorktreesResponse
+	41, // 75: singularitree.v1.GitCore.GetStatus:output_type -> singularitree.v1.GetStatusResponse
+	90, // 76: singularitree.v1.GitCore.GetDiff:output_type -> singularitree.v1.Diff
+	44, // 77: singularitree.v1.GitCore.Stage:output_type -> singularitree.v1.StageResponse
+	46, // 78: singularitree.v1.GitCore.Unstage:output_type -> singularitree.v1.UnstageResponse
+	48, // 79: singularitree.v1.GitCore.StageHunk:output_type -> singularitree.v1.StageHunkResponse
+	50, // 80: singularitree.v1.GitCore.UnstageHunk:output_type -> singularitree.v1.UnstageHunkResponse
+	52, // 81: singularitree.v1.GitCore.DiscardHunk:output_type -> singularitree.v1.DiscardHunkResponse
+	54, // 82: singularitree.v1.GitCore.Discard:output_type -> singularitree.v1.DiscardResponse
+	56, // 83: singularitree.v1.GitCore.Reset:output_type -> singularitree.v1.ResetResponse
+	58, // 84: singularitree.v1.GitCore.GetCommitStats:output_type -> singularitree.v1.GetCommitStatsResponse
+	80, // 85: singularitree.v1.GitCore.Commit:output_type -> singularitree.v1.Commit
+	61, // 86: singularitree.v1.GitCore.Checkout:output_type -> singularitree.v1.CheckoutResponse
+	63, // 87: singularitree.v1.GitCore.StashPush:output_type -> singularitree.v1.StashPushResponse
+	82, // 88: singularitree.v1.GitCore.CreateBranch:output_type -> singularitree.v1.Branch
+	82, // 89: singularitree.v1.GitCore.RenameBranch:output_type -> singularitree.v1.Branch
+	28, // 90: singularitree.v1.GitCore.DeleteBranch:output_type -> singularitree.v1.DeleteBranchResponse
+	30, // 91: singularitree.v1.GitCore.Merge:output_type -> singularitree.v1.MergeResponse
+	84, // 92: singularitree.v1.GitCore.CreateTag:output_type -> singularitree.v1.Tag
+	33, // 93: singularitree.v1.GitCore.DeleteTag:output_type -> singularitree.v1.DeleteTagResponse
+	35, // 94: singularitree.v1.GitCore.StashApply:output_type -> singularitree.v1.StashApplyResponse
+	37, // 95: singularitree.v1.GitCore.StashPop:output_type -> singularitree.v1.StashPopResponse
+	39, // 96: singularitree.v1.GitCore.StashDrop:output_type -> singularitree.v1.StashDropResponse
+	67, // 97: singularitree.v1.GitCore.Fetch:output_type -> singularitree.v1.Progress
+	67, // 98: singularitree.v1.GitCore.Push:output_type -> singularitree.v1.Progress
+	67, // 99: singularitree.v1.GitCore.Pull:output_type -> singularitree.v1.Progress
+	69, // 100: singularitree.v1.GitCore.Watch:output_type -> singularitree.v1.FsChangedEvent
+	72, // 101: singularitree.v1.GitCore.SearchCommits:output_type -> singularitree.v1.SearchCommitsResponse
+	73, // 102: singularitree.v1.GitCore.GetGitFlowConfig:output_type -> singularitree.v1.GitFlowConfig
+	73, // 103: singularitree.v1.GitCore.SetGitFlowConfig:output_type -> singularitree.v1.GitFlowConfig
+	78, // 104: singularitree.v1.GitCore.StartGitFlow:output_type -> singularitree.v1.GitFlowResult
+	78, // 105: singularitree.v1.GitCore.FinishGitFlow:output_type -> singularitree.v1.GitFlowResult
+	62, // [62:106] is the sub-list for method output_type
+	18, // [18:62] is the sub-list for method input_type
 	18, // [18:18] is the sub-list for extension type_name
 	18, // [18:18] is the sub-list for extension extendee
 	0,  // [0:18] is the sub-list for field type_name
@@ -4721,7 +4784,7 @@ func file_gitcore_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gitcore_proto_rawDesc), len(file_gitcore_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   75,
+			NumMessages:   76,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

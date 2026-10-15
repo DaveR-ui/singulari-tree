@@ -23,6 +23,9 @@ func (f *fakeRepoPort) Remove(context.Context, domain.RepositoryId) error { retu
 func (f *fakeRepoPort) Get(_ context.Context, id domain.RepositoryId) (*domain.Repository, error) {
 	return &domain.Repository{ID: id, FsPath: f.fsPath}, nil
 }
+func (f *fakeRepoPort) Relocate(_ context.Context, id domain.RepositoryId, fsPath string) (*domain.Repository, error) {
+	return &domain.Repository{ID: id, FsPath: fsPath}, nil
+}
 
 // gitRun runs `git -C dir args...` and fails the test on error.
 //

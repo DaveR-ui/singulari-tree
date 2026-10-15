@@ -51,10 +51,17 @@ type RepoPort interface {
 	List(ctx context.Context) ([]Repository, error)
 	Remove(ctx context.Context, id RepositoryId) error
 	Get(ctx context.Context, id RepositoryId) (*Repository, error)
+	// Relocate repoints an existing registration at fsPath, preserving the
+	// repository id and created_at and refreshing common_dir. It deliberately
+	// keeps the id: a delete + re-create would mint a new id and drop the cached
+	// rows, silently losing the registration.
+	Relocate(ctx context.Context, id RepositoryId, fsPath string) (*Repository, error)
 }
 
 // Domain errors (same-file constants per backend/docs/context/architecture.md)
 var (
-	ErrRepoNotFound = AppError{Code: ErrCodeRepoNotFound, Message: "repository not found"}
-	ErrNotAGitRepo  = AppError{Code: ErrCodeNotAGitRepo, Message: "not a git repository"}
+	ErrRepoNotFound    = AppError{Code: ErrCodeRepoNotFound, Message: "repository not found"}
+	ErrNotAGitRepo     = AppError{Code: ErrCodeNotAGitRepo, Message: "not a git repository"}
+	ErrRepoPathMissing = AppError{Code: ErrCodeRepoPathMissing, Message: "repository path not found"}
+	ErrRepoPathInUse   = AppError{Code: ErrCodeRepoPathInUse, Message: "repository path already tracked"}
 )

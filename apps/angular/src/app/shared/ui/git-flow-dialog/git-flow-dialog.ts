@@ -257,7 +257,7 @@ import {
       display: flex;
       gap: 4px;
       margin-bottom: 14px;
-      border-bottom: 1px solid var(--st-color-border, #2f2f44);
+      border-bottom: 1px solid var(--st-color-border);
     }
 
     .st-git-flow__tab {
@@ -272,8 +272,8 @@ import {
     }
 
     .st-git-flow__tab--active {
-      color: var(--st-color-text, #d6d6de);
-      border-bottom-color: var(--st-color-accent, #0a84ff);
+      color: var(--st-color-text);
+      border-bottom-color: var(--st-color-accent);
     }
 
     .st-git-flow__field {
@@ -288,8 +288,8 @@ import {
     .st-git-flow__field select {
       padding: 6px 8px;
       border-radius: 5px;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      background: var(--st-color-surface, #252536);
+      border: 1px solid var(--st-color-border);
+      background: var(--st-color-surface);
       color: inherit;
       font: inherit;
     }
@@ -303,7 +303,7 @@ import {
 
     .st-git-flow__reset {
       background: transparent;
-      border: 1px solid var(--st-color-border, #2f2f44);
+      border: 1px solid var(--st-color-border);
       color: var(--muted, #8a8a9a);
       border-radius: 5px;
       cursor: pointer;
@@ -313,7 +313,7 @@ import {
     }
 
     .st-git-flow__reset:hover {
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
     }
 
     .st-git-flow__steps {

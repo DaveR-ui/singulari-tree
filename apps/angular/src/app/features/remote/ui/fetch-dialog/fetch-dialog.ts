@@ -139,7 +139,7 @@ import { type FetchIntent, type RemoteOpProgress, type RemoteOption } from '../.
       display: flex;
       flex-direction: column;
       gap: 10px;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
       font-size: 13px;
     }
 
@@ -151,7 +151,7 @@ import { type FetchIntent, type RemoteOpProgress, type RemoteOption } from '../.
     }
 
     .st-fetch__option input[type='checkbox'] {
-      accent-color: var(--st-color-accent, #0a84ff);
+      accent-color: var(--st-color-accent);
       margin: 0;
     }
 
@@ -160,9 +160,9 @@ import { type FetchIntent, type RemoteOpProgress, type RemoteOption } from '../.
     }
 
     .st-fetch__select {
-      background: var(--st-color-bg, #1e1e2e);
-      border: 1px solid var(--st-color-border, #2f2f44);
-      color: var(--st-color-text, #d6d6de);
+      background: var(--st-color-bg);
+      border: 1px solid var(--st-color-border);
+      color: var(--st-color-text);
       border-radius: 6px;
       padding: 5px 8px;
       font-size: 12px;
@@ -170,7 +170,7 @@ import { type FetchIntent, type RemoteOpProgress, type RemoteOption } from '../.
     }
 
     .st-fetch__select:focus {
-      border-color: var(--st-color-accent, #0a84ff);
+      border-color: var(--st-color-accent);
     }
 
     .st-fetch__progress {
@@ -198,8 +198,8 @@ import { type FetchIntent, type RemoteOpProgress, type RemoteOption } from '../.
 
     .st-btn {
       background: transparent;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      color: var(--st-color-text, #d6d6de);
+      border: 1px solid var(--st-color-border);
+      color: var(--st-color-text);
       border-radius: 6px;
       padding: 6px 14px;
       font-size: 13px;
@@ -211,8 +211,8 @@ import { type FetchIntent, type RemoteOpProgress, type RemoteOption } from '../.
     }
 
     .st-btn--primary {
-      background: var(--st-color-accent, #0a84ff);
-      border-color: var(--st-color-accent, #0a84ff);
+      background: var(--st-color-accent);
+      border-color: var(--st-color-accent);
       color: #fff;
     }
 

@@ -7,6 +7,12 @@ export type ButtonType = 'button' | 'submit' | 'reset';
 /**
  * Dumb button: a native `<button>` with projected label. Consumers attach
  * `(click)` on the `<st-button>` host — the inner button's click bubbles up.
+ *
+ * Toggle buttons set `[pressed]` to `true`/`false`: it is forwarded as
+ * `aria-pressed` on the inner native `<button>` so assistive tech reads the
+ * pressed state (which would otherwise be exposed only visually by a host
+ * class). The default `null` drops the attribute entirely — a plain button is
+ * not a toggle.
  */
 @Component({
   selector: 'st-button',
@@ -22,6 +28,7 @@ export type ButtonType = 'button' | 'submit' | 'reset';
       [type]="type()"
       [disabled]="disabled()"
       [attr.aria-label]="ariaLabel() || null"
+      [attr.aria-pressed]="pressed()"
     >
       <ng-content />
     </button>
@@ -127,4 +134,6 @@ export class ButtonComponent {
   readonly disabled = input(false);
   readonly type = input<ButtonType>('button');
   readonly ariaLabel = input('');
+  /** `aria-pressed` for toggle buttons; `null` (default) renders no attribute. */
+  readonly pressed = input<boolean | null>(null);
 }

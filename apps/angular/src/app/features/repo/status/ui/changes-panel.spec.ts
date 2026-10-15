@@ -209,6 +209,55 @@ describe('ChangesPanel', () => {
     expect(all(fixture, 'status-unstage')).toHaveLength(1);
   });
 
+  it("groups each row's action buttons into one right-pinned actions group", () => {
+    const fixture = render({
+      stagedFiles: [file('staged.ts', true)],
+      unstagedFiles: [file('dirty.ts', false)],
+    });
+
+    const rows = all(fixture, 'status-file');
+    expect(rows).toHaveLength(2);
+
+    for (const row of rows) {
+      const groups = Array.from(row.querySelectorAll<HTMLElement>('.st-changes__actions'));
+      expect(groups).toHaveLength(1);
+      // The group owns the row's trailing edge, so the buttons cannot drift
+      // toward the centre the way a `space-between` trio would push them.
+      expect(groups[0]).toBe(row.lastElementChild);
+    }
+
+    const stagedGroup = rows[0].querySelector('.st-changes__actions') as HTMLElement;
+    expect(stagedGroup.querySelectorAll('st-button')).toHaveLength(1);
+
+    // Stage (+) and discard (trash) share the same group, so they sit adjacent.
+    const unstagedActions = Array.from(
+      (rows[1].querySelector('.st-changes__actions') as HTMLElement).querySelectorAll('st-button'),
+    );
+    expect(unstagedActions).toHaveLength(2);
+    expect(unstagedActions[0].getAttribute('data-testid')).toBe('status-stage');
+    expect(unstagedActions[1].getAttribute('data-testid')).toBe('status-discard');
+  });
+
+  it('keeps the actions pinned right when the path is long enough to wrap', () => {
+    const longPath =
+      'src/app/features/repo/very/deeply/nested/directory/with/a/very/long/file-name.ts';
+    const fixture = render({ unstagedFiles: [file(longPath, false)] });
+
+    const row = all(fixture, 'status-file')[0];
+    const path = row.querySelector('.st-changes__path') as HTMLElement;
+    const actions = row.querySelector('.st-changes__actions') as HTMLElement;
+
+    // The path stays intact and is the row's ONLY flexible child; the actions
+    // group never grows, so a wrapping path cannot displace it.
+    expect(path.textContent).toBe(longPath);
+    expect(row.children).toHaveLength(2);
+    expect(row.children[0]).toBe(path);
+    expect(row.children[1]).toBe(actions);
+    expect(row.lastElementChild).toBe(actions);
+    expect(getComputedStyle(path).flexGrow).toBe('1');
+    expect(getComputedStyle(actions).flexGrow).toBe('0');
+  });
+
   it('confirms and emits a file-level discard', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     const fixture = render({ unstagedFiles: [file('dirty.ts', false)] });

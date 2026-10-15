@@ -213,7 +213,7 @@ function deriveBranchOptions(
       display: flex;
       flex-direction: column;
       gap: 12px;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
     }
 
     .st-pull__field {
@@ -231,8 +231,8 @@ function deriveBranchOptions(
     .st-pull__control {
       min-width: 0;
       background: #1a1a2a;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      color: var(--st-color-text, #d6d6de);
+      border: 1px solid var(--st-color-border);
+      color: var(--st-color-text);
       border-radius: 6px;
       padding: 6px 10px;
       font-size: 12px;
@@ -240,7 +240,7 @@ function deriveBranchOptions(
     }
 
     .st-pull__control:focus {
-      border-color: var(--st-color-accent, #0a84ff);
+      border-color: var(--st-color-accent);
     }
 
     .st-pull__control:disabled {
@@ -251,8 +251,8 @@ function deriveBranchOptions(
 
     .st-pull__refresh {
       background: transparent;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      color: var(--st-color-text, #d6d6de);
+      border: 1px solid var(--st-color-border);
+      color: var(--st-color-text);
       border-radius: 6px;
       padding: 6px 12px;
       font-size: 12px;
@@ -260,14 +260,14 @@ function deriveBranchOptions(
     }
 
     .st-pull__refresh:hover {
-      border-color: var(--st-color-accent, #0a84ff);
-      color: var(--st-color-accent, #0a84ff);
+      border-color: var(--st-color-accent);
+      color: var(--st-color-accent);
     }
 
     .st-pull__options {
       margin: 4px 0 0;
       padding: 10px 12px;
-      border: 1px solid var(--st-color-border, #2f2f44);
+      border: 1px solid var(--st-color-border);
       border-radius: 8px;
       display: flex;
       flex-direction: column;
@@ -298,7 +298,7 @@ function deriveBranchOptions(
 
     .st-pull__progress {
       margin: 0;
-      color: var(--st-color-accent, #0a84ff);
+      color: var(--st-color-accent);
       font-size: 12px;
     }
 
@@ -316,8 +316,8 @@ function deriveBranchOptions(
 
     .st-pull__btn {
       background: transparent;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      color: var(--st-color-text, #d6d6de);
+      border: 1px solid var(--st-color-border);
+      color: var(--st-color-text);
       border-radius: 6px;
       padding: 6px 14px;
       font-size: 12px;
@@ -329,8 +329,8 @@ function deriveBranchOptions(
     }
 
     .st-pull__btn--primary {
-      background: var(--st-color-accent, #0a84ff);
-      border-color: var(--st-color-accent, #0a84ff);
+      background: var(--st-color-accent);
+      border-color: var(--st-color-accent);
       color: #fff;
       font-weight: 600;
     }

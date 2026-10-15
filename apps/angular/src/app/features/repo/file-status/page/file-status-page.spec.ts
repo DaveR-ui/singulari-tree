@@ -132,7 +132,12 @@ interface Harness {
 }
 
 async function setup(
-  options: { selection?: string | null; files?: FileStatus[]; diff?: () => Diff } = {},
+  options: {
+    selection?: string | null;
+    files?: FileStatus[];
+    diff?: () => Diff;
+    commits?: () => Commit[];
+  } = {},
 ): Promise<Harness> {
   const getDiff = vi.fn(() => Promise.resolve(options.diff ? options.diff() : wholeDiff()));
   const stageHunk = vi.fn(() => Promise.resolve({}));
@@ -142,7 +147,8 @@ async function setup(
     getStatus: () => Promise.resolve({ files: options.files ?? [file('a.ts', false)] }),
     getDiff,
     getBranches: () => Promise.resolve({ branches: BRANCHES }),
-    getCommits: () => Promise.resolve({ commits: [], total: 0, lanes: [] }),
+    getCommits: () =>
+      Promise.resolve({ commits: options.commits ? options.commits() : [], total: 0, lanes: [] }),
     stageHunk,
     unstageHunk,
     discardHunk,
@@ -312,6 +318,122 @@ describe('FileStatusPage', () => {
 
     await vi.waitFor(() => expect(fs.activeCommit()?.oid?.hex).toBe(OTHER_HEX));
     expect(fs.variant()).toBe('commit');
+  });
+
+  it('keeps an explicit local variant when a reload replaces commits() for the same oid', async () => {
+    // The bug: staging fires fs:changed -> graph.reload() -> commits() becomes a
+    // NEW array that still names the selected commit. The original effect treated
+    // that as a fresh selection and re-opened the commit, flipping the variant
+    // bar from `local` to `commit`. Staging must never change the variant.
+    const { fixture, fs, emitFsChanged } = await setup({
+      selection: HEAD_HEX,
+      commits: () => [commit(HEAD_HEX, [OTHER_HEX]), commit(OTHER_HEX)],
+    });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+
+    // The user moves to the working tree and starts staging.
+    all(fixture, 'toggle-segment-local')[0].click();
+    await vi.waitFor(() => expect(fs.variant()).toBe('local'));
+
+    emitFsChanged();
+    // Settle the reload so `commits()` is genuinely replaced before the effect
+    // re-runs with the new array reference.
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fs.variant()).toBe('local');
+  });
+
+  it('still follows a genuinely new graph selection into the commit variant', async () => {
+    const { fixture, fs, graph } = await setup({
+      selection: HEAD_HEX,
+      commits: () => [commit(HEAD_HEX, [OTHER_HEX]), commit(OTHER_HEX)],
+    });
+    await vi.waitFor(() => expect(fs.activeCommit()?.oid?.hex).toBe(HEAD_HEX));
+
+    // A resolved selection change is the one case the dedupe must NOT swallow.
+    graph.select(OTHER_HEX);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    await vi.waitFor(() => expect(fs.activeCommit()?.oid?.hex).toBe(OTHER_HEX));
+    expect(fs.variant()).toBe('commit');
+  });
+
+  it('defers a graph selection until its commit loads, then follows it exactly once', async () => {
+    const PENDING_HEX = 'c'.repeat(40);
+    // The graph names a commit the loaded window does not contain yet (the
+    // ADR-026 cross-repo search hand-off): the screen cannot resolve it and must
+    // not wedge on the working tree.
+    const { fixture, fs, graph } = await setup({
+      selection: PENDING_HEX,
+      commits: () => [commit(HEAD_HEX, [OTHER_HEX]), commit(OTHER_HEX)],
+    });
+    const openCommit = vi.spyOn(fs, 'openCommit');
+    await vi.waitFor(() => expect(fs.variant()).toBe('local'));
+    expect(openCommit).not.toHaveBeenCalled();
+
+    // The window that names the selected commit arrives: the deferred follow runs.
+    graph.commits.set([commit(PENDING_HEX), commit(HEAD_HEX, [OTHER_HEX]), commit(OTHER_HEX)]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+    expect(fs.activeCommit()?.oid?.hex).toBe(PENDING_HEX);
+    expect(openCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns to local when the selection resolves to WIP and stays there across a reload', async () => {
+    const { fixture, fs, graph, emitFsChanged } = await setup({
+      selection: HEAD_HEX,
+      commits: () => [commit(HEAD_HEX, [OTHER_HEX]), commit(OTHER_HEX)],
+    });
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+
+    graph.select(WIP_OID);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await vi.waitFor(() => expect(fs.variant()).toBe('local'));
+
+    // A background reload with WIP still selected must not re-open the previous
+    // commit (nothing/WIP resolves to `null`, distinct from the old oid).
+    emitFsChanged();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fs.variant()).toBe('local');
+  });
+
+  it('gives the changed-file list the dominant share of the commit column, not the details panel', async () => {
+    const { fixture, fs } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    const details = host.querySelector('st-commit-details-panel');
+    const summary = query(fixture, 'file-status-summary');
+    const list = host.querySelector('st-file-diff-list');
+    expect(details).not.toBeNull();
+    expect(summary).not.toBeNull();
+    expect(list).not.toBeNull();
+
+    // The three stack as siblings in the variant body, in reading order.
+    expect(details!.parentElement).toBe(list!.parentElement);
+    expect(summary!.parentElement).toBe(list!.parentElement);
+    expect(
+      details!.compareDocumentPosition(summary!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      summary!.compareDocumentPosition(list!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    // The list is the flex-growing child; the details head is not.
+    expect(getComputedStyle(list as Element).flexGrow).toBe('1');
+    expect(getComputedStyle(details as Element).flexGrow).toBe('0');
   });
 
   it('switches variant from the variant bar', async () => {

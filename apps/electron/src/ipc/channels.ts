@@ -44,6 +44,7 @@ export const CHANNELS = {
   openRepository: 'git:openRepository',
   listRepositories: 'git:listRepositories',
   removeRepository: 'git:removeRepository',
+  relocateRepository: 'git:relocateRepository',
   getAuthStatus: 'auth:getAuthStatus',
   connectGitHubFromCLI: 'auth:connectGitHubFromCLI',
   listGitHubRepos: 'auth:listGitHubRepos',
@@ -84,7 +85,7 @@ export type MenuChannelName = (typeof MENU_CHANNELS)[keyof typeof MENU_CHANNELS]
  * Renderer → main readiness ack for deep-link delivery (ADR-025).
  *
  * A one-way, non-RPC signal (never an `ipcMain.handle` target), so it stays
- * outside `CHANNELS`/`CHANNEL_TO_RPC` and does not alter the frozen 43-channel
+ * outside `CHANNELS`/`CHANNEL_TO_RPC` and does not alter the frozen 44-channel
  * RPC surface. The renderer sends it once its Angular bootstrap has subscribed
  * to the `deeplink:open` event, letting the shell drain its queued links in
  * order without racing `did-finish-load`.
@@ -139,6 +140,7 @@ export const CHANNEL_TO_RPC = {
   [CHANNELS.openRepository]: 'OpenRepository',
   [CHANNELS.listRepositories]: 'ListRepositories',
   [CHANNELS.removeRepository]: 'RemoveRepository',
+  [CHANNELS.relocateRepository]: 'RelocateRepository',
   [CHANNELS.getAuthStatus]: 'GetAuthStatus',
   [CHANNELS.connectGitHubFromCLI]: 'ConnectGitHubFromCLI',
   [CHANNELS.listGitHubRepos]: 'ListGitHubRepos',

@@ -7,7 +7,7 @@ tags:
 - redesign
 - plan
 - git-client
-version: 1.3
+version: 1.4
 related:
 - renderer-slice
 - feature-gap-analysis
@@ -55,6 +55,16 @@ related:
 >
 > Verification at P3 close: renderer vitest 78 files / 1021 tests green, coverage 93.24% statements / 86.81% branches / 88.57% functions / 95.29% lines (all above the 80% thresholds); `ng build` exit 0 (the pre-existing 500 kB initial-budget warning only, now 544.86 kB). No commits were made — every change is in the working tree on `feature-rebrand-style`.
 
+> **P4.1 shipped (2026-10-15) — operator-reported defects and refinements of the P0–P4 surfaces.** A polish batch, NOT folded into P5/P6: it touches only surfaces this plan already shipped (plus one additive core RPC). Verification at close: renderer vitest **81 files / 1084 tests green**, coverage above the thresholds, `ng build` exit 0, Electron vitest 10 files / 129 tests green + `tsc --noEmit` clean, `go vet ./...` + `go test ./...` green, `verify-contracts.sh` OK (lint + breaking vs `main` + no generated drift), `node tools/docs/validate.js` 0 errors.
+>
+> 1. **Missing-folder recovery (cross-slice).** The core distinguishes `REPO_PATH_MISSING` (only `fs.ErrNotExist`) from `NOT_A_GIT_REPO`, and a new additive `RelocateRepository` RPC re-points the **existing** registration (same repository id, `created_at` preserved, `common_dir` re-resolved, `REPO_PATH_IN_USE` on a duplicate target, graph/cache invalidation like `RemoveRepository`). The History pane renders a recovery panel instead of the repo picker whenever the active repository cannot be opened: it names the state, offers **Edit path** / **Choose folder…** (the existing native chooser) and an explicit confirm-gated **Remove repository**. No code path deletes a registration implicitly. Decision record: [[adr-0031-repository-relocation-and-missing-folder-recovery]].
+> 2. **Row action alignment.** `st-changes-panel` rows used `space-between` over three children, which floated the stage `+` to the row's centre; the path is now the only flexible child and both sections share one flush-right `.st-changes__actions` group.
+> 3. **Staging no longer flips the variant.** `FileStatusPage`'s graph-selection effect re-ran on every `commits()` replacement (each stage/unstage/commit fires `fs:changed` → `graph.reload()`) and re-applied the selected commit, yanking the user from `local` to `commit`. It now dedupes on the *resolved* selection, so only a genuinely new selection is followed.
+> 4. **Space for the items.** In the file-status `commit` variant the commit-details panel's greedy `height: 100%` crowded the changed-file list ~70/30. The panel gained a `collapsible` mode (compact head + disclosure, collapsed by default) and the list is the flexible child — ≈30/70, the description one click away.
+> 5. **A/M/D status filters.** `st-file-diff-list` renders status filter chips above the "Changed files" heading, derived from the data (A, M, D, R, then any other status), multi-select with a distinct zero-match state; `st-button` gained a `pressed` input so the chips forward `aria-pressed` to the inner native button.
+> 6. **Palette.** The dark neutrals moved to the navy/indigo ramp (divergence **D16**), the cyan accent/lanes/status colours kept, `monaco-theme.ts` mirrored, and the renderer's last 87 `var(--st-*, #hex)` fallbacks removed so the design-system hard rule finally holds repo-wide.
+> 7a. **Back / View in tree.** The commit-details panel gained `showNavigation` with `viewInTree` (reveals the commit in the graph, paging if it is outside the loaded window) and `back` (clears the selection), wired by `RepoPage`. **7b is refused**: the operator's file-list tooltip next to "Review changes" contradicts [[adr-0030-history-screen-is-compare-free]], so the History aside stays compare-free; `delivery` surfaced the conflict to the human.
+
 **Evidence base:** every `path:line` claim below was read from the working tree, not inferred. Two findings shaped the plan: (1) `apps/angular/src/styles.scss` imports `@tailwind base/components/utilities` but there is no `tailwind.config.*`, no `postcss.config.*`, no Tailwind dependency in any workspace `package.json` and zero Tailwind utility classes in the codebase — the directives are inert; (2) `apps/angular/src/index.html` loads no font files, so the `Inter, system-ui, ...` stack silently resolves to `system-ui`.
 
 ---
@@ -69,41 +79,42 @@ After the facelift SingulariTree should read as a **dense-but-calm desktop instr
 
 ### 2.1 The direction: **Charcoal & Cyan (graphite workbench)**
 
-Adopt the sketch's palette as the dark theme, promote it into a two-tier token system, and author a matched light theme from the same token names. Justification for committing rather than offering options: the sketch is a coherent, already-validated dark palette, the product is a desktop developer tool where dark-first is the norm, and the existing `ThemeService` + `data-theme` contract means a second theme is a value set, not an architecture change. A cyan-on-charcoal accent is also the only accent family in the sketch that keeps ≥4.5:1 against every surface it sits on (#69dfdc on #1b1c1e is ~11:1).
+Adopt the sketch's palette as the dark theme, promote it into a two-tier token system, and author a matched light theme from the same token names. Justification for committing rather than offering options: the sketch is a coherent, already-validated dark palette, the product is a desktop developer tool where dark-first is the norm, and the existing `ThemeService` + `data-theme` contract means a second theme is a value set, not an architecture change. A cyan accent is also the only accent family in the sketch that keeps ≥4.5:1 against every surface it sits on (#69dfdc on #1e1e2e is ~11:1). **P4.1 update:** the dark *neutral* ramp moved from charcoal onto a navy/indigo family at the operator's request (divergence D16 below); the accent, lanes, ref pills and status colours are unchanged, so the direction now reads **Navy & Cyan** in the shipped design system.
 
 ### 2.2 Colour — two tiers, one vocabulary
 
 **Tier 1 primitives** (`--st-prim-*`, raw values, never referenced by a component):
 
 ```
-ink-900 #1b1c1e  ink-850 #202224  ink-800 #222426  ink-750 #242628
-ink-700 #292b2e  ink-600 #3b3e41  ink-050 #eceeef  ink-300 #b0b5b9
+ink-900 #1e1e2e  ink-850 #20202f  ink-800 #252536  ink-750 #2a2a3a
+ink-700 #2e2e40  ink-600 #3a3a52  ink-050 #e9e9f2  ink-300 #a8a8c0
 cyan-400 #69dfdc  cyan-500 #438c89  cyan-600 #356966  cyan-700 #164746
 green-300 #9fe0b1  red-300 #ffacaf  amber-300 #ebcb86
 ins-bg #223e2e ins-fg #c6f1d1  del-bg #49292d del-fg #ffd4d5  hunk-bg #293638 hunk-fg #aad8d7
-graph-cyan #67cbc7 graph-amber #cfad78  avatar-bg #3d4543 avatar-fg #cef4db
+graph-cyan #67cbc7 graph-amber #cfad78  avatar-bg #343a52 avatar-fg #cef4db
 ```
+> The neutral ramp shown is the P4.1 navy/indigo family (divergence D16); the charcoal values committed at P0–P2 are superseded for the dark theme only. The accent, status, diff and graph primitives are unchanged.
 
 **Tier 2 semantic** (`--st-color-*`) — the existing naming, extended. Only these appear in components:
 
 | Token | Dark | Light | Used by |
 |---|---|---|---|
-| `--st-color-bg` | #1b1c1e | #f7f8f7 | app background, center region |
-| `--st-color-chrome` (new) | #242628 | #eceeed | top bar, bottom bar |
-| `--st-color-rail` (new) | #202224 | #f0f2f1 | nav rail |
-| `--st-color-surface` | #222426 | #ffffff | panels, panes, cards |
-| `--st-color-surface-2` | #292b2e | #f4f6f5 | raised strips, table header |
-| `--st-color-raised` (new) | #292b2e | #ffffff | popovers, modals |
-| `--st-color-border` | #3b3e41 | #d8dcda | hairline structure |
+| `--st-color-bg` | #1e1e2e | #f7f8f7 | app background, center region |
+| `--st-color-chrome` (new) | #232334 | #eceeed | top bar, bottom bar |
+| `--st-color-rail` (new) | #20202f | #f0f2f1 | nav rail |
+| `--st-color-surface` | #252536 | #ffffff | panels, panes, cards |
+| `--st-color-surface-2` | #2a2a3a | #f4f6f5 | raised strips, table header |
+| `--st-color-raised` (new) | #2e2e40 | #ffffff | popovers, modals |
+| `--st-color-border` | #3a3a52 | #d8dcda | hairline structure |
 | `--st-color-border-strong` (new) | mix(border 70%, text 6%) | mix(border 80%, text 10%) | pane dividers, focus-adjacent |
-| `--st-color-text` | #eceeef | #14181a | primary text |
-| `--st-color-muted` | #b0b5b9 | #5b6668 | bylines, paths, metadata |
+| `--st-color-text` | #e9e9f2 | #14181a | primary text |
+| `--st-color-muted` | #a8a8c0 | #5b6668 | bylines, paths, metadata |
 | `--st-color-accent` | #69dfdc | #0f7f7c | brand, hashes, current branch, primary CTA |
 | `--st-color-accent-soft` | mix(accent 18%) | mix(accent 12%) | active nav fill, badges |
-| `--st-color-accent-contrast` (new) | #1b1c1e | #ffffff | text on accent fills |
-| `--st-color-selected` | #164746 | #d3ece9 | selected row/fill |
+| `--st-color-accent-contrast` (new) | #16162a | #ffffff | text on accent fills |
+| `--st-color-selected` | #123a46 | #d3ece9 | selected row/fill |
 | `--st-color-selected-bar` | #69dfdc | #0f7f7c | 3px inset selection bar |
-| `--st-color-selected-border` | #356966 | #7fc4bd | selected row hairline |
+| `--st-color-selected-border` | #3a7d78 | #7fc4bd | selected row hairline |
 | `--st-color-focus` (new) | #69dfdc | #0f7f7c | `:focus-visible` ring |
 | `--st-color-add` / `-soft` | #9fe0b1 / mix 14% | #1c7c3c / mix 10% | +N stats, A status, staged |
 | `--st-color-remove` / `-soft` | #ffacaf / mix 14% | #b3261e / mix 10% | −N stats, D status, discard |
@@ -112,12 +123,12 @@ graph-cyan #67cbc7 graph-amber #cfad78  avatar-bg #3d4543 avatar-fg #cef4db
 | `--st-color-diff-insert-bg/-fg` | #223e2e / #c6f1d1 | #e6f7ea / #14532d | diff additions |
 | `--st-color-diff-delete-bg/-fg` | #49292d / #ffd4d5 | #fde8e9 / #7f1d1d | diff deletions |
 | `--st-color-diff-hunk-bg/-fg` | #293638 / #aad8d7 | #e8f4f3 / #0f5f5c | hunk headers |
-| `--st-color-diff-gutter-bg/-fg` (new) | #202224 / #6f767a | #f4f6f5 / #8a9490 | line-number columns |
+| `--st-color-diff-gutter-bg/-fg` (new) | #20202f / #6f7690 | #f4f6f5 / #8a9490 | line-number columns |
 | `--st-color-graph-lane-1..8` (new) | #67cbc7 #cfad78 #8fd6a0 #e79aa0 #b3a6e8 #7fb3e0 #e2cf8a #dba6d4 | same hues ~15% darkened | graph lanes (see §6 D9) |
-| `--st-color-avatar-bg/-fg` (new) | #3d4543 / #cef4db | #d9e6df / #14532d | commit-detail initials avatar |
-| `--st-color-overlay` (new) | rgba(9,10,12,.62) | rgba(20,24,26,.35) | modal/drawer backdrop |
+| `--st-color-avatar-bg/-fg` (new) | #343a52 / #cef4db | #d9e6df / #14532d | commit-detail initials avatar |
+| `--st-color-overlay` (new) | rgba(12,12,24,.62) | rgba(20,24,26,.35) | modal/drawer backdrop |
 
-**Hard rule (the theming fix):** delete every `var(--st-color-x, #hex)` fallback in the codebase. A fallback is a theming bug: today `sidebar-left.ts`, `graph-row.ts`, `changes-panel.ts`, `commit-details-panel.ts`, `file-diff-list.ts` and others paint wrong colours under `data-theme=light` because their fallback hex wins when the light block omits the token. Every token must be defined in both blocks, so a fallback is never needed.
+**Hard rule (the theming fix):** delete every `var(--st-color-x, #hex)` fallback in the codebase. A fallback is a theming bug: today `sidebar-left.ts`, `graph-row.ts`, `changes-panel.ts`, `commit-details-panel.ts`, `file-diff-list.ts` and others paint wrong colours under `data-theme=light` because their fallback hex wins when the light block omits the token. Every token must be defined in both blocks, so a fallback is never needed. **P4.1:** the last 87 fallbacks were removed from the renderer (dialogs, repos manager, settings, search, GitHub account), so the rule now holds repo-wide — reintroducing one is a review blocker.
 
 ### 2.3 Typography
 
@@ -323,6 +334,7 @@ Each phase is independently shippable and reviewable; each ends with the vitest 
 | D13 | **Monaco** kept as the diff engine (rethemed, unified by default) instead of a hand-rolled grid | ADR-006 chose Monaco for highlighting + the large-file fallback and it is already lazy + worker-isolated. The sketch's grid becomes a *theme* plus unified layout; the literal 4-column grid is implemented in the non-Monaco fallback. |
 | D14 | Settings gains a **renderer-local** preferences surface, not a git-config editor | Git config needs core reads/writes; `roadmap-v1.md:59` schedules it for V1. Keeping new controls to `st:`-prefixed localStorage keeps this plan inside the UI layer. |
 | D15 | Status bar carries **ambient** status; failure banners stay | Demoting a checkout failure or a merge conflict into a 31px strip would harm recovery. Only the non-blocking fetch-all progress moves down. |
+| D16 | Dark **neutral** ramp is navy/indigo, accent stays cyan (P4.1) | The operator asked for "un poco más como antes" after P4 shipped: the dark surfaces moved onto the app's earlier navy family (canvas `#1e1e2e`, surfaces `#252536`/`#2a2a3a`, raised `#2e2e40`, border `#3a3a52`, text `#e9e9f2`, muted `#a8a8c0`) while the cyan accent, the eight graph lanes, the ref pills and the status colours were deliberately kept. The reference blue `#0a84ff` only reaches ~4.3:1 on these surfaces — below AA for the 11–13px mono hash/path text that consumes `--st-color-accent` — so a literal copy would have broken the identity token's contrast. Geometry, hairlines, radii, type scale and the light theme are untouched. Recorded so the §2.2 charcoal values read as historical. |
 
 ---
 

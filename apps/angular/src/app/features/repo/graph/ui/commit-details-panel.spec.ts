@@ -18,11 +18,19 @@ const COMMIT: Commit = {
   ],
 };
 
-function render(commit: Commit | null, isWip = false, showCta = false) {
+function render(
+  commit: Commit | null,
+  isWip = false,
+  showCta = false,
+  collapsible = false,
+  showNavigation = false,
+) {
   const fixture = TestBed.createComponent(CommitDetailsPanel);
   fixture.componentRef.setInput('commit', commit);
   fixture.componentRef.setInput('isWip', isWip);
   fixture.componentRef.setInput('showCta', showCta);
+  fixture.componentRef.setInput('collapsible', collapsible);
+  fixture.componentRef.setInput('showNavigation', showNavigation);
   fixture.detectChanges();
   return fixture;
 }
@@ -128,5 +136,68 @@ describe('CommitDetailsPanel', () => {
     // With `showCta` opted in, the CTA is present in the WIP branch too (it
     // routes to file status).
     expect(el.querySelector('[data-testid="commit-details-review"]')).not.toBeNull();
+  });
+
+  it('collapses to a compact head by default and toggles the detail block', () => {
+    const fixture = render(COMMIT, false, false, true);
+    const el = fixture.nativeElement as HTMLElement;
+
+    // The compact head is always visible: identity + one byline.
+    expect(text(el, 'commit-details-short-oid')).toBe('aaaaaaa');
+    expect(text(el, 'commit-details-subject')).toBe('feat(graph): details panel');
+    expect(text(el, 'commit-details-branch')).toBe('main');
+    expect(text(el, 'commit-details-byline')).toContain('Ada Lovelace <ada@example.com>');
+    expect(text(el, 'commit-details-byline')).toContain('2026-01-02T10:05:00Z');
+
+    // The detail block is folded away while collapsed.
+    expect(el.querySelector('[data-testid="commit-details-description"]')).toBeNull();
+    expect(el.querySelector('[data-testid="commit-details-refs"]')).toBeNull();
+    expect(el.querySelector('[data-testid="commit-details-committer"]')).toBeNull();
+    expect(el.querySelector('[data-testid="commit-details-parents"]')).toBeNull();
+
+    const toggle = el.querySelector<HTMLElement>('[data-testid="commit-details-toggle"]');
+    expect(toggle).not.toBeNull();
+    expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+
+    toggle?.click();
+    fixture.detectChanges();
+
+    expect(toggle?.getAttribute('aria-expanded')).toBe('true');
+    expect(text(el, 'commit-details-description')).toBe('full body text');
+    expect(el.querySelector('[data-testid="commit-details-refs"]')).not.toBeNull();
+    expect(el.querySelector('[data-testid="commit-details-committer"]')).not.toBeNull();
+
+    // Toggling back folds it again.
+    toggle?.click();
+    fixture.detectChanges();
+
+    expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+    expect(el.querySelector('[data-testid="commit-details-description"]')).toBeNull();
+  });
+
+  it('emits viewInTree and back when the navigation row is opted in', () => {
+    const fixture = render(COMMIT, false, false, false, true);
+    const el = fixture.nativeElement as HTMLElement;
+    let viewed = 0;
+    let backed = 0;
+    fixture.componentInstance.viewInTree.subscribe(() => (viewed += 1));
+    fixture.componentInstance.back.subscribe(() => (backed += 1));
+
+    const viewInTree = el.querySelector<HTMLElement>('[data-testid="commit-details-view-in-tree"]');
+    const back = el.querySelector<HTMLElement>('[data-testid="commit-details-back"]');
+    expect(viewInTree).not.toBeNull();
+    expect(back).not.toBeNull();
+
+    viewInTree?.click();
+    back?.click();
+
+    expect(viewed).toBe(1);
+    expect(backed).toBe(1);
+  });
+
+  it('hides the navigation controls unless showNavigation opts in', () => {
+    const el = render(COMMIT).nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="commit-details-view-in-tree"]')).toBeNull();
+    expect(el.querySelector('[data-testid="commit-details-back"]')).toBeNull();
   });
 });

@@ -133,7 +133,7 @@ export type SwitchBranchMode = 'confirm' | 'dirty' | 'untracked';
       margin: 0;
       font-size: 13px;
       line-height: 1.5;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
     }
 
     .st-switch__hint,
@@ -165,9 +165,9 @@ export type SwitchBranchMode = 'confirm' | 'dirty' | 'untracked';
     .st-switch__btn {
       padding: 6px 14px;
       border-radius: 6px;
-      border: 1px solid var(--st-color-border, #2f2f44);
+      border: 1px solid var(--st-color-border);
       background: transparent;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
       font-size: 12px;
       cursor: pointer;
     }

@@ -87,7 +87,7 @@ import { CommitSearchStore } from '../commit-search.store';
       height: 100%;
       min-height: 0;
       overflow: auto;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
     }
 
     .st-search {
@@ -115,8 +115,8 @@ import { CommitSearchStore } from '../commit-search.store';
       min-width: 120px;
       padding: 4px 8px;
       border-radius: 4px;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      background: var(--st-color-surface, #252536);
+      border: 1px solid var(--st-color-border);
+      background: var(--st-color-surface);
       color: inherit;
       font-size: 12px;
     }
@@ -172,7 +172,7 @@ import { CommitSearchStore } from '../commit-search.store';
 
     .st-search__hit:hover,
     .st-search__hit:focus-visible {
-      background: color-mix(in srgb, var(--st-color-accent, #0a84ff) 18%, transparent);
+      background: color-mix(in srgb, var(--st-color-accent) 18%, transparent);
       outline: none;
     }
 
@@ -180,7 +180,7 @@ import { CommitSearchStore } from '../commit-search.store';
       flex: none;
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       font-size: 11px;
-      color: var(--st-color-accent, #0a84ff);
+      color: var(--st-color-accent);
     }
 
     .st-search__msg {

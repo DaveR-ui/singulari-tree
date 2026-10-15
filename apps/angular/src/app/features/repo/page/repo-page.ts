@@ -1,13 +1,16 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
+import type { Repository } from '@contracts/domain';
 import { WorkspaceSplitComponent } from '@singularitree/ui-kit';
 import { CommitFocusService } from '@core/services/commit-focus.service';
 import { IpcBridge } from '@core/services/ipc-bridge.service';
 import { RepoState } from '@core/services/repo-state.service';
+import { WorkspacesStore } from '@core/services/workspaces.store';
 import { GraphStore } from '../graph/graph.store';
 import { CommitDetailsPanel } from '../graph/ui/commit-details-panel';
 import { GraphPage } from '../graph/page/graph-page';
 import { RepoPicker } from '../ui/repo-picker';
+import { RepoRelocatePanel } from '../ui/repo-relocate-panel';
 
 /**
  * Routed repository page: the History workspace. It mounts the shared
@@ -22,7 +25,13 @@ import { RepoPicker } from '../ui/repo-picker';
 @Component({
   selector: 'st-repo-page',
   standalone: true,
-  imports: [WorkspaceSplitComponent, CommitDetailsPanel, RepoPicker, GraphPage],
+  imports: [
+    WorkspaceSplitComponent,
+    CommitDetailsPanel,
+    RepoPicker,
+    RepoRelocatePanel,
+    GraphPage,
+  ],
   template: `
     <st-workspace-split [showDetail]="showDetail()" [detailTitle]="detailTitle()">
       <st-commit-details-panel
@@ -30,9 +39,27 @@ import { RepoPicker } from '../ui/repo-picker';
         [commit]="selectedCommit()"
         [isWip]="isWipSelected()"
         [showCta]="true"
+        [showNavigation]="true"
         (reviewChanges)="openChanges()"
+        (viewInTree)="viewInTree()"
+        (back)="clearSelection()"
       />
-      @if (graphStore.repoId()) {
+      <!--
+        Recovery wins over the picker: GraphStore.openRepository leaves repoId()
+        null on failure, so without this branch a missing repo would silently
+        fall back to the first-run picker — the exact "did not detect the error"
+        complaint. The recovery panel names the state and offers the
+        relocate/remove fallbacks instead of deleting the registration.
+      -->
+      @if (relocateRepo(); as repo) {
+        <st-repo-relocate-panel
+          [repo]="repo"
+          [reason]="relocateReason()"
+          [busy]="relocating()"
+          (relocated)="onRelocated($event)"
+          (removed)="onRemoved()"
+        />
+      } @else if (graphStore.repoId()) {
         <st-graph-page />
       } @else {
         <st-repo-picker />
@@ -55,7 +82,8 @@ import { RepoPicker } from '../ui/repo-picker';
     }
 
     :host st-graph-page,
-    :host st-repo-picker {
+    :host st-repo-picker,
+    :host st-repo-relocate-panel {
       flex: 1 1 auto;
       min-height: 0;
     }
@@ -67,6 +95,7 @@ export class RepoPage {
   readonly graphStore = inject(GraphStore);
   private readonly commitFocus = inject(CommitFocusService);
   private readonly bridge = inject(IpcBridge);
+  private readonly workspaces = inject(WorkspacesStore);
   private readonly destroyRef = inject(DestroyRef);
   /**
    * Optional: the page is also constructed outside a router (unit spec), so the
@@ -85,6 +114,35 @@ export class RepoPage {
     this.isWipSelected() ? $localize`Working tree` : $localize`Commit`,
   );
 
+  /**
+   * The active repository whose folder could not be opened, or null.
+   *
+   * `GraphStore.error.code` is a plain string (not an enum), matched here by its
+   * core error codes. Recovery is only offered while the *active* repo's folder
+   * is the problem, so an unrelated stale graph error never blocks the picker.
+   */
+  readonly relocateRepo = computed<Repository | null>(() => {
+    const code = this.graphStore.error()?.code;
+    if (code !== 'REPO_PATH_MISSING' && code !== 'NOT_A_GIT_REPO') return null;
+    return this.repoState.activeRepo();
+  });
+
+  /** 'missing' when the recorded folder is gone; 'not-a-repo' when it exists but isn't a Git repo. */
+  readonly relocateReason = computed<'missing' | 'not-a-repo'>(() =>
+    this.graphStore.error()?.code === 'NOT_A_GIT_REPO' ? 'not-a-repo' : 'missing',
+  );
+
+  /** True while the graph is being reopened after an explicit relocation. */
+  readonly relocating = signal(false);
+
+  /**
+   * True while a relocation owns the graph open. `onRelocated` opens the graph
+   * explicitly; this gate suppresses the hydration effect for that window so
+   * `setActive` — which replaces the repo object and re-runs the effect — cannot
+   * race a second `openRepository`.
+   */
+  private readonly relocateOpening = signal(false);
+
   /** Last observed `RepoState.statusRefreshRequested` token (dedupes the effect). */
   private lastStatusRefresh = this.repoState.statusRefreshRequested();
 
@@ -93,10 +151,15 @@ export class RepoPage {
     // idempotent (it refreshes `last_opened_at`), so guard by id and only open
     // when the graph currently points at a different repository.
     //
+    // The gate skips this while a relocation owns the open (see `onRelocated`):
+    // `setActive` swaps the repo object, so without it the effect would fire a
+    // second `openRepository` that races the explicit one.
+    //
     // The same effect consumes a pending cross-repo search focus (ADR-026): once
     // the matching repository is open it selects (and, if needed, pages to) the
     // requested commit. A focus for the already-open repo is handled in place.
     effect(() => {
+      if (this.relocateOpening()) return;
       const active = this.repoState.activeRepo();
       const pending = this.commitFocus.pending();
       if (!active) return;
@@ -144,5 +207,49 @@ export class RepoPage {
   openChanges(): void {
     this.graphStore.requestScrollRestore();
     void this.router?.navigate(['/repo', 'file-status']);
+  }
+
+  /**
+   * The recovery panel relocated the active repository. The id is unchanged, so
+   * `openTab` refreshes the tab's cached path in place (no duplicate tab) and
+   * `setActive` keeps the single active-repo source of truth on it.
+   *
+   * `openRepository` is then called *directly* while `relocateOpening` gates the
+   * hydration effect. `setActive` REPLACES the repo object inside `repos`, so
+   * `activeRepo()` yields a new reference and the effect re-runs; the failed open
+   * left `repoId()` null, so an ungated effect would call `openRepository` itself
+   * and race this explicit one. The gate keeps a single open. On success
+   * `loadWindow` clears the error, the graph renders and the panel disappears.
+   */
+  onRelocated(repo: Repository): void {
+    this.relocateOpening.set(true);
+    this.workspaces.openTab(repo);
+    this.repoState.setActive(repo);
+    this.relocating.set(true);
+    void this.graphStore.openRepository(repo.fsPath).finally(() => {
+      this.relocateOpening.set(false);
+      this.relocating.set(false);
+    });
+  }
+
+  /**
+   * The recovery panel removed the active repository explicitly. `removeRepository`
+   * already cleared `activeId`, so the picker is what renders next; nothing else
+   * to do here — and, crucially, this is only reached by the user's own action.
+   */
+  onRemoved(): void {
+    // No-op by design; kept as the panel's explicit-intent seam.
+  }
+
+  /** Item 7a: reveal the selected commit's node in the graph list (no-op for WIP/none). */
+  viewInTree(): void {
+    const oid = this.selectedCommit()?.oid?.hex;
+    if (!oid) return;
+    void this.graphStore.focusCommit(oid);
+  }
+
+  /** Item 7a: clear the selection so the aside returns to "select a commit". */
+  clearSelection(): void {
+    this.graphStore.select(null);
   }
 }

@@ -26,25 +26,25 @@ export function singularitreeDarkTheme(): editor.IStandaloneThemeData {
     rules: [
       // Only the default-code, hunk-header and comment tokens are tinted; the
       // diff viewer renders `plaintext`, so no other token classes apply.
-      { token: '', foreground: 'eceeef' }, // --st-color-text (default code)
-      { token: 'comment', foreground: 'b0b5b9' }, // --st-color-muted
+      { token: '', foreground: 'e9e9f2' }, // --st-color-text (default code)
+      { token: 'comment', foreground: 'a8a8c0' }, // --st-color-muted
       { token: 'hunk', foreground: 'aad8d7' }, // --st-color-diff-hunk-fg
     ],
     colors: {
-      'editor.background': '#222426', // --st-color-surface
-      'editor.foreground': '#eceeef', // --st-color-text
-      'editorGutter.background': '#222426', // --st-color-surface
-      'editorGutter.foreground': '#6f767a', // --st-color-diff-gutter-fg
-      'editorLineNumber.foreground': '#6f767a', // --st-color-diff-gutter-fg
-      'editorLineNumber.activeForeground': '#b0b5b9', // --st-color-muted
+      'editor.background': '#252536', // --st-color-surface
+      'editor.foreground': '#e9e9f2', // --st-color-text
+      'editorGutter.background': '#252536', // --st-color-surface
+      'editorGutter.foreground': '#6f7690', // --st-color-diff-gutter-fg
+      'editorLineNumber.foreground': '#6f7690', // --st-color-diff-gutter-fg
+      'editorLineNumber.activeForeground': '#a8a8c0', // --st-color-muted
       'diffEditor.insertedLineBackground': '#223e2e', // --st-color-diff-insert-bg
       'diffEditor.removedLineBackground': '#49292d', // --st-color-diff-delete-bg
       'diffEditor.insertedTextBackground': '#223e2e', // --st-color-diff-insert-bg
       'diffEditor.removedTextBackground': '#49292d', // --st-color-diff-delete-bg
       'diffEditorGutter.insertedLineBackground': '#223e2e', // --st-color-diff-insert-bg
       'diffEditorGutter.removedLineBackground': '#49292d', // --st-color-diff-delete-bg
-      'editorWidget.background': '#292b2e', // --st-color-surface-2
-      'editor.selectionBackground': '#3b3e41', // --st-color-border
+      'editorWidget.background': '#2a2a3a', // --st-color-surface-2
+      'editor.selectionBackground': '#3a3a52', // --st-color-border
     },
   };
 }

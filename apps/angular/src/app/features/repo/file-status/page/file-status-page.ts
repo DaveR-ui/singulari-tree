@@ -84,7 +84,11 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
               />
             }
             @case ('commit') {
-              <st-commit-details-panel [commit]="fs.activeCommit()" [isWip]="false" />
+              <st-commit-details-panel
+                [commit]="fs.activeCommit()"
+                [isWip]="false"
+                [collapsible]="true"
+              />
               <p class="st-file-status__summary" data-testid="file-status-summary">
                 {{ summaryText() }}
               </p>
@@ -179,10 +183,24 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
     }
 
     .st-file-status__summary {
+      flex: none;
       margin: 0;
       font-family: var(--st-font-mono);
       font-size: var(--st-font-11);
       opacity: 0.75;
+    }
+
+    /* Commit variant: the changed-file list owns the slack, the collapsible
+       commit header shrinks to its compact head. min-height: 0 lets both
+       shrink below their content inside the flex column. */
+    :host st-commit-details-panel {
+      flex: 0 1 auto;
+      min-height: 0;
+    }
+
+    :host st-file-diff-list {
+      flex: 1 1 auto;
+      min-height: 0;
     }
 
     .st-file-status__right {
@@ -256,6 +274,14 @@ export class FileStatusPage {
 
   /** Last observed `RepoState.statusRefreshRequested` token (dedupes the effect). */
   private lastStatusRefresh = this.repoState.statusRefreshRequested();
+
+  /**
+   * Last graph selection this screen followed, resolved to the oid it names
+   * (`null` = nothing/WIP selected). A sentinel (not `null`) on the first run, so
+   * a cold deep link still opens the working tree. Updated only when the screen
+   * actually dispatches, so an unchanged resolved selection is a no-op.
+   */
+  private lastFollowedOid: string | null | undefined = undefined;
 
   /**
    * The single-file `Diff` fed to the viewer: a pure projection of the currently
@@ -343,6 +369,18 @@ export class FileStatusPage {
         repoId && oid && oid !== WIP_OID
           ? this.graph.commits().find((candidate) => candidate.oid?.hex === oid)
           : undefined;
+      // Dedupe on the RESOLVED selection, not on `oid`. `commits()` stays a
+      // tracked dependency on purpose: a selection whose commit is not yet in
+      // the loaded window (the ADR-026 cross-repo search hand-off) resolves to
+      // `null` here and must re-fire once the window that names it loads. But a
+      // background `reload()` (fs:changed after stage/unstage/commit) installs a
+      // NEW `commits()` array that still names the selected commit; without this
+      // guard the effect would re-dispatch `openCommit()` and flip the variant
+      // bar from `local` back to `commit` while the user is staging. Staging must
+      // never change the variant, so an unchanged resolved selection is a no-op.
+      const resolved = commit ? oid : null;
+      if (resolved === this.lastFollowedOid) return;
+      this.lastFollowedOid = resolved;
       if (commit) void this.fs.openCommit(commit);
       else void this.fs.openLocal();
     });

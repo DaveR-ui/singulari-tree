@@ -45,7 +45,7 @@ import { BadgeComponent, EmptyStateComponent } from '@singularitree/ui-kit';
   styles: `
     :host {
       display: block;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
     }
 
     .st-account-profile__profile {

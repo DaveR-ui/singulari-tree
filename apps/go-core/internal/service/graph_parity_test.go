@@ -31,6 +31,9 @@ func (p *parityRepoPort) Remove(context.Context, domain.RepositoryId) error { re
 func (p *parityRepoPort) Get(_ context.Context, id domain.RepositoryId) (*domain.Repository, error) {
 	return &domain.Repository{ID: id, FsPath: p.fsPath}, nil
 }
+func (p *parityRepoPort) Relocate(_ context.Context, id domain.RepositoryId, fsPath string) (*domain.Repository, error) {
+	return &domain.Repository{ID: id, FsPath: fsPath}, nil
+}
 
 // parityGit runs `git -C dir <args...>` with deterministic identity/date env and
 // fails the test on error.

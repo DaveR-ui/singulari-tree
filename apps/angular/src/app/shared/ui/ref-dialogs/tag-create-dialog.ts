@@ -121,8 +121,8 @@ import type { TagCreateValue } from './ref-dialog.models';
     .st-ref-dialog__field textarea {
       padding: 6px 8px;
       border-radius: 5px;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      background: var(--st-color-surface, #252536);
+      border: 1px solid var(--st-color-border);
+      background: var(--st-color-surface);
       color: inherit;
       font: inherit;
       resize: vertical;

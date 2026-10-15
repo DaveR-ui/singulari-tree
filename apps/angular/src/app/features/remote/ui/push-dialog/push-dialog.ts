@@ -213,7 +213,7 @@ interface PushRowState {
       display: flex;
       flex-direction: column;
       gap: 10px;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
     }
 
     .st-push__field {
@@ -235,16 +235,16 @@ interface PushRowState {
       min-width: 0;
       padding: 4px 8px;
       border-radius: 4px;
-      border: 1px solid var(--st-color-border, #2f2f44);
+      border: 1px solid var(--st-color-border);
       background: #1a1a2a;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
       font-size: 12px;
       outline: none;
     }
 
     .st-push__select:focus,
     .st-push__input:focus {
-      border-color: var(--st-color-accent, #0a84ff);
+      border-color: var(--st-color-accent);
     }
 
     .st-push__input[readonly] {
@@ -255,7 +255,7 @@ interface PushRowState {
       align-self: flex-start;
       padding: 4px 10px;
       border-radius: 4px;
-      border: 1px solid var(--st-color-border, #2f2f44);
+      border: 1px solid var(--st-color-border);
       background: transparent;
       color: inherit;
       font-size: 12px;
@@ -283,7 +283,7 @@ interface PushRowState {
     .st-push__table td {
       padding: 6px 8px;
       text-align: left;
-      border-bottom: 1px solid var(--st-color-border, #2f2f44);
+      border-bottom: 1px solid var(--st-color-border);
       vertical-align: middle;
     }
 
@@ -335,9 +335,9 @@ interface PushRowState {
     .st-push__btn {
       padding: 6px 14px;
       border-radius: 6px;
-      border: 1px solid var(--st-color-border, #2f2f44);
+      border: 1px solid var(--st-color-border);
       background: transparent;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
       font-size: 12px;
       cursor: pointer;
     }
@@ -347,8 +347,8 @@ interface PushRowState {
     }
 
     .st-push__btn--primary {
-      background: var(--st-color-accent, #0a84ff);
-      border-color: var(--st-color-accent, #0a84ff);
+      background: var(--st-color-accent);
+      border-color: var(--st-color-accent);
       color: #fff;
     }
 

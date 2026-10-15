@@ -84,7 +84,7 @@ import { ThemeService, type Theme } from '@core/services/theme.service';
     :host {
       display: block;
       padding: 16px;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
     }
 
     .st-settings {
@@ -109,7 +109,7 @@ import { ThemeService, type Theme } from '@core/services/theme.service';
     .st-settings__label {
       font-size: 12px;
       font-weight: 600;
-      color: var(--st-color-muted, #8a8a9a);
+      color: var(--st-color-muted);
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
@@ -118,7 +118,7 @@ import { ThemeService, type Theme } from '@core/services/theme.service';
       display: inline-flex;
       align-items: center;
       align-self: flex-start;
-      border: 1px solid var(--st-color-border, #2f2f44);
+      border: 1px solid var(--st-color-border);
       border-radius: 6px;
       overflow: hidden;
     }
@@ -129,7 +129,7 @@ import { ThemeService, type Theme } from '@core/services/theme.service';
       gap: 6px;
       background: transparent;
       border: none;
-      color: var(--st-color-muted, #8a8a9a);
+      color: var(--st-color-muted);
       cursor: pointer;
       font-size: 12px;
       font-weight: 600;
@@ -144,13 +144,13 @@ import { ThemeService, type Theme } from '@core/services/theme.service';
     }
 
     .st-toggle__btn:hover {
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
       background: rgba(255, 255, 255, 0.07);
     }
 
     .st-toggle__btn--active {
-      color: var(--st-color-accent, #0a84ff);
-      background: var(--st-color-accent-soft, rgba(10, 132, 255, 0.15));
+      color: var(--st-color-accent);
+      background: var(--st-color-accent-soft);
     }
   `,
 })

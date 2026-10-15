@@ -1,26 +1,28 @@
 ---
 last_updated: 2026-10-15
 status: active
-description: Shipped SingulariTree renderer design system — the charcoal & cyan palette in dark and light, the two-tier CSS custom property vocabulary, typography, spacing and geometry, the ui-kit component inventory, and copy-paste usage.
+description: Shipped SingulariTree renderer design system — the navy & cyan palette in dark and light, the two-tier CSS custom property vocabulary, typography, spacing and geometry, the ui-kit component inventory, and copy-paste usage.
 tags:
 - design-system
 - renderer
 - tokens
 - theming
 - ui-kit
-version: 1.0
+version: 1.1
 related:
 - renderer-redesign-plan
 - renderer-slice
 ---
 
-# SingulariTree — Charcoal & Cyan — Style Reference
+# SingulariTree — Navy & Cyan — Style Reference
 
-> graphite workbench — charcoal surfaces, hairline structure, and one cyan accent that marks identity
+> navy workbench — indigo surfaces, hairline structure, and one cyan accent that marks identity
 
 **Theme:** dark (default) + light (`[data-theme='light']`)
 
-SingulariTree's renderer reads as a dense-but-calm desktop instrument: a charcoal workbench where structure comes from 1px hairlines and type weight instead of boxes and gradients, and a single cyan accent marks identity — brand glyph, commit hashes, the current branch, focus rings and the primary action — while nothing else competes for it. Panels are flat and separated by a hairline, list rows stay legible at 12–13px with a mono byline, and the commit graph is the only continuously-drawn, saturated element on screen. The system ships as two tiers of CSS custom properties in `libs/ui-kit/src/styles/tokens.scss`: raw primitives (`--st-prim-*`, never referenced by a component) and a semantic layer (`--st-color/space/font/size/radius/motion/z-*`, the only layer components consume). Every semantic token is defined twice — in `:root` (dark defaults) and in a matched `[data-theme='light']` block — so a light value can never silently fall back to a dark one. This is the shipped state of the committed Charcoal & Cyan direction in [[renderer-redesign-plan]] §2.
+SingulariTree's renderer reads as a dense-but-calm desktop instrument: a navy workbench where structure comes from 1px hairlines and type weight instead of boxes and gradients, and a single cyan accent marks identity — brand glyph, commit hashes, the current branch, focus rings and the primary action — while nothing else competes for it. Panels are flat and separated by a hairline, list rows stay legible at 12–13px with a mono byline, and the commit graph is the only continuously-drawn, saturated element on screen. The system ships as two tiers of CSS custom properties in `libs/ui-kit/src/styles/tokens.scss`: raw primitives (`--st-prim-*`, never referenced by a component) and a semantic layer (`--st-color/space/font/size/radius/motion/z-*`, the only layer components consume). Every semantic token is defined twice — in `:root` (dark defaults) and in a matched `[data-theme='light']` block — so a light value can never silently fall back to a dark one. This is the shipped state of the committed direction in [[renderer-redesign-plan]] §2.
+
+> **P4.1 palette shift (2026-10-15).** At the operator's request ("un poco más como antes") the DARK surfaces, structure and text moved off the neutral charcoal ramp onto a **navy/indigo** ramp — canvas `#1e1e2e`, surfaces `#252536` / `#2a2a3a`, raised `#2e2e40`, border `#3a3a52`, text `#e9e9f2`, muted `#a8a8c0` — echoing the app's earlier navy family. The **cyan accent, the eight graph lanes, the ref pills and the status colours are deliberately unchanged**: the accent is the documented identity token, the lane palette is built on the same family, and the reference blue `#0a84ff` reaches only ~4.3:1 against these navy surfaces — below WCAG AA for the 11–13px mono hash/path text that consumes `--st-color-accent`, where `#69dfdc` holds ~10:1. Geometry, hairlines, radii, the type scale and the light theme are untouched; only the dark colour family changed, so the direction now reads **Navy & Cyan**. The full rationale is written in `tokens.scss`'s header note.
 
 ## Tokens — Colors
 
@@ -32,16 +34,16 @@ Both values are shown for every token: the dark value is defined in `:root`, the
 
 | Name | Token | Dark | Light | Role |
 |------|-------|------|-------|------|
-| App canvas | `--st-color-bg` | `#1b1c1e` | `#f7f8f7` | shell background, routed region |
-| Chrome | `--st-color-chrome` | `#242628` | `#eceeed` | top bar and status bar |
-| Rail | `--st-color-rail` | `#202224` | `#f0f2f1` | nav rail |
-| Surface | `--st-color-surface` | `#222426` | `#ffffff` | panels, panes, cards |
-| Surface 2 | `--st-color-surface-2` | `#292b2e` | `#f4f6f5` | raised strips, table header, field background |
-| Raised | `--st-color-raised` | `#292b2e` | `#ffffff` | popovers, modals |
-| Border | `--st-color-border` | `#3b3e41` | `#d8dcda` | hairline structure |
+| App canvas | `--st-color-bg` | `#1e1e2e` | `#f7f8f7` | shell background, routed region |
+| Chrome | `--st-color-chrome` | `#232334` | `#eceeed` | top bar and status bar |
+| Rail | `--st-color-rail` | `#20202f` | `#f0f2f1` | nav rail |
+| Surface | `--st-color-surface` | `#252536` | `#ffffff` | panels, panes, cards |
+| Surface 2 | `--st-color-surface-2` | `#2a2a3a` | `#f4f6f5` | raised strips, table header, field background |
+| Raised | `--st-color-raised` | `#2e2e40` | `#ffffff` | popovers, modals |
+| Border | `--st-color-border` | `#3a3a52` | `#d8dcda` | hairline structure |
 | Border strong | `--st-color-border-strong` | `color-mix(border 94%, text)` | `color-mix(border 90%, text)` | pane dividers, focus-adjacent edges |
-| Text | `--st-color-text` | `#eceeef` | `#14181a` | primary text |
-| Muted | `--st-color-muted` | `#b0b5b9` | `#5b6668` | bylines, paths, metadata |
+| Text | `--st-color-text` | `#e9e9f2` | `#14181a` | primary text |
+| Muted | `--st-color-muted` | `#a8a8c0` | `#5b6668` | bylines, paths, metadata |
 
 **Accent and selection**
 
@@ -49,11 +51,11 @@ Both values are shown for every token: the dark value is defined in `:root`, the
 |------|-------|------|-------|------|
 | Accent | `--st-color-accent` | `#69dfdc` | `#0f7f7c` | brand, hashes, current branch, primary CTA |
 | Accent soft | `--st-color-accent-soft` | `color-mix(accent 18%)` | `color-mix(accent 12%)` | active nav fill, accent badges |
-| Accent contrast | `--st-color-accent-contrast` | `#1b1c1e` | `#ffffff` | text on accent fills |
+| Accent contrast | `--st-color-accent-contrast` | `#16162a` | `#ffffff` | text on accent fills |
 | Focus | `--st-color-focus` | `#69dfdc` | `#0f7f7c` | `:focus-visible` ring |
-| Selected fill | `--st-color-selected` | `#164746` | `#d3ece9` | selected row fill |
+| Selected fill | `--st-color-selected` | `#123a46` | `#d3ece9` | selected row fill |
 | Selection bar | `--st-color-selected-bar` | `#69dfdc` | `#0f7f7c` | 3px inset selection bar |
-| Selected border | `--st-color-selected-border` | `#356966` | `#7fc4bd` | selected row hairline |
+| Selected border | `--st-color-selected-border` | `#3a7d78` | `#7fc4bd` | selected row hairline |
 
 **Status**
 
@@ -71,7 +73,7 @@ Both values are shown for every token: the dark value is defined in `:root`, the
 | Insert | `--st-color-diff-insert-bg` / `-fg` | `#223e2e` / `#c6f1d1` | `#e6f7ea` / `#14532d` | added lines |
 | Delete | `--st-color-diff-delete-bg` / `-fg` | `#49292d` / `#ffd4d5` | `#fde8e9` / `#7f1d1d` | removed lines |
 | Hunk | `--st-color-diff-hunk-bg` / `-fg` | `#293638` / `#aad8d7` | `#e8f4f3` / `#0f5f5c` | hunk headers |
-| Gutter | `--st-color-diff-gutter-bg` / `-fg` | `#202224` / `#6f767a` | `#f4f6f5` / `#8a9490` | line-number columns |
+| Gutter | `--st-color-diff-gutter-bg` / `-fg` | `#20202f` / `#6f7690` | `#f4f6f5` / `#8a9490` | line-number columns |
 
 **Graph lanes and ref pills**
 
@@ -100,21 +102,23 @@ Badge fills are a low-alpha mix of the hue with a solid foreground; graph badges
 | Tag badge | `--st-color-badge-tag-bg` / `-fg` | `color-mix(warn 12%)` fill, warn foreground |
 | Success badge | `--st-color-badge-success-bg` / `-fg` | `color-mix(add 12%)` fill, add foreground |
 | Warning badge | `--st-color-badge-warning-bg` / `-fg` | `color-mix(warn 12%)` fill, warn foreground |
-| Avatar | `--st-color-avatar-bg` / `-fg` | `#3d4543`/`#cef4db` (dark), `#d9e6df`/`#14532d` (light) |
-| Overlay | `--st-color-overlay` | `rgba(9,10,12,.62)` (dark), `rgba(20,24,26,.35)` (light) |
+| Avatar | `--st-color-avatar-bg` / `-fg` | `#343a52`/`#cef4db` (dark), `#d9e6df`/`#14532d` (light) |
+| Overlay | `--st-color-overlay` | `rgba(12,12,24,.62)` (dark), `rgba(20,24,26,.35)` (light) |
 
 ### Tier-1 primitives
 
 Raw, theme-independent values. Never reference these from a component — they exist only so the semantic layer has a single vocabulary to draw from.
 
 ```
-ink-900 #1b1c1e   ink-850 #202224   ink-800 #222426   ink-750 #242628
-ink-700 #292b2e   ink-600 #3b3e41   ink-050 #eceeef   ink-300 #b0b5b9
+ink-900 #1e1e2e   ink-850 #20202f   ink-800 #252536   ink-750 #2a2a3a
+ink-700 #2e2e40   ink-600 #3a3a52   ink-050 #e9e9f2   ink-300 #a8a8c0
 cyan-400 #69dfdc  cyan-500 #438c89  cyan-600 #356966  cyan-700 #164746
 green-300 #9fe0b1 red-300 #ffacaf   amber-300 #ebcb86
 diff    ins-bg #223e2e ins-fg #c6f1d1   del-bg #49292d del-fg #ffd4d5   hunk-bg #293638 hunk-fg #aad8d7
-graph   graph-cyan #67cbc7 graph-amber #cfad78   avatar-bg #3d4543 avatar-fg #cef4db
+graph   graph-cyan #67cbc7 graph-amber #cfad78   avatar-bg #343a52 avatar-fg #cef4db
 ```
+
+> The neutral primitives are the navy/indigo ramp shipped by the P4.1 palette shift; the accent, status, diff and graph primitives are unchanged from the committed direction.
 
 ## Tokens — Typography
 
@@ -215,7 +219,7 @@ All shipped primitives live under `libs/ui-kit/src/` and are exported from the b
 ### `st-button`
 **Role:** the single action element
 
-Variants `default | primary | ghost | danger | icon`; sizes `sm` (24px) `md` (30px). `default` is a bordered surface button; `primary` fills with `--st-color-accent` and uses `--st-color-accent-contrast` text; `ghost` is transparent; `danger` is transparent with `--st-color-danger` text; `icon` is square and sized by `--st-size-control-sm|md`. Focus uses a 2px `--st-color-focus` outline.
+Variants `default | primary | ghost | danger | icon`; sizes `sm` (24px) `md` (30px). `default` is a bordered surface button; `primary` fills with `--st-color-accent` and uses `--st-color-accent-contrast` text; `ghost` is transparent; `danger` is transparent with `--st-color-danger` text; `icon` is square and sized by `--st-size-control-sm|md`. Focus uses a 2px `--st-color-focus` outline. `ariaLabel` is forwarded to the inner native button; `pressed` (`boolean | null`) is forwarded as `aria-pressed` for toggle chips and is omitted when null.
 
 ### `st-badge`
 **Role:** pill label for branch, tag, status and graph state
@@ -300,7 +304,7 @@ Mounts a lazily-loaded Monaco `DiffEditor` when a real textual diff is available
 - Use the inset focus ring (offset −1px) inside rows and nav items; the standard 2px ring elsewhere.
 
 ### Don't
-- Do not add `var(--st-x, #hex)` fallbacks — a fallback is a theming bug; every token must exist in both blocks.
+- Do not add `var(--st-x, #hex)` (or `rgba()`/any value) fallbacks — a fallback is a theming bug; every token must exist in both blocks. The P4.1 pass removed the last 87 of them from the renderer; keep it that way.
 - Do not reference a `--st-prim-*` primitive from a component.
 - Do not introduce colours outside the semantic set, or gradients and decorative glows.
 - Do not use box-shadow for elevation — the one shadow is the inset selection bar.
@@ -313,13 +317,13 @@ Mounts a lazily-loaded Monaco `DiffEditor` when a real textual diff is available
 
 | Level | Name | Token | Dark | Light | Purpose |
 |-------|------|-------|------|-------|---------|
-| 0 | Canvas | `--st-color-bg` | `#1b1c1e` | `#f7f8f7` | the routed region and app background |
-| 1 | Chrome | `--st-color-chrome` | `#242628` | `#eceeed` | top bar and status bar |
-| 1 | Rail | `--st-color-rail` | `#202224` | `#f0f2f1` | nav rail |
-| 2 | Surface | `--st-color-surface` | `#222426` | `#ffffff` | panels, panes, cards, inputs |
-| 2 | Surface 2 | `--st-color-surface-2` | `#292b2e` | `#f4f6f5` | sticky strips, table header, field background |
-| 3 | Raised | `--st-color-raised` | `#292b2e` | `#ffffff` | popovers and modals above the surface |
-| — | Overlay | `--st-color-overlay` | `rgba(9,10,12,.62)` | `rgba(20,24,26,.35)` | modal and drawer backdrop |
+| 0 | Canvas | `--st-color-bg` | `#1e1e2e` | `#f7f8f7` | the routed region and app background |
+| 1 | Chrome | `--st-color-chrome` | `#232334` | `#eceeed` | top bar and status bar |
+| 1 | Rail | `--st-color-rail` | `#20202f` | `#f0f2f1` | nav rail |
+| 2 | Surface | `--st-color-surface` | `#252536` | `#ffffff` | panels, panes, cards, inputs |
+| 2 | Surface 2 | `--st-color-surface-2` | `#2a2a3a` | `#f4f6f5` | sticky strips, table header, field background |
+| 3 | Raised | `--st-color-raised` | `#2e2e40` | `#ffffff` | popovers and modals above the surface |
+| — | Overlay | `--st-color-overlay` | `rgba(12,12,24,.62)` | `rgba(20,24,26,.35)` | modal and drawer backdrop |
 
 ## Layout
 
@@ -427,8 +431,8 @@ The full source is `libs/ui-kit/src/styles/tokens.scss`. Its shape is fixed — 
   --st-prim-cyan-400: #69dfdc;
 
   /* Tier 2 — semantic, dark defaults. */
-  --st-color-bg: #1b1c1e;
-  --st-color-surface: #222426;
+  --st-color-bg: #1e1e2e;
+  --st-color-surface: #252536;
   --st-color-accent: var(--st-prim-cyan-400);
 }
 

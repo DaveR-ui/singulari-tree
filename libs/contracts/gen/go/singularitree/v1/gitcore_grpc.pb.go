@@ -19,49 +19,50 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	GitCore_Ping_FullMethodName             = "/singularitree.v1.GitCore/Ping"
-	GitCore_OpenRepository_FullMethodName   = "/singularitree.v1.GitCore/OpenRepository"
-	GitCore_GetRepository_FullMethodName    = "/singularitree.v1.GitCore/GetRepository"
-	GitCore_ListRepositories_FullMethodName = "/singularitree.v1.GitCore/ListRepositories"
-	GitCore_RemoveRepository_FullMethodName = "/singularitree.v1.GitCore/RemoveRepository"
-	GitCore_GetCommits_FullMethodName       = "/singularitree.v1.GitCore/GetCommits"
-	GitCore_StreamCommits_FullMethodName    = "/singularitree.v1.GitCore/StreamCommits"
-	GitCore_GetBranches_FullMethodName      = "/singularitree.v1.GitCore/GetBranches"
-	GitCore_GetRemotes_FullMethodName       = "/singularitree.v1.GitCore/GetRemotes"
-	GitCore_GetTags_FullMethodName          = "/singularitree.v1.GitCore/GetTags"
-	GitCore_GetStashes_FullMethodName       = "/singularitree.v1.GitCore/GetStashes"
-	GitCore_GetWorktrees_FullMethodName     = "/singularitree.v1.GitCore/GetWorktrees"
-	GitCore_GetStatus_FullMethodName        = "/singularitree.v1.GitCore/GetStatus"
-	GitCore_GetDiff_FullMethodName          = "/singularitree.v1.GitCore/GetDiff"
-	GitCore_Stage_FullMethodName            = "/singularitree.v1.GitCore/Stage"
-	GitCore_Unstage_FullMethodName          = "/singularitree.v1.GitCore/Unstage"
-	GitCore_StageHunk_FullMethodName        = "/singularitree.v1.GitCore/StageHunk"
-	GitCore_UnstageHunk_FullMethodName      = "/singularitree.v1.GitCore/UnstageHunk"
-	GitCore_DiscardHunk_FullMethodName      = "/singularitree.v1.GitCore/DiscardHunk"
-	GitCore_Discard_FullMethodName          = "/singularitree.v1.GitCore/Discard"
-	GitCore_Reset_FullMethodName            = "/singularitree.v1.GitCore/Reset"
-	GitCore_GetCommitStats_FullMethodName   = "/singularitree.v1.GitCore/GetCommitStats"
-	GitCore_Commit_FullMethodName           = "/singularitree.v1.GitCore/Commit"
-	GitCore_Checkout_FullMethodName         = "/singularitree.v1.GitCore/Checkout"
-	GitCore_StashPush_FullMethodName        = "/singularitree.v1.GitCore/StashPush"
-	GitCore_CreateBranch_FullMethodName     = "/singularitree.v1.GitCore/CreateBranch"
-	GitCore_RenameBranch_FullMethodName     = "/singularitree.v1.GitCore/RenameBranch"
-	GitCore_DeleteBranch_FullMethodName     = "/singularitree.v1.GitCore/DeleteBranch"
-	GitCore_Merge_FullMethodName            = "/singularitree.v1.GitCore/Merge"
-	GitCore_CreateTag_FullMethodName        = "/singularitree.v1.GitCore/CreateTag"
-	GitCore_DeleteTag_FullMethodName        = "/singularitree.v1.GitCore/DeleteTag"
-	GitCore_StashApply_FullMethodName       = "/singularitree.v1.GitCore/StashApply"
-	GitCore_StashPop_FullMethodName         = "/singularitree.v1.GitCore/StashPop"
-	GitCore_StashDrop_FullMethodName        = "/singularitree.v1.GitCore/StashDrop"
-	GitCore_Fetch_FullMethodName            = "/singularitree.v1.GitCore/Fetch"
-	GitCore_Push_FullMethodName             = "/singularitree.v1.GitCore/Push"
-	GitCore_Pull_FullMethodName             = "/singularitree.v1.GitCore/Pull"
-	GitCore_Watch_FullMethodName            = "/singularitree.v1.GitCore/Watch"
-	GitCore_SearchCommits_FullMethodName    = "/singularitree.v1.GitCore/SearchCommits"
-	GitCore_GetGitFlowConfig_FullMethodName = "/singularitree.v1.GitCore/GetGitFlowConfig"
-	GitCore_SetGitFlowConfig_FullMethodName = "/singularitree.v1.GitCore/SetGitFlowConfig"
-	GitCore_StartGitFlow_FullMethodName     = "/singularitree.v1.GitCore/StartGitFlow"
-	GitCore_FinishGitFlow_FullMethodName    = "/singularitree.v1.GitCore/FinishGitFlow"
+	GitCore_Ping_FullMethodName               = "/singularitree.v1.GitCore/Ping"
+	GitCore_OpenRepository_FullMethodName     = "/singularitree.v1.GitCore/OpenRepository"
+	GitCore_GetRepository_FullMethodName      = "/singularitree.v1.GitCore/GetRepository"
+	GitCore_ListRepositories_FullMethodName   = "/singularitree.v1.GitCore/ListRepositories"
+	GitCore_RemoveRepository_FullMethodName   = "/singularitree.v1.GitCore/RemoveRepository"
+	GitCore_RelocateRepository_FullMethodName = "/singularitree.v1.GitCore/RelocateRepository"
+	GitCore_GetCommits_FullMethodName         = "/singularitree.v1.GitCore/GetCommits"
+	GitCore_StreamCommits_FullMethodName      = "/singularitree.v1.GitCore/StreamCommits"
+	GitCore_GetBranches_FullMethodName        = "/singularitree.v1.GitCore/GetBranches"
+	GitCore_GetRemotes_FullMethodName         = "/singularitree.v1.GitCore/GetRemotes"
+	GitCore_GetTags_FullMethodName            = "/singularitree.v1.GitCore/GetTags"
+	GitCore_GetStashes_FullMethodName         = "/singularitree.v1.GitCore/GetStashes"
+	GitCore_GetWorktrees_FullMethodName       = "/singularitree.v1.GitCore/GetWorktrees"
+	GitCore_GetStatus_FullMethodName          = "/singularitree.v1.GitCore/GetStatus"
+	GitCore_GetDiff_FullMethodName            = "/singularitree.v1.GitCore/GetDiff"
+	GitCore_Stage_FullMethodName              = "/singularitree.v1.GitCore/Stage"
+	GitCore_Unstage_FullMethodName            = "/singularitree.v1.GitCore/Unstage"
+	GitCore_StageHunk_FullMethodName          = "/singularitree.v1.GitCore/StageHunk"
+	GitCore_UnstageHunk_FullMethodName        = "/singularitree.v1.GitCore/UnstageHunk"
+	GitCore_DiscardHunk_FullMethodName        = "/singularitree.v1.GitCore/DiscardHunk"
+	GitCore_Discard_FullMethodName            = "/singularitree.v1.GitCore/Discard"
+	GitCore_Reset_FullMethodName              = "/singularitree.v1.GitCore/Reset"
+	GitCore_GetCommitStats_FullMethodName     = "/singularitree.v1.GitCore/GetCommitStats"
+	GitCore_Commit_FullMethodName             = "/singularitree.v1.GitCore/Commit"
+	GitCore_Checkout_FullMethodName           = "/singularitree.v1.GitCore/Checkout"
+	GitCore_StashPush_FullMethodName          = "/singularitree.v1.GitCore/StashPush"
+	GitCore_CreateBranch_FullMethodName       = "/singularitree.v1.GitCore/CreateBranch"
+	GitCore_RenameBranch_FullMethodName       = "/singularitree.v1.GitCore/RenameBranch"
+	GitCore_DeleteBranch_FullMethodName       = "/singularitree.v1.GitCore/DeleteBranch"
+	GitCore_Merge_FullMethodName              = "/singularitree.v1.GitCore/Merge"
+	GitCore_CreateTag_FullMethodName          = "/singularitree.v1.GitCore/CreateTag"
+	GitCore_DeleteTag_FullMethodName          = "/singularitree.v1.GitCore/DeleteTag"
+	GitCore_StashApply_FullMethodName         = "/singularitree.v1.GitCore/StashApply"
+	GitCore_StashPop_FullMethodName           = "/singularitree.v1.GitCore/StashPop"
+	GitCore_StashDrop_FullMethodName          = "/singularitree.v1.GitCore/StashDrop"
+	GitCore_Fetch_FullMethodName              = "/singularitree.v1.GitCore/Fetch"
+	GitCore_Push_FullMethodName               = "/singularitree.v1.GitCore/Push"
+	GitCore_Pull_FullMethodName               = "/singularitree.v1.GitCore/Pull"
+	GitCore_Watch_FullMethodName              = "/singularitree.v1.GitCore/Watch"
+	GitCore_SearchCommits_FullMethodName      = "/singularitree.v1.GitCore/SearchCommits"
+	GitCore_GetGitFlowConfig_FullMethodName   = "/singularitree.v1.GitCore/GetGitFlowConfig"
+	GitCore_SetGitFlowConfig_FullMethodName   = "/singularitree.v1.GitCore/SetGitFlowConfig"
+	GitCore_StartGitFlow_FullMethodName       = "/singularitree.v1.GitCore/StartGitFlow"
+	GitCore_FinishGitFlow_FullMethodName      = "/singularitree.v1.GitCore/FinishGitFlow"
 )
 
 // GitCoreClient is the client API for GitCore service.
@@ -75,6 +76,7 @@ type GitCoreClient interface {
 	GetRepository(ctx context.Context, in *GetRepositoryRequest, opts ...grpc.CallOption) (*Repository, error)
 	ListRepositories(ctx context.Context, in *ListRepositoriesRequest, opts ...grpc.CallOption) (*ListRepositoriesResponse, error)
 	RemoveRepository(ctx context.Context, in *RemoveRepositoryRequest, opts ...grpc.CallOption) (*RemoveRepositoryResponse, error)
+	RelocateRepository(ctx context.Context, in *RelocateRepositoryRequest, opts ...grpc.CallOption) (*Repository, error)
 	GetCommits(ctx context.Context, in *GetCommitsRequest, opts ...grpc.CallOption) (*GetCommitsResponse, error)
 	// Root-qualified to disambiguate from the `Commit` service method (which would
 	// otherwise shadow the message of the same name in this service's scope).
@@ -186,6 +188,16 @@ func (c *gitCoreClient) RemoveRepository(ctx context.Context, in *RemoveReposito
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(RemoveRepositoryResponse)
 	err := c.cc.Invoke(ctx, GitCore_RemoveRepository_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gitCoreClient) RelocateRepository(ctx context.Context, in *RelocateRepositoryRequest, opts ...grpc.CallOption) (*Repository, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Repository)
+	err := c.cc.Invoke(ctx, GitCore_RelocateRepository_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -628,6 +640,7 @@ type GitCoreServer interface {
 	GetRepository(context.Context, *GetRepositoryRequest) (*Repository, error)
 	ListRepositories(context.Context, *ListRepositoriesRequest) (*ListRepositoriesResponse, error)
 	RemoveRepository(context.Context, *RemoveRepositoryRequest) (*RemoveRepositoryResponse, error)
+	RelocateRepository(context.Context, *RelocateRepositoryRequest) (*Repository, error)
 	GetCommits(context.Context, *GetCommitsRequest) (*GetCommitsResponse, error)
 	// Root-qualified to disambiguate from the `Commit` service method (which would
 	// otherwise shadow the message of the same name in this service's scope).
@@ -709,6 +722,9 @@ func (UnimplementedGitCoreServer) ListRepositories(context.Context, *ListReposit
 }
 func (UnimplementedGitCoreServer) RemoveRepository(context.Context, *RemoveRepositoryRequest) (*RemoveRepositoryResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RemoveRepository not implemented")
+}
+func (UnimplementedGitCoreServer) RelocateRepository(context.Context, *RelocateRepositoryRequest) (*Repository, error) {
+	return nil, status.Error(codes.Unimplemented, "method RelocateRepository not implemented")
 }
 func (UnimplementedGitCoreServer) GetCommits(context.Context, *GetCommitsRequest) (*GetCommitsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetCommits not implemented")
@@ -931,6 +947,24 @@ func _GitCore_RemoveRepository_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(GitCoreServer).RemoveRepository(ctx, req.(*RemoveRepositoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GitCore_RelocateRepository_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RelocateRepositoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GitCoreServer).RelocateRepository(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GitCore_RelocateRepository_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GitCoreServer).RelocateRepository(ctx, req.(*RelocateRepositoryRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1610,6 +1644,10 @@ var GitCore_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RemoveRepository",
 			Handler:    _GitCore_RemoveRepository_Handler,
+		},
+		{
+			MethodName: "RelocateRepository",
+			Handler:    _GitCore_RelocateRepository_Handler,
 		},
 		{
 			MethodName: "GetCommits",

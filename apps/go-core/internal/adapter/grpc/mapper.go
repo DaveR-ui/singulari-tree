@@ -467,7 +467,8 @@ func rateLimitToProto(r *domain.RateLimit) *singularitreev1.RateLimit {
 // grpcCodeFor maps a domain error code to the closest gRPC status code.
 func grpcCodeFor(appCode string) codes.Code {
 	switch appCode {
-	case domain.ErrCodeRepoNotFound, domain.ErrCodeCommitNotFound, domain.ErrCodeBranchNotFound:
+	case domain.ErrCodeRepoNotFound, domain.ErrCodeCommitNotFound, domain.ErrCodeBranchNotFound,
+		domain.ErrCodeRepoPathMissing:
 		return codes.NotFound
 	case domain.ErrCodeNotAGitRepo, domain.ErrCodeInvalidOid,
 		domain.ErrCodeDetachedHead, domain.ErrCodeStageFailed,
@@ -482,6 +483,8 @@ func grpcCodeFor(appCode string) codes.Code {
 	case domain.ErrCodeMergeFailed:
 		return codes.Aborted
 	case domain.ErrCodeTagExists:
+		return codes.FailedPrecondition
+	case domain.ErrCodeRepoPathInUse:
 		return codes.FailedPrecondition
 	case domain.ErrCodeTagNotFound:
 		return codes.NotFound

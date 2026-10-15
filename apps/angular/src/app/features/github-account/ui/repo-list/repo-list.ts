@@ -75,7 +75,7 @@ import { toRepoCardView } from '../../repo-card-view';
   styles: `
     :host {
       display: block;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
     }
 
     .st-repo-list__repos {

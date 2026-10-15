@@ -165,6 +165,17 @@ export interface RemoveRepositoryResponse {
   // empty
 }
 
+/**
+ * Repoint a tracked repository at a different filesystem path (P4.1 polish):
+ * the folder was moved/renamed and the registration must follow it — same id,
+ * preserved `created_at` — instead of being deleted and re-created. Mirrors
+ * `libs/contracts/gen/ts/gitcore.ts`.
+ */
+export interface RelocateRepositoryRequest {
+  repoId: string;
+  fsPath: string;
+}
+
 export interface GetCommitsRequest {
   repoId: string;
   offset: number;
@@ -795,6 +806,7 @@ export interface GitClientApi {
   openRepository: (req: OpenRepositoryRequest) => Promise<Repository>;
   listRepositories: (req: ListRepositoriesRequest) => Promise<ListRepositoriesResponse>;
   removeRepository: (req: RemoveRepositoryRequest) => Promise<RemoveRepositoryResponse>;
+  relocateRepository: (req: RelocateRepositoryRequest) => Promise<Repository>;
   getAuthStatus: (req: GetAuthStatusRequest) => Promise<GetAuthStatusResponse>;
   connectGitHubFromCLI: (
     req: ConnectGitHubFromCLIRequest,
@@ -858,6 +870,7 @@ const api: GitClientApi = {
   openRepository: (req) => ipcRenderer.invoke('git:openRepository', req),
   listRepositories: (req) => ipcRenderer.invoke('git:listRepositories', req),
   removeRepository: (req) => ipcRenderer.invoke('git:removeRepository', req),
+  relocateRepository: (req) => ipcRenderer.invoke('git:relocateRepository', req),
   getAuthStatus: (req) => ipcRenderer.invoke('auth:getAuthStatus', req),
   connectGitHubFromCLI: (req) => ipcRenderer.invoke('auth:connectGitHubFromCLI', req),
   listGitHubRepos: (req) => ipcRenderer.invoke('auth:listGitHubRepos', req),

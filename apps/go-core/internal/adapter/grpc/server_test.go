@@ -658,3 +658,142 @@ func TestCheckoutSwitchesBranch(t *testing.T) {
 		t.Fatalf("trailer x-app-error-code = %v, want [CHECKOUT_FAILED]", got)
 	}
 }
+
+// TestRelocateRepositoryRoundTrip moves a registered fixture folder on disk and
+// repoints the existing registration at the new path. The repository id must be
+// preserved (a delete + re-create would mint a new id and drop the cache) and
+// Get/List must reflect the new path.
+func TestRelocateRepositoryRoundTrip(t *testing.T) {
+	addr := startServer(t)
+	client, closeConn := newGitCoreClient(t, addr)
+	defer closeConn()
+	ctx := authed(context.Background())
+
+	fixture := initFixtureRepo(t)
+	repo, err := client.OpenRepository(ctx, &singularitreev1.OpenRepositoryRequest{FsPath: fixture})
+	if err != nil {
+		t.Fatalf("OpenRepository: %v", err)
+	}
+	repoID := repo.GetId()
+
+	moved := filepath.Join(canonicalTempDir(t), "moved-repo")
+	if err := os.Rename(fixture, moved); err != nil {
+		t.Fatalf("rename fixture: %v", err)
+	}
+
+	relocated, err := client.RelocateRepository(ctx, &singularitreev1.RelocateRepositoryRequest{RepoId: repoID, FsPath: moved})
+	if err != nil {
+		t.Fatalf("RelocateRepository: %v", err)
+	}
+	if relocated.GetId() != repoID {
+		t.Errorf("id = %q, want preserved %q", relocated.GetId(), repoID)
+	}
+	if relocated.GetFsPath() != moved {
+		t.Errorf("fs_path = %q, want %q", relocated.GetFsPath(), moved)
+	}
+	if want := filepath.Join(moved, ".git"); relocated.GetCommonDir() != want {
+		t.Errorf("common_dir = %q, want refreshed %q", relocated.GetCommonDir(), want)
+	}
+
+	got, err := client.GetRepository(ctx, &singularitreev1.GetRepositoryRequest{RepoId: repoID})
+	if err != nil {
+		t.Fatalf("GetRepository: %v", err)
+	}
+	if got.GetFsPath() != moved {
+		t.Errorf("GetRepository fs_path = %q, want %q", got.GetFsPath(), moved)
+	}
+
+	list, err := client.ListRepositories(ctx, &singularitreev1.ListRepositoriesRequest{})
+	if err != nil {
+		t.Fatalf("ListRepositories: %v", err)
+	}
+	var found bool
+	for _, r := range list.GetRepositories() {
+		if r.GetId() == repoID {
+			found = true
+			if r.GetFsPath() != moved {
+				t.Errorf("ListRepositories fs_path = %q, want %q", r.GetFsPath(), moved)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("relocated repo %q missing from ListRepositories", repoID)
+	}
+}
+
+// TestRelocateRepositoryErrorCodes maps each failure to its gRPC status and
+// carries the domain code in the trailer: unknown id → NotFound,
+// missing target → NotFound (REPO_PATH_MISSING), non-repo target →
+// InvalidArgument (NOT_A_GIT_REPO), duplicate target → FailedPrecondition
+// (REPO_PATH_IN_USE).
+func TestRelocateRepositoryErrorCodes(t *testing.T) {
+	addr := startServer(t)
+	client, closeConn := newGitCoreClient(t, addr)
+	defer closeConn()
+	ctx := authed(context.Background())
+
+	fixture := initFixtureRepo(t)
+	repo, err := client.OpenRepository(ctx, &singularitreev1.OpenRepositoryRequest{FsPath: fixture})
+	if err != nil {
+		t.Fatalf("OpenRepository: %v", err)
+	}
+	repoID := repo.GetId()
+
+	tests := []struct {
+		name       string
+		req        *singularitreev1.RelocateRepositoryRequest
+		wantStatus codes.Code
+		wantCode   string
+	}{
+		{
+			name:       "unknown id",
+			req:        &singularitreev1.RelocateRepositoryRequest{RepoId: "nope", FsPath: t.TempDir()},
+			wantStatus: codes.NotFound,
+			wantCode:   "REPO_NOT_FOUND",
+		},
+		{
+			name:       "missing target",
+			req:        &singularitreev1.RelocateRepositoryRequest{RepoId: repoID, FsPath: filepath.Join(t.TempDir(), "gone")},
+			wantStatus: codes.NotFound,
+			wantCode:   "REPO_PATH_MISSING",
+		},
+		{
+			name:       "target not a repo",
+			req:        &singularitreev1.RelocateRepositoryRequest{RepoId: repoID, FsPath: t.TempDir()},
+			wantStatus: codes.InvalidArgument,
+			wantCode:   "NOT_A_GIT_REPO",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var trailer metadata.MD
+			_, err := client.RelocateRepository(ctx, tt.req, googlegrpc.Trailer(&trailer))
+			if got := status.Code(err); got != tt.wantStatus {
+				t.Fatalf("code = %v, want %v (err=%v)", got, tt.wantStatus, err)
+			}
+			if got := trailer.Get("x-app-error-code"); len(got) == 0 || got[0] != tt.wantCode {
+				t.Fatalf("trailer x-app-error-code = %v, want [%s]", got, tt.wantCode)
+			}
+		})
+	}
+
+	// Duplicate target: a second repo is opened at another path, then the first
+	// registration is repointed at it. Kept separate because it needs a second
+	// real fixture.
+	other := initFixtureRepo(t)
+	if _, err := client.OpenRepository(ctx, &singularitreev1.OpenRepositoryRequest{FsPath: other}); err != nil {
+		t.Fatalf("OpenRepository(other): %v", err)
+	}
+	var trailer metadata.MD
+	_, err = client.RelocateRepository(
+		ctx,
+		&singularitreev1.RelocateRepositoryRequest{RepoId: repoID, FsPath: other},
+		googlegrpc.Trailer(&trailer),
+	)
+	if got := status.Code(err); got != codes.FailedPrecondition {
+		t.Fatalf("duplicate target code = %v, want FailedPrecondition (err=%v)", got, err)
+	}
+	if got := trailer.Get("x-app-error-code"); len(got) == 0 || got[0] != "REPO_PATH_IN_USE" {
+		t.Fatalf("trailer x-app-error-code = %v, want [REPO_PATH_IN_USE]", got)
+	}
+}

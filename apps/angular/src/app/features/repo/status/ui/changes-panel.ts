@@ -40,15 +40,17 @@ import { HunkActions, type HunkActionEvent } from './hunk-actions';
                   [class.st-changes__row--selected]="file.path === selectedPath()"
                 >
                   <span class="st-changes__path">{{ file.path }}</span>
-                  <st-button
-                    variant="icon"
-                    size="sm"
-                    data-testid="status-unstage"
-                    [ariaLabel]="a11yUnstage"
-                    (click)="onUnstage($event, file.path)"
-                  >
-                    <st-icon name="minus"></st-icon>
-                  </st-button>
+                  <span class="st-changes__actions">
+                    <st-button
+                      variant="icon"
+                      size="sm"
+                      data-testid="status-unstage"
+                      [ariaLabel]="a11yUnstage"
+                      (click)="onUnstage($event, file.path)"
+                    >
+                      <st-icon name="minus"></st-icon>
+                    </st-button>
+                  </span>
                 </li>
               }
             </ul>
@@ -71,24 +73,26 @@ import { HunkActions, type HunkActionEvent } from './hunk-actions';
                   [class.st-changes__row--selected]="file.path === selectedPath()"
                 >
                   <span class="st-changes__path">{{ file.path }}</span>
-                  <st-button
-                    variant="icon"
-                    size="sm"
-                    data-testid="status-stage"
-                    [ariaLabel]="a11yStage"
-                    (click)="onStage($event, file.path)"
-                  >
-                    <st-icon name="plus"></st-icon>
-                  </st-button>
-                  <st-button
-                    variant="icon"
-                    size="sm"
-                    data-testid="status-discard"
-                    [ariaLabel]="a11yDiscard"
-                    (click)="onDiscard($event, file.path)"
-                  >
-                    <st-icon name="discard"></st-icon>
-                  </st-button>
+                  <span class="st-changes__actions">
+                    <st-button
+                      variant="icon"
+                      size="sm"
+                      data-testid="status-stage"
+                      [ariaLabel]="a11yStage"
+                      (click)="onStage($event, file.path)"
+                    >
+                      <st-icon name="plus"></st-icon>
+                    </st-button>
+                    <st-button
+                      variant="icon"
+                      size="sm"
+                      data-testid="status-discard"
+                      [ariaLabel]="a11yDiscard"
+                      (click)="onDiscard($event, file.path)"
+                    >
+                      <st-icon name="discard"></st-icon>
+                    </st-button>
+                  </span>
                 </li>
               }
             </ul>
@@ -177,8 +181,7 @@ import { HunkActions, type HunkActionEvent } from './hunk-actions';
     .st-changes__row {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 8px;
+      gap: var(--st-space-2);
       padding: 2px 4px;
       border-radius: 4px;
       cursor: pointer;
@@ -188,8 +191,23 @@ import { HunkActions, type HunkActionEvent } from './hunk-actions';
       background: var(--st-color-selected);
     }
 
+    /* The path is the row's only flexible child: it takes the slack so a long,
+       wrapping path can never push the actions around. No justify-content:
+       space-between here — with three children it would centre the middle
+       action instead of pinning the group to the right edge. */
     .st-changes__path {
+      flex: 1 1 auto;
+      min-width: 0;
       word-break: break-all;
+    }
+
+    /* One right-pinned actions group per row, identical in both sections, so the
+       stage (+) and the discard (trash) buttons stay adjacent and flush right. */
+    .st-changes__actions {
+      flex: none;
+      display: flex;
+      align-items: center;
+      gap: var(--st-space-1);
     }
 
     .st-changes__hunks {
