@@ -14,7 +14,8 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
     class: 'st-wip-row',
     role: 'button',
     tabindex: '0',
-    // Explicit height binding: the WIP node must occupy exactly one virtual row.
+    // Explicit height binding: the WIP node must occupy exactly one virtual row
+    // (28px, matching `GRAPH_ROW_HEIGHT`) so it aligns with the graph lanes.
     '[style.height.px]': 'rowHeight',
     '[class.st-wip-row--selected]': 'selected()',
     '(click)': 'picked.emit()',
@@ -28,7 +29,7 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
         cy="14"
         r="4"
         fill="none"
-        stroke="var(--st-color-text, #d6d6de)"
+        stroke="var(--st-color-muted)"
         stroke-width="2"
         stroke-dasharray="2 2"
       />
@@ -44,23 +45,23 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
       height: 28px;
       padding: 0 8px;
       cursor: pointer;
-      font-size: 12px;
+      font-size: var(--st-font-12);
       line-height: 1;
-      border-bottom: 1px solid var(--st-color-border, #2f2f44);
-      color: var(--st-color-text, #d6d6de);
+      border-bottom: var(--st-hairline) solid var(--st-color-border);
+      color: var(--st-color-text);
     }
 
     :host(:hover) {
-      background: color-mix(in srgb, var(--st-color-accent, #0a84ff) 10%, transparent);
+      background: color-mix(in srgb, var(--st-color-accent) 10%, transparent);
     }
 
     :host:focus-visible {
-      outline: 1px solid var(--st-color-accent, #0a84ff);
+      outline: 1px solid var(--st-color-accent);
       outline-offset: -1px;
     }
 
     :host(.st-wip-row--selected) {
-      background: color-mix(in srgb, var(--st-color-accent, #0a84ff) 22%, transparent);
+      background: color-mix(in srgb, var(--st-color-accent) 22%, transparent);
     }
 
     .st-wip-row__graph {
@@ -74,8 +75,8 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
 
     .st-wip-row__hint {
       margin-left: auto;
-      opacity: 0.5;
-      font-size: 11px;
+      color: var(--st-color-muted);
+      font-size: var(--st-font-11);
     }
   `,
 })

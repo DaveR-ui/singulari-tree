@@ -7,7 +7,7 @@ tags:
 - redesign
 - plan
 - git-client
-version: 1.1
+version: 1.2
 related:
 - renderer-slice
 - feature-gap-analysis
@@ -16,7 +16,7 @@ related:
 
 # SingulariTree Renderer Facelift — Design Plan
 
-> **Status: P0 (token foundation), P1 (primitives) and P2 (shell rebuild) SHIPPED as of 2026-10-15; P3–P6 remain planned.** This document remains the approved-direction plan governing the not-yet-shipped phases of a total facelift of the renderer's visible UI. Derived from the operator's sketch `git-client-sketch.html` (dark, offline git-client mockup, delivered 2026-10-13) treated as a **guide, not a spec**: every intentional divergence is numbered and justified in §6. Aesthetic direction is committed by the agent system (no human sign-off loop), per the operator's delegation.
+> **Status: P0 (token foundation), P1 (primitives), P2 (shell rebuild) and P3 (history workspace) SHIPPED as of 2026-10-15; P4–P6 remain planned.** This document remains the approved-direction plan governing the not-yet-shipped phases of a total facelift of the renderer's visible UI. Derived from the operator's sketch `git-client-sketch.html` (dark, offline git-client mockup, delivered 2026-10-13) treated as a **guide, not a spec**: every intentional divergence is numbered and justified in §6. Aesthetic direction is committed by the agent system (no human sign-off loop), per the operator's delegation.
 >
 > **Scope:** `apps/angular/**` + `libs/ui-kit/**` only. No Go core, no contracts/proto, no Electron shell/IPC, no IPC-contract change. `files_to_touch` (§8.2) is the implementation manifest — P0–P2's entries are shipped; the rest are not yet created.
 
@@ -45,6 +45,14 @@ related:
 > Recorded deferrals (not fabricated scope): the nav-rail working-tree count pill ships wired but inert (`RepoState` exposes no change count and `StatusStore` is feature-scoped — the feed lands with a later phase); the status-bar short-hash segment is supported but fed `''` (no HEAD oid at shell scope); the status-bar ahead segment is `0` (not tracked at shell scope).
 >
 > Verification at P2 close: renderer vitest 78 files / 998 tests green, coverage 93.86% statements / 87.41% branches / 89.15% functions / 95.79% lines (all above the 80% thresholds); `ng build` exit 0 (the pre-existing 500 kB initial-budget warning only). No commits were made — every change is in the working tree on `feature-rebrand-style`.
+
+> **P3 shipped (2026-10-15) — history workspace.** The split moved **into the route**: the detail pane is route-specific, the sketch's split is inherently per-route, and projecting a second content slot through the shell's single `<router-outlet>` is not natural in Angular — so the shell-level `st-workspace-split` was removed from `layout.html` and `repo-page` mounts it instead, with `file-status-page` to do the same in P4. `repo-page` wires the split as detail = `st-commit-details-panel`, primary = `st-graph-page`, with `st-repo-picker` demoted to the first-run empty state when no repository is open.
+>
+> `graph-page` gained the pane redesign: sticky `Grafo | Commit/autor | Fecha` column header, search with a clear affordance, sticky `N of M commits` footer, and loading / offline / empty rendered via `st-empty-state`. `commit-details-panel` gained its redesign: cyan mono 7-char hash + branch chip, 22px subject + muted description, metadata `dl` with a 24px initials avatar, committer demoted to a secondary line, and one primary `Review changes` CTA — opt-in through a new `showCta` input, so the same panel stays clean in the File-status screen. `graph-context-menu` moved onto `st-popover`; `wip-row` was retokenized; `GraphStore` gained scroll-offset persistence/restore (route-scoped, in-memory), which `GraphPage`'s destroy hook queues on every exit from History — one hook covering every path out (CTA, rail entry, tab switch, deep link, browser back).
+>
+> Recorded deviations, stated as deviations: `graph-context-menu` neutralizes `st-popover`'s panel via `::ng-deep` (accepted for P3; an `unstyled`/`panelClass` input on the primitive is the follow-up); `repo-picker` keeps a native token-styled `<input>` because `st-input` cannot forward a `data-testid` to its inner input; the graph column width is exact via the shared `LANE_COLUMN_WIDTH`, while the date column is right-edge aligned rather than a fixed width.
+>
+> Verification at P3 close: renderer vitest 78 files / 1021 tests green, coverage 93.24% statements / 86.81% branches / 88.57% functions / 95.29% lines (all above the 80% thresholds); `ng build` exit 0 (the pre-existing 500 kB initial-budget warning only, now 544.86 kB). No commits were made — every change is in the working tree on `feature-rebrand-style`.
 
 **Evidence base:** every `path:line` claim below was read from the working tree, not inferred. Two findings shaped the plan: (1) `apps/angular/src/styles.scss` imports `@tailwind base/components/utilities` but there is no `tailwind.config.*`, no `postcss.config.*`, no Tailwind dependency in any workspace `package.json` and zero Tailwind utility classes in the codebase — the directives are inert; (2) `apps/angular/src/index.html` loads no font files, so the `Inter, system-ui, ...` stack silently resolves to `system-ui`.
 

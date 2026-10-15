@@ -76,6 +76,21 @@ export class GraphStore {
   /** True when the renderer runs without the Electron preload bridge. */
   readonly offline = signal(false);
 
+  // -- CDK viewport scroll memory ------------------------------------------
+  /**
+   * Remembered CDK viewport scroll offset (px) for the current repository and
+   * filter. In-memory only: the store is provided on the shared `repo.routes.ts`
+   * parent, so its lifetime spans `/repo` ↔ `/repo/file-status` and no
+   * `localStorage` round-trip is needed. The synthetic WIP row is pinned
+   * *outside* the viewport, so this value is always a plain pixel offset and
+   * never encodes the WIP row.
+   */
+  readonly scrollOffset = signal(0);
+  /** Pending offset to restore on the next graph mount, or null when none is queued. */
+  private readonly pendingRestore = signal<number | null>(null);
+  /** Read-only view of the pending restore offset (null when nothing is queued). */
+  readonly pendingScrollOffset = computed(() => this.pendingRestore());
+
   // -- commit change-size gauge (ADR-0023) ---------------------------------
   /** Counts per oid, lazily fetched for the visited window and cached. */
   readonly commitStats = signal<ReadonlyMap<string, CommitStats>>(new Map());
@@ -130,6 +145,10 @@ export class GraphStore {
       this.repoId.set(repo.id);
       this.selectedOid.set(null);
       this.filter.set('');
+      // A different repository invalidates the remembered graph position: both
+      // the offset and any pending restore are scoped to the old repo.
+      this.scrollOffset.set(0);
+      this.pendingRestore.set(null);
       await this.loadWindow(0);
       // Refresh the picker's recents now that this repo is the most recent.
       await this.loadRecentRepos();
@@ -357,6 +376,38 @@ export class GraphStore {
 
   setFilter(query: string): void {
     this.filter.set(query);
+    // A changed filter reorders the visible rows, so a remembered offset (and
+    // any pending restore) would land on the wrong row.
+    this.scrollOffset.set(0);
+    this.pendingRestore.set(null);
+  }
+
+  // -- scroll offset persistence -------------------------------------------
+
+  /**
+   * Record the viewport scroll offset (px). Called on every `elementScrolled`
+   * so the position survives a route change to `/repo/file-status` and back.
+   */
+  rememberScrollOffset(offset: number): void {
+    this.scrollOffset.set(offset);
+  }
+
+  /**
+   * Mark the remembered offset as pending restore. Called when the user leaves
+   * the graph; {@link consumeScrollRestore} hands it back once on return.
+   */
+  requestScrollRestore(): void {
+    this.pendingRestore.set(this.scrollOffset());
+  }
+
+  /**
+   * Return the pending restore offset exactly once and clear it, so a second
+   * call (or a re-mounted viewport) can never restore a stale position.
+   */
+  consumeScrollRestore(): number | null {
+    const pending = this.pendingRestore();
+    this.pendingRestore.set(null);
+    return pending;
   }
 
   private applyPage(offset: number, resp: GetCommitsResponse): void {

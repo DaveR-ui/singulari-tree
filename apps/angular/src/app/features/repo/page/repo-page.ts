@@ -1,13 +1,18 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject } from '@angular/core';
+import { Router } from '@angular/router';
+import { WorkspaceSplitComponent } from '@singularitree/ui-kit';
 import { CommitFocusService } from '@core/services/commit-focus.service';
 import { IpcBridge } from '@core/services/ipc-bridge.service';
 import { RepoState } from '@core/services/repo-state.service';
 import { GraphStore } from '../graph/graph.store';
+import { CommitDetailsPanel } from '../graph/ui/commit-details-panel';
 import { GraphPage } from '../graph/page/graph-page';
 import { RepoPicker } from '../ui/repo-picker';
 
 /**
- * Routed repository page: picker + real commit graph, filling the shell center.
+ * Routed repository page: the History workspace. It mounts the shared
+ * `st-workspace-split` (pinned commit-detail pane + flexible graph pane) and
+ * first-run `st-repo-picker` empty state.
  *
  * It also hydrates the route-scoped `GraphStore` from the root `RepoState`: the
  * repository list route only calls `RepoState.setActive()` (or opens the repo
@@ -17,17 +22,22 @@ import { RepoPicker } from '../ui/repo-picker';
 @Component({
   selector: 'st-repo-page',
   standalone: true,
-  imports: [RepoPicker, GraphPage],
+  imports: [WorkspaceSplitComponent, CommitDetailsPanel, RepoPicker, GraphPage],
   template: `
-    <section class="st-repo-page">
-      <header class="st-repo-page__head">
-        <h1 class="st-repo-page__title">Repository</h1>
-      </header>
-      <st-repo-picker />
-      <div class="st-repo-page__graph">
+    <st-workspace-split [showDetail]="showDetail()" [detailTitle]="detailTitle()">
+      <st-commit-details-panel
+        detail
+        [commit]="selectedCommit()"
+        [isWip]="isWipSelected()"
+        [showCta]="true"
+        (reviewChanges)="openChanges()"
+      />
+      @if (graphStore.repoId()) {
         <st-graph-page />
-      </div>
-    </section>
+      } @else {
+        <st-repo-picker />
+      }
+    </st-workspace-split>
   `,
   styles: `
     :host {
@@ -35,35 +45,17 @@ import { RepoPicker } from '../ui/repo-picker';
       flex-direction: column;
       height: 100%;
       min-height: 0;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
     }
 
-    .st-repo-page {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-      min-height: 0;
-    }
-
-    .st-repo-page__head {
-      flex: 0 0 auto;
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--st-color-border, #2f2f44);
-    }
-
-    .st-repo-page__title {
-      margin: 0;
-      font-size: 14px;
-      font-weight: 600;
-    }
-
-    .st-repo-page__graph {
-      display: flex;
+    /* The split fills the routed host; the graph/picker fills the primary pane. */
+    :host st-workspace-split {
       flex: 1 1 auto;
       min-height: 0;
     }
 
-    .st-repo-page__graph st-graph-page {
+    :host st-graph-page,
+    :host st-repo-picker {
       flex: 1 1 auto;
       min-height: 0;
     }
@@ -72,10 +64,26 @@ import { RepoPicker } from '../ui/repo-picker';
 })
 export class RepoPage {
   private readonly repoState = inject(RepoState);
-  private readonly graphStore = inject(GraphStore);
+  readonly graphStore = inject(GraphStore);
   private readonly commitFocus = inject(CommitFocusService);
   private readonly bridge = inject(IpcBridge);
   private readonly destroyRef = inject(DestroyRef);
+  /**
+   * Optional: the page is also constructed outside a router (unit spec), so the
+   * primary CTA's navigation degrades to a no-op there.
+   */
+  private readonly router = inject(Router, { optional: true });
+
+  /** Selected commit row's commit, or null when nothing/WIP is selected. */
+  readonly selectedCommit = computed(() => this.graphStore.selectedRow()?.commit ?? null);
+  /** Whether the synthetic working-tree (WIP) node is the current selection. */
+  readonly isWipSelected = computed(() => this.graphStore.isWipSelected());
+  /** The detail pane is pinned whenever any row (commit or WIP) is selected. */
+  readonly showDetail = computed(() => this.graphStore.selectedOid() !== null);
+  /** Header label of the pinned detail pane. */
+  readonly detailTitle = computed(() =>
+    this.isWipSelected() ? $localize`Working tree` : $localize`Commit`,
+  );
 
   /** Last observed `RepoState.statusRefreshRequested` token (dedupes the effect). */
   private lastStatusRefresh = this.repoState.statusRefreshRequested();
@@ -123,5 +131,18 @@ export class RepoPage {
     // `StatusWorkspace` fired on `fs:changed` before the band was removed.
     const unsubscribe = this.bridge.onFsChanged(() => this.graphStore.reload());
     this.destroyRef.onDestroy(unsubscribe);
+  }
+
+  /**
+   * Detail-pane primary CTA: route to the File status screen, which reads the
+   * shared graph store's selection to choose its variant (ADR-0029/0030).
+   *
+   * Defence-in-depth for the headline path: `GraphPage`'s destroy hook also
+   * queues the restore, and this explicit call keeps the CTA correct even if the
+   * pane is ever unmounted in a way that skips that hook.
+   */
+  openChanges(): void {
+    this.graphStore.requestScrollRestore();
+    void this.router?.navigate(['/repo', 'file-status']);
   }
 }

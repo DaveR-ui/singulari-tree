@@ -757,4 +757,60 @@ describe('GraphStore', () => {
 
     expect(getCommits).toHaveBeenCalledTimes(1);
   });
+
+  // -- CDK viewport scroll memory (P3) -------------------------------------
+
+  it('remembers a scroll offset, restores it once and then clears it', () => {
+    store.rememberScrollOffset(420);
+    store.requestScrollRestore();
+
+    expect(store.pendingScrollOffset()).toBe(420);
+    // Handed back exactly once...
+    expect(store.consumeScrollRestore()).toBe(420);
+    // ...then cleared, so a re-mounted viewport cannot restore a stale position.
+    expect(store.consumeScrollRestore()).toBeNull();
+    expect(store.pendingScrollOffset()).toBeNull();
+    // The remembered offset itself is untouched by the consume.
+    expect(store.scrollOffset()).toBe(420);
+  });
+
+  it('resets the offset and any pending restore when the filter changes', () => {
+    store.rememberScrollOffset(300);
+    store.requestScrollRestore();
+
+    store.setFilter('Author 1');
+
+    expect(store.filter()).toBe('Author 1');
+    expect(store.scrollOffset()).toBe(0);
+    expect(store.pendingScrollOffset()).toBeNull();
+    expect(store.consumeScrollRestore()).toBeNull();
+  });
+
+  it('resets the offset and any pending restore when a repository opens', async () => {
+    const getCommits = vi.fn(() => Promise.resolve(makePage(1, 0, 1)));
+    const openRepository = vi.fn(() => Promise.resolve(REPO));
+    const listRepositories = vi.fn(() => Promise.resolve({ repositories: [REPO] }));
+    const watch = vi.fn(() => Promise.resolve({}));
+    store = new GraphStore(makeBridge({ getCommits, openRepository, listRepositories, watch }));
+    store.rememberScrollOffset(512);
+    store.requestScrollRestore();
+
+    await store.openRepository('/tmp/repo');
+
+    expect(store.scrollOffset()).toBe(0);
+    expect(store.pendingScrollOffset()).toBeNull();
+  });
+
+  it('leaves the offset and pending restore intact when the WIP node is selected', () => {
+    store.rememberScrollOffset(256);
+    store.requestScrollRestore();
+
+    store.select(WIP_OID);
+
+    // WIP is pinned outside the viewport: selecting it never touches offset math.
+    expect(store.isWipSelected()).toBe(true);
+    expect(store.scrollOffset()).toBe(256);
+    expect(store.pendingScrollOffset()).toBe(256);
+    expect(store.consumeScrollRestore()).toBe(256);
+  });
 });

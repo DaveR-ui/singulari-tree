@@ -10,7 +10,7 @@ import {
   untracked,
 } from '@angular/core';
 import { Router, RouterOutlet, NavigationEnd } from '@angular/router';
-import { LiveRegionService, type RepoCardView, WorkspaceSplitComponent } from '@singularitree/ui-kit';
+import { LiveRegionService, type RepoCardView } from '@singularitree/ui-kit';
 import type { Repository, Stash } from '@contracts/domain';
 import type { CommitSearchHit, GitFlowConfig } from '@contracts/gitcore';
 import { CommitFocusService } from '@core/services/commit-focus.service';
@@ -78,7 +78,6 @@ interface CheckoutPrompt {
     TopBar,
     NavRail,
     StatusBar,
-    WorkspaceSplitComponent,
     RepoDrawer,
     CheckoutErrorBanner,
     PullDialog,

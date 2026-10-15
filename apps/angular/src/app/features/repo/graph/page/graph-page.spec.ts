@@ -7,6 +7,7 @@ import type { GetCommitsResponse } from '@contracts/gitcore';
 import { IpcBridge } from '@core/services/ipc-bridge.service';
 import { KeyboardShortcutService } from '@core/services/keyboard-shortcut.service';
 import { RepoState } from '@core/services/repo-state.service';
+import { LANE_COLUMN_WIDTH } from '@singularitree/ui-kit';
 import { GraphStore, WIP_OID } from '../graph.store';
 import type { CommitRow } from '../../repo-models';
 import { GraphPage } from './graph-page';
@@ -81,6 +82,11 @@ async function setup(commits = 3, total = commits, router?: { navigate: ReturnTy
     clearRefOpError: vi.fn(),
     createBranch: vi.fn(async () => true),
     createTag: vi.fn(async () => true),
+    // Read by the rendered template (the DOM-render test) — not by the
+    // instance-only wiring tests.
+    currentBranch: vi.fn(() => ''),
+    refOpRunning: vi.fn(() => false),
+    refOpError: vi.fn(() => null),
   };
   // Always provide a Router stub: the test env exposes a route-less real Router,
   // so WIP/toolbar navigation must never reach Angular's recognizer.
@@ -568,6 +574,111 @@ describe('GraphPage', () => {
 
     expect(select).not.toHaveBeenCalled();
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  // -- pane header, column header & footer (plan §4.5) ----------------------
+
+  it('sizes the column-header graph column from the highest lane', async () => {
+    const { page } = await setup();
+    expect(page.graphWidth()).toBe((page.maxLane() + 1) * LANE_COLUMN_WIDTH);
+    // Sanity: two lanes for the fixture page.
+    expect(page.graphWidth()).toBe(2 * LANE_COLUMN_WIDTH);
+  });
+
+  it('clears the filter through the search clear affordance', async () => {
+    const { store, page } = await setup();
+    store.setFilter('commit 2');
+    expect(store.filter()).toBe('commit 2');
+
+    page.clearFilter();
+
+    expect(store.filter()).toBe('');
+    expect(store.filteredRows()).toHaveLength(3);
+  });
+
+  it('reports the filtered and total commit counts in the footer', async () => {
+    const { store, page } = await setup(3, 10);
+    expect(page.countLabel()).toBe('3 of 10 commits');
+
+    store.setFilter('commit 1');
+    expect(page.countLabel()).toBe('1 of 10 commits');
+  });
+
+  // -- scroll restore (plan §4.6) -------------------------------------------
+
+  it('queues a scroll restore when leaving History for File status', async () => {
+    const navigate = vi.fn(() => Promise.resolve(true));
+    const { store, page } = await setup(3, 3, { navigate });
+    store.rememberScrollOffset(84);
+
+    page.onFileStatus(makeCommit(1).oid?.hex ?? '');
+
+    expect(store.pendingScrollOffset()).toBe(84);
+    expect(navigate).toHaveBeenCalledWith(['/repo', 'file-status']);
+  });
+
+  it('restores the pending scroll offset once through the glue method', async () => {
+    const { store, page } = await setup();
+    store.rememberScrollOffset(140);
+    store.requestScrollRestore();
+    const consume = vi.spyOn(store, 'consumeScrollRestore');
+
+    // No template in this spec, so there is no CDK viewport to scroll — but the
+    // pending offset is still consumed exactly once so it cannot leak.
+    expect(page.restoreScroll()).toBe(140);
+    expect(consume).toHaveBeenCalledTimes(1);
+
+    expect(page.restoreScroll()).toBeNull();
+    expect(consume).toHaveBeenCalledTimes(1);
+  });
+
+  it('is a no-op scroll restore when nothing is pending', async () => {
+    const { page, store } = await setup();
+    const consume = vi.spyOn(store, 'consumeScrollRestore');
+
+    expect(page.restoreScroll()).toBeNull();
+    expect(consume).not.toHaveBeenCalled();
+  });
+
+  it('queues the remembered offset through the named destroy-hook method', async () => {
+    const { store, page } = await setup(3);
+    store.rememberScrollOffset(96);
+    const request = vi.spyOn(store, 'requestScrollRestore');
+
+    // The destroy hook (and both explicit exits) funnel through this method.
+    page.queueScrollRestore();
+
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(store.pendingScrollOffset()).toBe(96);
+    // Handed back exactly once, then cleared.
+    expect(store.consumeScrollRestore()).toBe(96);
+    expect(store.consumeScrollRestore()).toBeNull();
+  });
+
+  // -- empty-state glyphs (the primitive renders `icon()` as literal text) ---
+
+  it('renders glyphs, never bare words, in the loading and offline empty states', async () => {
+    const { store } = await setup(3);
+    const fixture = TestBed.createComponent(GraphPage);
+    fixture.detectChanges();
+
+    store.loading.set(true);
+    store.offline.set(true);
+    fixture.detectChanges();
+
+    const iconText = (id: string): string =>
+      (
+        (fixture.nativeElement as HTMLElement).querySelector(
+          `[data-testid="${id}"] [data-testid="empty-state-icon"]`,
+        )?.textContent ?? ''
+      ).trim();
+
+    // `st-empty-state` prints `icon()` verbatim, so passing "history"/"offline"
+    // would render those words; the shipped glyphs never do.
+    expect(iconText('graph-loading')).toBe('⏳');
+    expect(iconText('graph-offline')).toBe('🔌');
+    expect(['history', 'offline']).not.toContain(iconText('graph-loading'));
+    expect(['history', 'offline']).not.toContain(iconText('graph-offline'));
   });
 
   afterEach(() => {
