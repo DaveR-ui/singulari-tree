@@ -384,18 +384,28 @@ func TestFetchContextCancellationClosesChannel(t *testing.T) {
 	src := initRepo(t)
 	gitRun(t, src, "branch", "-M", "main")
 	gitRun(t, src, "remote", "add", "origin", "ssh://git@example.invalid/repo.git")
-	// Git runs this instead of ssh; sleep keeps the fetch in flight until the
-	// context deadline kills the process. The shim changes out of the
-	// repository before sleeping: on cancellation exec.CommandContext kills
-	// only git, while the sleep child survives with the working directory git
-	// gave it (the repo, because the fetch runs as `git -C <repo>`). On Windows
-	// a live process whose current directory is a directory blocks that
-	// directory's removal, so t.TempDir's RemoveAll would fail with "being used
-	// by another process" for as long as the child lives; moving the child off
-	// the repo first avoids that. sleep outlasts the 300ms deadline, so the
-	// operation is still in flight when the context is cancelled and the
-	// assertion is unchanged.
-	t.Setenv("GIT_SSH_COMMAND", "sh -c 'cd / && exec sleep 5' --")
+	// Git runs this shim in place of ssh, through its own transport shell
+	// wrapper (`sh -c '<shim> "$@"' <shim> <host> <upload-pack cmd>`, the form
+	// GIT_TRACE shows; git also accepts an appended-args form) that inherits the cwd
+	// git was given — the repo, via `git -C <repo>`. sleep keeps the fetch in
+	// flight until the 300ms context deadline kills git. On cancellation
+	// exec.CommandContext kills only git, so on Windows TWO processes survive:
+	// git's outer `sh -c` wrapper (bash does not exec-optimize, so it stays
+	// alive waiting on its child) AND the leaf it forks. The wrapper is the
+	// actual blocker: it inherits the repo as cwd, and Windows refuses to remove
+	// a directory that is any live process's current directory, so t.TempDir's
+	// RemoveAll fails with "being used by another process" until they exit
+	// (~5.3s) while cleanup runs at test end — ~3.07s on the CI runner, the
+	// 300ms deadline plus Windows process-spawn overhead in the setup git runs.
+	// Running `cd /` in the OUTERMOST shell — the wrapper git spawns,
+	// before anything forks — moves the wrapper's own cwd off the repo, so every
+	// process in the tree has cwd=/ and none holds the temp repo. `exec` then
+	// collapses both layers into the single sleep; the trailing `--` swallows
+	// the `<host> <upload-pack cmd>` args git appends after the shim ($0/$1… of
+	// the inner `sh -c`), harmless under both git composite forms. sleep
+	// outlasts the deadline, so the fetch is still in flight at cancellation and
+	// the assertion is unchanged.
+	t.Setenv("GIT_SSH_COMMAND", "cd / && exec sh -c 'exec sleep 5' --")
 
 	repoID := domain.RepositoryId("repo-1")
 	a := NewAdapter(&fakeRepoPort{fsPath: src})
