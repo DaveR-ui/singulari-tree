@@ -8,7 +8,7 @@ tags:
 - tokens
 - theming
 - ui-kit
-version: 1.4
+version: 1.5
 related:
 - renderer-redesign-plan
 - renderer-slice
@@ -193,7 +193,7 @@ All numeric columns set `font-variant-numeric: tabular-nums` (`.st-tabular-nums`
 | `--st-size-detail-pane` | 380px | pinned detail pane in a split |
 | `--st-size-pane-min` | 320px | minimum pane and popover width |
 | `--st-size-row-graph` | 28px | commit-graph row (frozen — must equal `GRAPH_ROW_HEIGHT`) |
-| `--st-size-row-tree` | 28px | tree/file row |
+| `--st-size-row-tree` | 28px | tree/file row — overridden at runtime by the density preference (28px comfortable / 24px compact via `:root[data-st-density=…]`); the only token density touches, so `--st-size-row-graph` and `--st-size-row-tree-dense` stay unaffected |
 | `--st-size-row-tree-dense` | 24px | dense tree row, nav item, split detail header |
 | `--st-size-control-sm` | 24px | small control (icon buttons, toggle segments) |
 | `--st-size-control-md` | 28px | medium control (buttons, inputs) |
@@ -210,6 +210,8 @@ All numeric columns set `font-variant-numeric: tabular-nums` (`.st-tabular-nums`
 | `--st-ease` | `cubic-bezier(0.2, 0.7, 0.2, 1)` | the single easing curve |
 
 Two guards in `utilities.scss` neutralise the whole set: the `prefers-reduced-motion: reduce` guard is scoped to `:root:not([data-st-motion='on'])`, so an explicit user `on` survives an OS "reduce"; and a `:root[data-st-motion='off']` guard neutralises unconditionally, with no media query. `PreferencesService` enforces the Settings `auto | on | off` choice at runtime by writing `<html data-st-motion>` (mirroring `ThemeService`'s `data-theme`) — `auto` removes the attribute and follows the OS, `on` opts back in, `off` kills motion. There is no motion on selection change, scroll, or graph rows.
+
+Density is enforced the same way: `PreferencesService` writes `<html data-st-density="compact|comfortable">` synchronously at construction and from an `effect()` on every change (both values explicit — there is no "follow the OS" state, so the attribute is never removed). The sole consumer is the `:root[data-st-density=…]` override of `--st-size-row-tree` (24px compact / 28px comfortable), which flips every file/tree row consumer at once while the frozen graph row and the dense-row token stay untouched. Motion and density are the **two runtime-enforced preferences**; the other `st:` keys (`paneWidth`, `diffFontSize`, `diffWordWrap`) are consumed through component inputs, not by the service.
 
 ### Z-index scale
 
@@ -278,6 +280,8 @@ A visually-hidden `role="status"` region with `politeness` `polite | assertive`.
 
 A pinned detail pane plus a flexible primary pane — never two equal columns. Elements marked `[detail]` project into the pinned pane (rendered only while `showDetail` is true); the default slot is the primary pane. Panel width defaults to `--st-size-detail-pane`.
 
+An opt-in `resizable` divider sits at the detail pane's right edge. `detailWidth` (`string | null`) carries an explicit CSS length — a pixel value (`420px`) becomes an inline width, `null` falls back to `var(--st-size-detail-pane)` (380px); `resizable` (default `false`) renders the handle; `detailWidthResized` emits a pixel number once per settled drag and per keyboard step. Drag and keyboard are clamped to `[320, max(320, host width − 320)]` — 320px mirrors `--st-size-pane-min` and is the floor for **both** panes. The handle is a `role="separator"` (`aria-orientation="vertical"`, `aria-valuemin/max/now`, `tabindex="0"`, a `$localize` "Resize detail pane" label): ArrowLeft/ArrowRight step ±16px (Shift ±64), Home = 320, End = max. A constructor `effect()` drops a local drag override whenever the external `detailWidth` input changes, so a restore or reset always wins. The divider is `display: none` inside the ≤800px block (the sanctioned `width: 100% !important` collapse still beats any inline width). The component stays dumb — the app host binds the persisted `st:paneWidth` in and persists the emitted width out.
+
 ### `st-empty-state`
 **Role:** centered empty / placeholder block
 
@@ -296,7 +300,7 @@ A fixed 28px row (`GRAPH_ROW_HEIGHT`, matching `--st-size-row-graph`) holding an
 ### `st-diff-viewer`
 **Role:** read-only diff surface
 
-Mounts a lazily-loaded Monaco `DiffEditor` when a real textual diff is available, and a plain tokenized grid fallback otherwise (a 4-column insert/delete/context grid, shown before the chunk loads, in tests, or if initialization fails). Distinct notices cover truncated, error, loading, binary, conflict and empty diffs. Monaco renders read-only `plaintext` models at `fontSize: 12` on a `lineHeight: 24` grid with the `--st-font-mono` family and is unified by default (`renderSideBySide: false`). Two token-derived custom themes — `singularitree-dark` and `singularitree-light` in `libs/ui-kit/src/diff-viewer/monaco-theme.ts`, mirroring the `--st-color-*` diff, gutter and surface values in both themes — are registered by the lazy loader (`defineTheme`) before it hands back the module, and `setTheme` follows the current `data-theme` so the editor never flashes the built-in theme. The layout persists through `DiffModeService` (`st:diffMode`, default `unified`); the file-status diff-pane header toggle (`st-toggle-group`, Unified / Side by side) flips it live.
+Mounts a lazily-loaded Monaco `DiffEditor` when a real textual diff is available, and a plain tokenized grid fallback otherwise (a 4-column insert/delete/context grid, shown before the chunk loads, in tests, or if initialization fails). Distinct notices cover truncated, error, loading, binary, conflict and empty diffs. Monaco renders read-only `plaintext` models with the `--st-font-mono` family and is unified by default (`renderSideBySide: false`). Font size and soft wrap are inputs driven by the persisted preferences — `fontSize` (number, `11 | 12 | 13`, default `12`) and `wordWrap` (boolean, default `false`) — with the line height exactly 2× the font size via the exported pure helper `diffLineHeight(fontSize) => fontSize * 2` (11→22, 12→24, 13→26, matching `--st-leading-code`). Both reach Monaco in `createDiffEditor` and follow it live through `editor.updateOptions` only — never a remount — and the non-Monaco 4-column fallback grid carries the same values as a `data-wrap="on|off"` attribute plus inline `font-size`/`line-height` (wrapped = `white-space: pre-wrap` + `word-break: break-all`; unwrapped = `white-space: pre` with a `max-content` last grid track so long lines overflow and scroll horizontally). Two token-derived custom themes — `singularitree-dark` and `singularitree-light` in `libs/ui-kit/src/diff-viewer/monaco-theme.ts`, mirroring the `--st-color-*` diff, gutter and surface values in both themes — are registered by the lazy loader (`defineTheme`) before it hands back the module, and `setTheme` follows the current `data-theme` so the editor never flashes the built-in theme. The layout persists through `DiffModeService` (`st:diffMode`, default `unified`); the file-status diff-pane header toggle (`st-toggle-group`, Unified / Side by side) flips it live.
 
 ### `st-modal` (app-level, not ui-kit)
 **Role:** shared dialog shell

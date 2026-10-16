@@ -363,3 +363,25 @@
   --st-z-modal: 100;
   --st-z-toast: 120;
 }
+
+/* ── Density override (Settings → PreferencesService) ──────────────────── */
+/*
+ * Enforced at runtime exactly like `data-st-motion`: `PreferencesService` writes
+ * `<html data-st-density="compact|comfortable">` synchronously at boot and from
+ * an `effect()` on every change (both values are explicit, so the attribute is
+ * always present and never removed). Overriding ONLY `--st-size-row-tree` flips
+ * every file/tree row consumer at once, while the frozen `--st-size-row-graph`
+ * (graph alignment, must equal `GRAPH_ROW_HEIGHT`) and `--st-size-row-tree-dense`
+ * (nav rail, split detail header, graph rows, diff header) are deliberately
+ * untouched so graph alignment never moves. The shipped default preference is
+ * `comfortable`, so file/tree rows render 28px unless the user picks Compact.
+ * This block sits after the theme blocks and its `:root[data-st-density]`
+ * selector outranks both `:root` and `[data-theme='light']`, so density wins in
+ * either theme.
+ */
+:root[data-st-density='compact'] {
+  --st-size-row-tree: 24px;
+}
+:root[data-st-density='comfortable'] {
+  --st-size-row-tree: 28px;
+}

@@ -28,12 +28,13 @@ import {
  * `DiffModeService`, the same service the diff-pane toggle uses — its state is
  * never mirrored here).
  *
- * **Persisted now, consuming surface still to land:** motion enforcement
- * (plan §2.6 — the stored `auto | on | off` override is written, the global
- * `prefers-reduced-motion` guard already neutralises the motion set, and the
- * runtime `off` switch is P6), density, pane width, diff font size and diff
- * word wrap. These values are real and persisted; no UI in this slice reads
- * them back yet.
+ * **Enforced / consumed now:** motion (plan §2.6 — `PreferencesService` applies
+ * the stored `auto | on | off` to `<html data-st-motion>` at boot and on every
+ * change, so the runtime `off` switch landed with P6) and density (applied to
+ * `<html data-st-density>` the same way, driving the shared `--st-size-row-tree`
+ * token that sizes every file/tree row). Pane width, diff font size and diff word
+ * wrap are persisted here and consumed by their host surfaces — the workspace
+ * split and the diff viewer — through ui-kit inputs.
  *
  * The About panel is read-only: it names the product and the shipped design
  * direction and records that git-configuration editing is deferred to V1

@@ -57,12 +57,14 @@ describe('initializeShellState (app-start initializer)', () => {
     TestBed.resetTestingModule();
     document.documentElement.removeAttribute('data-theme');
     document.documentElement.removeAttribute('data-st-motion');
+    document.documentElement.removeAttribute('data-st-density');
   });
 
   afterEach(() => {
     TestBed.resetTestingModule();
     document.documentElement.removeAttribute('data-theme');
     document.documentElement.removeAttribute('data-st-motion');
+    document.documentElement.removeAttribute('data-st-density');
   });
 
   it('applies the persisted light theme and resolves the stored language at startup', () => {
@@ -95,5 +97,26 @@ describe('initializeShellState (app-start initializer)', () => {
 
     expect(TestBed.inject(PreferencesService).motion()).toBe('off');
     expect(document.documentElement.getAttribute('data-st-motion')).toBe('off');
+  });
+
+  it('applies a persisted density preference at startup', () => {
+    installStorage({ 'st:density': 'comfortable' });
+    TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection()] });
+
+    TestBed.runInInjectionContext(initializeShellState);
+
+    expect(TestBed.inject(PreferencesService).density()).toBe('comfortable');
+    expect(document.documentElement.getAttribute('data-st-density')).toBe('comfortable');
+  });
+
+  it('applies the default comfortable density at startup when nothing is persisted', () => {
+    installStorage({});
+    TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection()] });
+
+    TestBed.runInInjectionContext(initializeShellState);
+
+    // Density has no "follow the OS" state, so <html> always carries it.
+    expect(TestBed.inject(PreferencesService).density()).toBe('comfortable');
+    expect(document.documentElement.getAttribute('data-st-density')).toBe('comfortable');
   });
 });

@@ -2,6 +2,7 @@ export {
   DiffViewer,
   MONACO_ENVIRONMENT_AVAILABLE,
   MONACO_LOADER,
+  diffLineHeight,
   monacoEnvironmentAvailable,
   shouldInitializeMonaco,
 } from './diff-viewer';

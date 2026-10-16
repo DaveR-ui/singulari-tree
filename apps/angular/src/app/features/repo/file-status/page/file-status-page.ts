@@ -4,6 +4,7 @@ import { DiffViewer, ToggleGroupComponent, WorkspaceSplitComponent } from '@sing
 import { DiffModeService } from '@core/services/diff-mode.service';
 import type { DiffMode } from '@core/services/diff-mode.service';
 import { IpcBridge } from '@core/services/ipc-bridge.service';
+import { PreferencesService } from '@core/services/preferences.service';
 import { RepoState } from '@core/services/repo-state.service';
 import { GraphStore, WIP_OID } from '../../graph/graph.store';
 import { CommitDetailsPanel } from '../../graph/ui/commit-details-panel';
@@ -30,6 +31,9 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
  * file into a single-file `Diff` for the unchanged `DiffViewer` (which reads
  * only the deprecated flat `hunks` field), so the whole diff is never handed to
  * the viewer.
+ *
+ * The persisted diff typography and pane-width preferences now flow through the
+ * viewer's and split's inputs.
  */
 @Component({
   selector: 'st-file-status-page',
@@ -45,7 +49,7 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <st-workspace-split [showDetail]="true" detailTitle="">
+    <st-workspace-split [showDetail]="true" detailTitle="" [detailWidth]="detailWidth()" [resizable]="true" (detailWidthResized)="setPaneWidth($event)">
       <!-- pinned LEFT: variant bar + the variant body -->
       <div class="st-file-status__left" detail>
         <st-file-status-variant-bar
@@ -147,6 +151,8 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
           [errorMsg]="fs.rightError()"
           [truncated]="fs.truncated()"
           [renderSideBySide]="diffMode.sideBySide()"
+          [fontSize]="diffFontSizePx()"
+          [wordWrap]="diffWordWrapOn()"
         />
       </div>
     </st-workspace-split>
@@ -271,9 +277,26 @@ export class FileStatusPage {
   private readonly repoState = inject(RepoState);
   private readonly bridge = inject(IpcBridge);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly prefs = inject(PreferencesService);
 
   /** Last observed `RepoState.statusRefreshRequested` token (dedupes the effect). */
   private lastStatusRefresh = this.repoState.statusRefreshRequested();
+
+  /**
+   * The persisted `st:paneWidth` drives the pinned left pane; `null` keeps the
+   * 380px token default.
+   */
+  readonly detailWidth = computed<string | null>(() => {
+    const width = this.prefs.paneWidth();
+    return width ? `${width}px` : null;
+  });
+
+  /**
+   * Persisted diff typography preferences passed into the dumb viewer: the
+   * numeric font size and the soft-wrap flag.
+   */
+  readonly diffFontSizePx = computed(() => Number(this.prefs.diffFontSize()));
+  readonly diffWordWrapOn = computed(() => this.prefs.diffWordWrap() === 'on');
 
   /**
    * Last graph selection this screen followed, resolved to the oid it names
@@ -444,6 +467,14 @@ export class FileStatusPage {
   /** Apply a diff-layout picked by the user (renderer-local preference). */
   onDiffMode(value: string): void {
     this.diffMode.setMode(value as DiffMode);
+  }
+
+  /**
+   * The split emits pixels and the service owns persistence/validation, so this
+   * only rounds the value and forwards it.
+   */
+  setPaneWidth(width: number): void {
+    this.prefs.setPaneWidth(String(Math.round(width)));
   }
 
   onStageHunk(event: HunkActionEvent): void {

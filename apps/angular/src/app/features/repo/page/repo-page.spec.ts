@@ -154,6 +154,51 @@ async function setup(initial: Repository | null = REPO_A) {
   return { repoState, graphStore, bridge, status };
 }
 
+/** In-memory Storage stand-in: jsdom's own localStorage is absent on globalThis. */
+class MemoryStorage implements Storage {
+  private readonly map = new Map<string, string>();
+
+  get length(): number {
+    return this.map.size;
+  }
+
+  clear(): void {
+    this.map.clear();
+  }
+
+  getItem(key: string): string | null {
+    return this.map.has(key) ? (this.map.get(key) as string) : null;
+  }
+
+  key(index: number): string | null {
+    return Array.from(this.map.keys())[index] ?? null;
+  }
+
+  removeItem(key: string): void {
+    this.map.delete(key);
+  }
+
+  setItem(key: string, value: string): void {
+    this.map.set(key, String(value));
+  }
+}
+
+/** Install a memory `localStorage` on `globalThis` and return its restore handle. */
+function installStorage(entries: Record<string, string> = {}): () => void {
+  const storage = new MemoryStorage();
+  for (const [key, value] of Object.entries(entries)) storage.setItem(key, value);
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: storage,
+    configurable: true,
+    writable: true,
+  });
+  return () => {
+    if (previous) Object.defineProperty(globalThis, 'localStorage', previous);
+    else delete (globalThis as { localStorage?: unknown }).localStorage;
+  };
+}
+
 describe('RepoPage hydration', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -784,6 +829,52 @@ describe('RepoPage workspace split', () => {
     expect(graphStore.repoId()).toBeNull();
     expect(el.querySelector('[data-testid="repo-picker-stub"]')).not.toBeNull();
     expect(el.querySelector('[data-testid="graph-stub"]')).toBeNull();
+  });
+
+  // -- persisted pane width reaches the mounted split (plan 4.9) -------------
+
+  describe('with a persisted st:paneWidth', () => {
+    let restoreStorage: () => void;
+
+    beforeEach(() => {
+      // The preference is read in PreferencesService's constructor, so the
+      // memory storage must exist before the page is created.
+      restoreStorage = installStorage({ 'st:paneWidth': '420' });
+    });
+
+    afterEach(() => {
+      restoreStorage();
+    });
+
+    it('applies the persisted pane width to the rendered detail pane', async () => {
+      const { fixture, graphStore } = await renderWithGraph();
+      graphStore.selectedOid.set(COMMIT_OID);
+      fixture.detectChanges();
+
+      const detail = host(fixture).querySelector<HTMLElement>(
+        '[data-testid="workspace-detail"]',
+      );
+      expect(detail).not.toBeNull();
+      expect(detail!.style.width).toBe('420px');
+    });
+
+    it('persists st:paneWidth when the split divider is dragged', async () => {
+      const { fixture, graphStore } = await renderWithGraph();
+      graphStore.selectedOid.set(COMMIT_OID);
+      fixture.detectChanges();
+
+      // The split is opt-in resizable, so the divider is really mounted.
+      const divider = host(fixture).querySelector<HTMLElement>(
+        '[data-testid="workspace-divider"]',
+      );
+      expect(divider).not.toBeNull();
+
+      divider!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+      fixture.detectChanges();
+
+      // The page only rounds the emitted pixels and forwards them to the service.
+      expect(localStorage.getItem('st:paneWidth')).toBe('320');
+    });
   });
 
   it('re-opens a repo whose previous open failed when it is selected again', async () => {

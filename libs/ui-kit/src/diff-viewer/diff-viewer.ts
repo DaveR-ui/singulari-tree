@@ -52,6 +52,15 @@ export function monacoEnvironmentAvailable(): boolean {
 }
 
 /**
+ * Code grid line height: exactly 2× the font size. The Settings presets are
+ * 11→22, 12→24 (the shipped pair) and 13→26, so the mono code stays on a 2×
+ * grid in both the Monaco editor and the CSS fallback.
+ */
+export function diffLineHeight(fontSize: number): number {
+  return fontSize * 2;
+}
+
+/**
  * Environment probe used before the dynamic import. The default checks the
  * browser worker environment; tests override it to exercise the init path in
  * jsdom without booting Monaco.
@@ -80,6 +89,12 @@ export const MONACO_LOADER = new InjectionToken<MonacoLoader>('MONACO_LOADER', {
  * arrives asynchronously, so a single post-render attempt is not enough. An
  * effect keyed on the diff + guards + container query mounts the editor as soon
  * as a real diff is available (idempotent, no-op when already mounted).
+ *
+ * The `fontSize` (11 | 12 | 13) and `wordWrap` inputs are pure pass-throughs of
+ * the persisted diff preferences; the host app reads them from `PreferencesService`
+ * and binds them here (this dumb component never reads preferences itself). Both
+ * drive the Monaco editor and the fallback grid live, and the code line height is
+ * always exactly 2× the font size (see `diffLineHeight`).
  */
 @Component({
   selector: 'st-diff-viewer',
@@ -112,7 +127,13 @@ export const MONACO_LOADER = new InjectionToken<MonacoLoader>('MONACO_LOADER', {
     } @else {
       <div class="st-diff-viewer__editor" #container></div>
       @if (!monacoReady()) {
-        <div class="st-diff-viewer__fallback" data-testid="diff-fallback">
+        <div
+          class="st-diff-viewer__fallback"
+          data-testid="diff-fallback"
+          [attr.data-wrap]="wordWrap() ? 'on' : 'off'"
+          [style.font-size.px]="fontSize()"
+          [style.line-height.px]="diffLineHeight(fontSize())"
+        >
           @for (row of fallbackRows(); track $index) {
             @if (row.kind === 'hunk' || row.kind === 'meta') {
               <div
@@ -196,9 +217,29 @@ export const MONACO_LOADER = new InjectionToken<MonacoLoader>('MONACO_LOADER', {
       text-align: center;
     }
 
-    .st-diff-viewer__gtext {
+    /* Wrap contract: the container carries a data-wrap attribute; 'on'
+       soft-wraps long lines inside the code column, 'off' keeps
+       white-space: pre and lets the row's last grid track grow to max-content
+       so long lines overflow and scroll horizontally (the host already has
+       overflow: auto). */
+    .st-diff-viewer__fallback[data-wrap='on'] .st-diff-viewer__gtext {
       white-space: pre-wrap;
       word-break: break-all;
+    }
+
+    .st-diff-viewer__fallback[data-wrap='off'] .st-diff-viewer__gtext {
+      white-space: pre;
+      word-break: normal;
+    }
+
+    .st-diff-viewer__fallback[data-wrap='off'] .st-diff-viewer__fallback-row {
+      /* The last track grows to max-content so long lines overflow and scroll
+         horizontally; the row box must grow with it (min-width keeps it full
+         width for short lines) or the add/remove tints would paint only the
+         border box and vanish as soon as the reader scrolls right. */
+      grid-template-columns: 36px 36px 20px max-content;
+      width: max-content;
+      min-width: 100%;
     }
 
     .st-diff-viewer__fallback-row[data-kind='added'] {
@@ -223,6 +264,13 @@ export class DiffViewer {
    * the Settings toggle flips it live.
    */
   readonly renderSideBySide = input(false);
+  /** Diff code font size in CSS pixels (Settings: 11 | 12 | 13). Default 12. */
+  readonly fontSize = input(12);
+  /** Diff soft wrap (Settings on/off). Default false. */
+  readonly wordWrap = input(false);
+
+  /** Exposed to the template for the fallback grid's inline line height (2×). */
+  protected readonly diffLineHeight = diffLineHeight;
 
   private readonly loader = inject(MONACO_LOADER);
   private readonly environmentAvailable = inject(MONACO_ENVIRONMENT_AVAILABLE);
@@ -277,6 +325,21 @@ export class DiffViewer {
     effect(() => {
       const renderSideBySide = this.renderSideBySide();
       this.editor?.updateOptions({ renderSideBySide });
+    });
+
+    // Live typography/wrap: keep a mounted editor in sync when `fontSize` or
+    // `wordWrap` change (no-op on init, when the editor is still null). Both
+    // inputs are read unconditionally so the effect tracks them even before the
+    // editor mounts. Options go through `updateOptions` only — never a remount,
+    // so the change applies without a flash.
+    effect(() => {
+      const fontSize = this.fontSize();
+      const wordWrap = this.wordWrap();
+      this.editor?.updateOptions({
+        fontSize,
+        lineHeight: diffLineHeight(fontSize),
+        wordWrap: wordWrap ? 'on' : 'off',
+      });
     });
 
     // Safety net for the first render (`#container` present on the first pass).
@@ -339,11 +402,14 @@ export class DiffViewer {
         automaticLayout: true,
         minimap: { enabled: false },
         scrollBeyondLastLine: false,
-        // 12px mono on a 24px code grid (plan §4.6/§2.3), matching the CSS
-        // fallback's `--st-leading-code`; the font family mirrors `--st-font-mono`.
+        // Mono font family mirrors `--st-font-mono`; the font size comes from the
+        // persisted preference (Settings: 11 | 12 | 13) and the code grid line
+        // height is exactly 2× that value (11→22, 12→24, 13→26, matching the CSS
+        // fallback's `--st-leading-code`), so both surfaces stay aligned.
         fontFamily: "Consolas, 'Liberation Mono', ui-monospace, monospace",
-        fontSize: 12,
-        lineHeight: 24,
+        fontSize: this.fontSize(),
+        lineHeight: diffLineHeight(this.fontSize()),
+        wordWrap: this.wordWrap() ? 'on' : 'off',
       });
       this.editor.setModel({ original: this.originalModel, modified: this.modifiedModel });
       this.mountedContainer = container;

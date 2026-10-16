@@ -1,7 +1,7 @@
 import { provideZonelessChangeDetection, signal, type WritableSignal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Branch, Commit, Diff, FileDiff, FileStatus, Hunk, Repository } from '@contracts/domain';
 import { DiffViewer } from '@singularitree/ui-kit';
 import { DiffModeService } from '@core/services/diff-mode.service';
@@ -138,6 +138,7 @@ async function setup(
     diff?: () => Diff;
     commits?: () => Commit[];
   } = {},
+  storage?: Record<string, string>,
 ): Promise<Harness> {
   const getDiff = vi.fn(() => Promise.resolve(options.diff ? options.diff() : wholeDiff()));
   const stageHunk = vi.fn(() => Promise.resolve({}));
@@ -191,6 +192,10 @@ async function setup(
       { provide: GraphStore, useValue: graph },
     ],
   }).compileComponents();
+
+  // Root preferences are read in PreferencesService's constructor, so any
+  // persisted value must be in place before the page (and its viewer) mount.
+  if (storage) installStorage(storage);
 
   const fixture = TestBed.createComponent(FileStatusPage);
   fixture.detectChanges();
@@ -274,6 +279,51 @@ function assertDiffOnRight(fixture: ComponentFixture<FileStatusPage>): void {
   expect(detail!.contains(left!)).toBe(true);
   expect(primary!.contains(right!)).toBe(true);
   expect(detail!.contains(right!)).toBe(false);
+}
+
+/** In-memory Storage stand-in: jsdom's own localStorage is absent on globalThis. */
+class MemoryStorage implements Storage {
+  private readonly map = new Map<string, string>();
+
+  get length(): number {
+    return this.map.size;
+  }
+
+  clear(): void {
+    this.map.clear();
+  }
+
+  getItem(key: string): string | null {
+    return this.map.has(key) ? (this.map.get(key) as string) : null;
+  }
+
+  key(index: number): string | null {
+    return Array.from(this.map.keys())[index] ?? null;
+  }
+
+  removeItem(key: string): void {
+    this.map.delete(key);
+  }
+
+  setItem(key: string, value: string): void {
+    this.map.set(key, String(value));
+  }
+}
+
+/** Install a memory `localStorage` on `globalThis` and return its restore handle. */
+function installStorage(entries: Record<string, string> = {}): () => void {
+  const storage = new MemoryStorage();
+  for (const [key, value] of Object.entries(entries)) storage.setItem(key, value);
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: storage,
+    configurable: true,
+    writable: true,
+  });
+  return () => {
+    if (previous) Object.defineProperty(globalThis, 'localStorage', previous);
+    else delete (globalThis as { localStorage?: unknown }).localStorage;
+  };
 }
 
 describe('FileStatusPage', () => {
@@ -967,5 +1017,79 @@ describe('FileStatusPage', () => {
 
     expect(viewer(fixture).truncated()).toBe(true);
     expect(query(fixture, 'diff-truncated')).not.toBeNull();
+  });
+});
+
+// -- persisted preferences reach the mounted surfaces (plan 4.9) -------------
+
+describe('FileStatusPage persisted preferences', () => {
+  let restoreStorage: () => void;
+
+  beforeEach(() => {
+    // Root preferences are read in PreferencesService's constructor, so the
+    // memory storage must exist before the page (and its viewer) mount.
+    restoreStorage = installStorage({});
+  });
+
+  afterEach(() => {
+    restoreStorage();
+    TestBed.resetTestingModule();
+  });
+
+  it('applies a persisted st:paneWidth to the rendered detail pane', async () => {
+    localStorage.setItem('st:paneWidth', '420');
+    const { fixture, fs } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    fixture.detectChanges();
+
+    const detail = query(fixture, 'workspace-detail');
+    expect(detail).not.toBeNull();
+    expect(detail!.style.width).toBe('420px');
+  });
+
+  it('persists st:paneWidth when the split divider is dragged', async () => {
+    localStorage.setItem('st:paneWidth', '420');
+    const { fixture, fs } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    fixture.detectChanges();
+
+    // The split is opt-in resizable, so the divider is really mounted.
+    const divider = query(fixture, 'workspace-divider');
+    expect(divider).not.toBeNull();
+
+    divider!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    fixture.detectChanges();
+
+    // The page only rounds the emitted pixels and forwards them to the service.
+    expect(localStorage.getItem('st:paneWidth')).toBe('320');
+  });
+
+  it('defaults the mounted viewer to 12px with wrap off', async () => {
+    const { fixture, fs } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    fixture.detectChanges();
+
+    expect(viewer(fixture).fontSize()).toBe(12);
+    expect(viewer(fixture).wordWrap()).toBe(false);
+  });
+
+  it('passes the persisted diff typography to the mounted viewer', async () => {
+    localStorage.setItem('st:diffFontSize', '13');
+    localStorage.setItem('st:diffWordWrap', 'on');
+    const { fixture, fs } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    fixture.detectChanges();
+
+    expect(viewer(fixture).fontSize()).toBe(13);
+    expect(viewer(fixture).wordWrap()).toBe(true);
+    // The same preferences drive the fallback grid's inline typography.
+    fs.selectFile('a.ts');
+    await vi.waitFor(() => expect(fs.selectedPath()).toBe('a.ts'));
+    await settle(fixture);
+    const fallback = query(fixture, 'diff-fallback');
+    expect(fallback).not.toBeNull();
+    expect(fallback!.getAttribute('data-wrap')).toBe('on');
+    expect(fallback!.style.fontSize).toBe('13px');
+    expect(fallback!.style.lineHeight).toBe('26px');
   });
 });

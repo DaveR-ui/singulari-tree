@@ -40,6 +40,18 @@ const DIFF_WORD_WRAP_STORAGE_KEY = 'st:diffWordWrap';
  * `prefers-reduced-motion` query decides; `on` opts back in even under reduce;
  * `off` neutralises motion unconditionally.
  *
+ * Density is enforced the same way — synchronously for the boot value and from
+ * an `effect()` on every change — by writing an explicit
+ * `<html data-st-density="compact|comfortable">`. Unlike motion's `auto` there is
+ * no "follow the OS" state, so the attribute is always present and never removed;
+ * the single token it overrides (`--st-size-row-tree`) flips every file/tree row
+ * consumer at once while graph and dense rows stay frozen. The shipped default is
+ * `comfortable` (28px rows), so only an explicit `compact` persisted value renders
+ * the 24px rows. The remaining keys —
+ * pane width, diff font size and diff word wrap — are persisted here but consumed
+ * by their host surfaces (the workspace split and the diff viewer) through ui-kit
+ * inputs, not by this service.
+ *
  * Invalid or unknown persisted values always fall back to the documented
  * default rather than crashing or propagating a bad value.
  */
@@ -68,11 +80,16 @@ export class PreferencesService {
   readonly hasPaneWidth = computed(() => this.paneWidthState() !== '');
 
   constructor() {
-    // Apply the resolved motion preference as soon as the service is constructed.
+    // Apply the resolved motion/density preferences as soon as the service is constructed.
     this.applyMotion(this.motionState());
+    this.applyDensity(this.densityState());
 
     effect(() => {
       this.applyMotion(this.motionState());
+    });
+
+    effect(() => {
+      this.applyDensity(this.densityState());
     });
   }
 
@@ -118,7 +135,9 @@ export class PreferencesService {
   }
 
   private readDensity(): DensityPreference {
-    return this.read(DENSITY_STORAGE_KEY) === 'comfortable' ? 'comfortable' : 'compact';
+    // `comfortable` (28px rows) is the shipped default; only an explicit
+    // `compact` value persisted by the user opts into the 24px rows.
+    return this.read(DENSITY_STORAGE_KEY) === 'compact' ? 'compact' : 'comfortable';
   }
 
   private readDiffFontSize(): DiffFontSize {
@@ -177,5 +196,19 @@ export class PreferencesService {
     } else {
       root.setAttribute('data-st-motion', motion);
     }
+  }
+
+  /**
+   * Reflect the density preference onto `document.documentElement` as
+   * `<html data-st-density="compact|comfortable">`. Both values are explicit, so
+   * unlike motion there is no "follow the OS" state and the attribute is never
+   * removed. Mirrors {@link ThemeService}'s defensive root lookup.
+   */
+  private applyDensity(density: DensityPreference): void {
+    const root =
+      this.document?.documentElement ??
+      (globalThis as { document?: Document }).document?.documentElement;
+    if (!root) return;
+    root.setAttribute('data-st-density', density);
   }
 }

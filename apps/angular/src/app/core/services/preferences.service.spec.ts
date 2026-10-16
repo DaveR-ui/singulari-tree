@@ -76,6 +76,11 @@ function rootMotion(): string | null {
   return document.documentElement.getAttribute('data-st-motion');
 }
 
+/** The `data-st-density` attribute the service reflects onto `<html>`. */
+function rootDensity(): string | null {
+  return document.documentElement.getAttribute('data-st-density');
+}
+
 describe('PreferencesService', () => {
   beforeEach(() => {
     installStorage(new MemoryStorage());
@@ -86,6 +91,7 @@ describe('PreferencesService', () => {
     TestBed.resetTestingModule();
     // Clean the singleton DOM/localStorage state so specs never leak into each other.
     document.documentElement.removeAttribute('data-st-motion');
+    document.documentElement.removeAttribute('data-st-density');
     try {
       localStorage.clear();
     } catch {
@@ -97,7 +103,7 @@ describe('PreferencesService', () => {
     const prefs = injectPrefs();
 
     expect(prefs.motion()).toBe('auto');
-    expect(prefs.density()).toBe('compact');
+    expect(prefs.density()).toBe('comfortable');
     expect(prefs.paneWidth()).toBe('');
     expect(prefs.diffFontSize()).toBe('12');
     expect(prefs.diffWordWrap()).toBe('off');
@@ -175,6 +181,38 @@ describe('PreferencesService', () => {
     expect(rootMotion()).toBeNull();
   });
 
+  // -- data-st-density: enforced at runtime, always explicit ---------------
+
+  it('applies data-st-density=comfortable on construction from a persisted value', () => {
+    localStorage.setItem('st:density', 'comfortable');
+
+    injectPrefs();
+
+    expect(rootDensity()).toBe('comfortable');
+  });
+
+  it('applies the default comfortable density on construction when nothing is persisted', () => {
+    injectPrefs();
+
+    // No "follow the OS" state: the attribute is always written, never absent.
+    expect(rootDensity()).toBe('comfortable');
+  });
+
+  it('updates data-st-density after setDensity settles through the effect', () => {
+    const prefs = injectPrefs();
+    expect(rootDensity()).toBe('comfortable');
+
+    prefs.setDensity('compact');
+    TestBed.tick();
+    expect(rootDensity()).toBe('compact');
+
+    prefs.setDensity('comfortable');
+    TestBed.tick();
+    // Both values are explicit, so the attribute is never removed.
+    expect(rootDensity()).toBe('comfortable');
+    expect(document.documentElement.hasAttribute('data-st-density')).toBe(true);
+  });
+
   it('restores the explicit diff font size 13', () => {
     localStorage.setItem('st:diffFontSize', '13');
 
@@ -191,7 +229,7 @@ describe('PreferencesService', () => {
     const prefs = injectPrefs();
 
     expect(prefs.motion()).toBe('auto');
-    expect(prefs.density()).toBe('compact');
+    expect(prefs.density()).toBe('comfortable');
     expect(prefs.paneWidth()).toBe('');
     expect(prefs.diffFontSize()).toBe('12');
     expect(prefs.diffWordWrap()).toBe('off');
@@ -210,7 +248,7 @@ describe('PreferencesService', () => {
     const prefs = injectPrefs();
 
     expect(prefs.motion()).toBe('auto');
-    expect(prefs.density()).toBe('compact');
+    expect(prefs.density()).toBe('comfortable');
     expect(prefs.paneWidth()).toBe('');
     expect(prefs.diffFontSize()).toBe('12');
     expect(prefs.diffWordWrap()).toBe('off');

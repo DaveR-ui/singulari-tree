@@ -6,6 +6,7 @@ import {
   DiffViewer,
   MONACO_ENVIRONMENT_AVAILABLE,
   MONACO_LOADER,
+  diffLineHeight,
   hunksToTexts,
   monacoEnvironmentAvailable,
   shouldInitializeMonaco,
@@ -44,11 +45,22 @@ function makeDiff(overrides: Partial<Diff> = {}): Diff {
   };
 }
 
-function render(diff: Diff | null, loading = false, errorMsg: string | null = null) {
+function render(
+  diff: Diff | null,
+  loading = false,
+  errorMsg: string | null = null,
+  typography: { fontSize?: number; wordWrap?: boolean } = {},
+) {
   const fixture = TestBed.createComponent(DiffViewer);
   fixture.componentRef.setInput('diff', diff);
   fixture.componentRef.setInput('loading', loading);
   fixture.componentRef.setInput('errorMsg', errorMsg);
+  if (typography.fontSize !== undefined) {
+    fixture.componentRef.setInput('fontSize', typography.fontSize);
+  }
+  if (typography.wordWrap !== undefined) {
+    fixture.componentRef.setInput('wordWrap', typography.wordWrap);
+  }
   fixture.detectChanges();
   return fixture;
 }
@@ -70,6 +82,9 @@ interface FakeModel {
 /** Options bag captured by the fake `createDiffEditor`. */
 interface FakeDiffEditorOptions {
   renderSideBySide?: boolean;
+  fontSize?: number;
+  lineHeight?: number;
+  wordWrap?: 'on' | 'off';
 }
 
 /** Minimal Monaco stand-in: records models and the diff editor without DOM. */
@@ -224,6 +239,33 @@ describe('DiffViewer (ui-kit)', () => {
   it('omits the truncated notice by default', () => {
     expect(query(render(makeDiff()), 'diff-truncated')).toBeNull();
   });
+
+  it('renders the fallback grid on the default 12px / 24px grid with wrap off', () => {
+    const fixture = render(makeDiff());
+
+    const fallback = query(fixture, 'diff-fallback');
+    expect(fallback).not.toBeNull();
+    expect(fallback!.getAttribute('data-wrap')).toBe('off');
+    expect(fallback!.style.fontSize).toBe('12px');
+    expect(fallback!.style.lineHeight).toBe('24px');
+  });
+
+  it('applies the fontSize and wordWrap inputs to the fallback grid', () => {
+    const fixture = render(makeDiff(), false, null, { fontSize: 13, wordWrap: true });
+
+    const fallback = query(fixture, 'diff-fallback');
+    expect(fallback!.getAttribute('data-wrap')).toBe('on');
+    expect(fallback!.style.fontSize).toBe('13px');
+    expect(fallback!.style.lineHeight).toBe('26px');
+  });
+});
+
+describe('diffLineHeight', () => {
+  it('is exactly twice the font size on the shipped Settings presets', () => {
+    expect(diffLineHeight(11)).toBe(22);
+    expect(diffLineHeight(12)).toBe(24);
+    expect(diffLineHeight(13)).toBe(26);
+  });
 });
 
 describe('shouldInitializeMonaco', () => {
@@ -335,6 +377,53 @@ describe('DiffViewer Monaco initialization', () => {
     TestBed.tick();
 
     await vi.waitFor(() => expect(fake.setTheme).toHaveBeenCalledWith('singularitree-dark'));
+  });
+
+  it('passes the default diff typography to Monaco at init (12 / 24 / off)', async () => {
+    const fake = makeFakeMonaco();
+    const loader = vi.fn(() => Promise.resolve(fake.monaco));
+    await configure(loader, true);
+
+    const fixture = TestBed.createComponent(DiffViewer);
+    fixture.componentRef.setInput('diff', makeDiff());
+    fixture.detectChanges();
+    TestBed.tick();
+
+    await vi.waitFor(() => expect(fake.createDiffEditor).toHaveBeenCalledTimes(1));
+    const options = fake.createDiffEditor.mock.calls[0][1];
+    expect(options.fontSize).toBe(12);
+    expect(options.lineHeight).toBe(24);
+    expect(options.wordWrap).toBe('off');
+    // The existing unified default is unchanged by the typography pass-through.
+    expect(options.renderSideBySide).toBe(false);
+  });
+
+  it('updates the mounted editor typography live, without a remount', async () => {
+    const fake = makeFakeMonaco();
+    const loader = vi.fn(() => Promise.resolve(fake.monaco));
+    await configure(loader, true);
+
+    const fixture = TestBed.createComponent(DiffViewer);
+    fixture.componentRef.setInput('diff', makeDiff());
+    fixture.detectChanges();
+    TestBed.tick();
+
+    await vi.waitFor(() => expect(fake.createDiffEditor).toHaveBeenCalledTimes(1));
+
+    fixture.componentRef.setInput('fontSize', 13);
+    fixture.componentRef.setInput('wordWrap', true);
+    fixture.detectChanges();
+    await vi.waitFor(() => {
+      TestBed.tick();
+      expect(fake.diffEditor.updateOptions).toHaveBeenCalledWith({
+        fontSize: 13,
+        lineHeight: 26,
+        wordWrap: 'on',
+      });
+    });
+
+    // Options only: a typography change never remounts the editor.
+    expect(fake.createDiffEditor).toHaveBeenCalledTimes(1);
   });
 
   it('flips renderSideBySide via the input', async () => {

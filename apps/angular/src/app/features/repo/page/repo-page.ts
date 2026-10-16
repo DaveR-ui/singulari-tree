@@ -4,6 +4,7 @@ import type { Repository } from '@contracts/domain';
 import { WorkspaceSplitComponent } from '@singularitree/ui-kit';
 import { CommitFocusService } from '@core/services/commit-focus.service';
 import { IpcBridge } from '@core/services/ipc-bridge.service';
+import { PreferencesService } from '@core/services/preferences.service';
 import { RepoState } from '@core/services/repo-state.service';
 import { WorkspacesStore } from '@core/services/workspaces.store';
 import { GraphStore } from '../graph/graph.store';
@@ -22,6 +23,9 @@ import { RepoRelocatePanel } from '../ui/repo-relocate-panel';
  * repository list route only calls `RepoState.setActive()` (or opens the repo
  * itself) before navigating here, so without this sync the graph would stay
  * empty until the user re-picked from the in-page picker.
+ *
+ * The split's detail pane is wired to the persisted pane-width preference so a
+ * resize survives reloads.
  */
 @Component({
   selector: 'st-repo-page',
@@ -34,7 +38,7 @@ import { RepoRelocatePanel } from '../ui/repo-relocate-panel';
     GraphPage,
   ],
   template: `
-    <st-workspace-split [showDetail]="showDetail()" [detailTitle]="detailTitle()">
+    <st-workspace-split [showDetail]="showDetail()" [detailTitle]="detailTitle()" [detailWidth]="detailWidth()" [resizable]="true" (detailWidthResized)="setPaneWidth($event)">
       <st-commit-details-panel
         detail
         [commit]="selectedCommit()"
@@ -99,6 +103,7 @@ export class RepoPage {
   private readonly bridge = inject(IpcBridge);
   private readonly workspaces = inject(WorkspacesStore);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly prefs = inject(PreferencesService);
   /**
    * The route-scoped `StatusStore` (the same instance `FileStatusStore` composes),
    * used read-only for the History aside's changed-file tooltip (ADR-032).
@@ -120,6 +125,15 @@ export class RepoPage {
   readonly detailTitle = computed(() =>
     this.isWipSelected() ? $localize`Working tree` : $localize`Commit`,
   );
+
+  /**
+   * The persisted `st:paneWidth` drives the pinned commit-detail pane; `null`
+   * keeps the 380px token default.
+   */
+  readonly detailWidth = computed<string | null>(() => {
+    const width = this.prefs.paneWidth();
+    return width ? `${width}px` : null;
+  });
 
   /**
    * The active repository whose folder could not be opened, or null.
@@ -251,6 +265,14 @@ export class RepoPage {
   openChanges(): void {
     this.graphStore.requestScrollRestore();
     void this.router?.navigate(['/repo', 'file-status']);
+  }
+
+  /**
+   * The split emits pixels and the service owns persistence/validation, so this
+   * only rounds the value and forwards it.
+   */
+  setPaneWidth(width: number): void {
+    this.prefs.setPaneWidth(String(Math.round(width)));
   }
 
   /**
