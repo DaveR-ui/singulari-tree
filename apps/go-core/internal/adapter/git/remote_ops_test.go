@@ -386,25 +386,19 @@ func TestFetchContextCancellationClosesChannel(t *testing.T) {
 	gitRun(t, src, "remote", "add", "origin", "ssh://git@example.invalid/repo.git")
 	// Git runs this shim in place of ssh, through its own transport shell
 	// wrapper (`sh -c '<shim> "$@"' <shim> <host> <upload-pack cmd>`, the form
-	// GIT_TRACE shows; git also accepts an appended-args form) that inherits the cwd
-	// git was given — the repo, via `git -C <repo>`. sleep keeps the fetch in
-	// flight until the 300ms context deadline kills git. On cancellation
-	// exec.CommandContext kills only git, so on Windows TWO processes survive:
-	// git's outer `sh -c` wrapper (bash does not exec-optimize, so it stays
-	// alive waiting on its child) AND the leaf it forks. The wrapper is the
-	// actual blocker: it inherits the repo as cwd, and Windows refuses to remove
-	// a directory that is any live process's current directory, so t.TempDir's
-	// RemoveAll fails with "being used by another process" until they exit
-	// (~5.3s) while cleanup runs at test end — ~3.07s on the CI runner, the
-	// 300ms deadline plus Windows process-spawn overhead in the setup git runs.
-	// Running `cd /` in the OUTERMOST shell — the wrapper git spawns,
-	// before anything forks — moves the wrapper's own cwd off the repo, so every
-	// process in the tree has cwd=/ and none holds the temp repo. `exec` then
-	// collapses both layers into the single sleep; the trailing `--` swallows
-	// the `<host> <upload-pack cmd>` args git appends after the shim ($0/$1… of
-	// the inner `sh -c`), harmless under both git composite forms. sleep
-	// outlasts the deadline, so the fetch is still in flight at cancellation and
-	// the assertion is unchanged.
+	// GIT_TRACE shows) that inherits the cwd git was given — the repo, via
+	// `git -C <repo>`. `sleep 5` keeps the fetch in flight past the 300ms
+	// deadline, so cancellation happens mid-transport. On cancellation
+	// exec.CommandContext kills only git itself; the transport tree outlives it
+	// as an orphan and keeps the repo as its cwd. A shim-side `cd /` cannot move
+	// the surviving wrapper's own cwd — the `cd` runs in a forked subshell, so
+	// only the leaf chain reaches the msys root — and Windows refuses to delete
+	// a directory that is any live process's cwd, so t.TempDir's RemoveAll would
+	// fail with "being used by another process". The shim's `cd /` prefix is
+	// retained deliberately as defense-in-depth (it does move the leaf chain off
+	// the repo), but the cleanup guarantee is the adapter tearing down the
+	// spawned process tree on cancellation (process_tree_windows.go). The R12
+	// assertion — the progress channel must close on cancellation — is unchanged.
 	t.Setenv("GIT_SSH_COMMAND", "cd / && exec sh -c 'exec sleep 5' --")
 
 	repoID := domain.RepositoryId("repo-1")

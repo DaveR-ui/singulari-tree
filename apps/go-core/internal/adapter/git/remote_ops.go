@@ -312,6 +312,12 @@ func streamGitProgress(ctx context.Context, dir string, op remoteOpKind, args []
 	// which would otherwise leave Wait pending well past the deadline. WaitDelay
 	// forces the process pipes closed shortly after cancellation (R12).
 	cmd.WaitDelay = 2 * time.Second
+	// On cancellation, kill the direct child AND its transport tree. The default
+	// Cancel kills only git; git's transport helper (GIT_SSH_COMMAND) runs under a
+	// shell wrapper that inherits the repo as its cwd, and Windows refuses to
+	// delete a directory held as any live process's cwd — an orphaned transport
+	// would keep the repo undeletable. See process_tree_windows.go.
+	cmd.Cancel = func() error { return cancelProcessTree(cmd.Process) }
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return nil, domain.AppError{Code: op.errCode(), Message: err.Error()}
