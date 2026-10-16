@@ -21,8 +21,8 @@ func absPath(t *testing.T, path string) string {
 }
 
 // TestRepoStoreRelocateUpdatesPathPreservesIDAndCreatedAt pins the core promise
-// of relocation: the registration id and created_at survive, the path and
-// common_dir are repointed, and exactly one row remains.
+// of relocation: the registration id and created_at survive, the path,
+// common_dir and name are repointed, and exactly one row remains.
 func TestRepoStoreRelocateUpdatesPathPreservesIDAndCreatedAt(t *testing.T) {
 	ctx := context.Background()
 	store := NewRepoStore(openTestDB(t))
@@ -30,12 +30,21 @@ func TestRepoStoreRelocateUpdatesPathPreservesIDAndCreatedAt(t *testing.T) {
 	pathA := t.TempDir()
 	pathB := t.TempDir()
 
+	// The two folders must have different basenames for the name repoint below
+	// to be meaningful (t.TempDir mints unique leaf directories).
+	if filepath.Base(pathA) == filepath.Base(pathB) {
+		t.Fatalf("fixtures collide: both basenames are %q", filepath.Base(pathA))
+	}
+
 	repo, err := store.Open(ctx, pathA)
 	if err != nil {
 		t.Fatalf("Open(A): %v", err)
 	}
 	if repo.CommonDir != filepath.Join(repo.FsPath, ".git") {
 		t.Fatalf("CommonDir(A) = %q, want default .git", repo.CommonDir)
+	}
+	if want := filepath.Base(repo.FsPath); repo.Name != want {
+		t.Fatalf("Name(A) = %q, want %q", repo.Name, want)
 	}
 
 	moved, err := store.Relocate(ctx, repo.ID, pathB)
@@ -56,14 +65,24 @@ func TestRepoStoreRelocateUpdatesPathPreservesIDAndCreatedAt(t *testing.T) {
 	if moved.CommonDir != filepath.Join(wantPath, ".git") {
 		t.Errorf("CommonDir = %q, want refreshed %q", moved.CommonDir, filepath.Join(wantPath, ".git"))
 	}
+	// The display name follows the new path's basename, exactly as Open derives
+	// it for a fresh registration; a stale name would surface the old folder in
+	// the drawer/nav-rail/tab while the path line already shows the new one.
+	if moved.Name != filepath.Base(wantPath) {
+		t.Errorf("Name = %q, want repointed basename %q", moved.Name, filepath.Base(wantPath))
+	}
 
-	// Durable: a fresh read returns the repointed path, and no extra row exists.
+	// Durable: a fresh read returns the repointed path and name, and no extra
+	// row exists.
 	got, err := store.Get(ctx, repo.ID)
 	if err != nil {
 		t.Fatalf("Get after Relocate: %v", err)
 	}
 	if got.FsPath != wantPath {
 		t.Errorf("Get.FsPath = %q, want %q", got.FsPath, wantPath)
+	}
+	if got.Name != filepath.Base(wantPath) {
+		t.Errorf("Get.Name = %q, want %q", got.Name, filepath.Base(wantPath))
 	}
 	list, err := store.List(ctx)
 	if err != nil {
@@ -75,7 +94,9 @@ func TestRepoStoreRelocateUpdatesPathPreservesIDAndCreatedAt(t *testing.T) {
 }
 
 // TestRepoStoreRelocateNoOpRefreshesCommonDir proves a same-path relocate is
-// allowed and still recomputes common_dir rather than short-circuiting.
+// allowed and still recomputes common_dir and name rather than short-circuiting.
+// Recomputing name from an already-correct value must be a no-op (idempotent),
+// not a corruption.
 func TestRepoStoreRelocateNoOpRefreshesCommonDir(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
@@ -101,6 +122,11 @@ func TestRepoStoreRelocateNoOpRefreshesCommonDir(t *testing.T) {
 	}
 	if !moved.CreatedAt.Equal(repo.CreatedAt) {
 		t.Errorf("created_at changed on no-op relocate: %v -> %v", repo.CreatedAt, moved.CreatedAt)
+	}
+	// The name was already the correct basename; the no-op recompute must leave
+	// it exactly as-is.
+	if want := filepath.Base(absPath(t, repo.FsPath)); moved.Name != want {
+		t.Errorf("Name = %q, want unchanged/refreshed %q", moved.Name, want)
 	}
 }
 

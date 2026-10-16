@@ -551,12 +551,28 @@ describe('LayoutComponent', () => {
     fixture.detectChanges();
     expect(fixture.componentInstance.activeWorkspace()).toBe('history');
 
-    // `/repos` also starts with `/repo` but has no WORKSPACE entry: it must clear
-    // the highlight rather than keep a stale one.
+    // `/repos` starts with `/repo` but maps to the Repositories WORKSPACE
+    // entry, so the highlight follows it rather than clearing.
     await router.navigateByUrl('/repos');
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(fixture.componentInstance.activeWorkspace()).toBe('');
+    expect(fixture.componentInstance.activeWorkspace()).toBe('repos');
+  });
+
+  it('routes the WORKSPACE "Repositories" entry to /repos', async () => {
+    const { fixture } = await setup();
+    const el = fixture.nativeElement as HTMLElement;
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    const items = Array.from(el.querySelectorAll<HTMLElement>('.st-rail__item'));
+    const repos = items.find((item) => item.textContent?.includes('Repositories'));
+    expect(repos).toBeDefined();
+    repos!.click();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.activeWorkspace()).toBe('repos');
+    expect(navigate).toHaveBeenCalledWith(['/repos']);
   });
 
   it('renders the drawer pin toggle and toggles the pinned state', async () => {

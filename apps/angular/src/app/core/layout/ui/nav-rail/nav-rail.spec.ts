@@ -178,6 +178,24 @@ describe('NavRail', () => {
     expect(emitted).toEqual(['history', 'status']);
   });
 
+  it('exposes the Repositories WORKSPACE entry exactly once', async () => {
+    const fixture = await setup();
+
+    const entries = all(fixture, 'st-sidebar-workspace-repos');
+    expect(entries).toHaveLength(1);
+    expect(entries[0].textContent).toContain('Repositories');
+  });
+
+  it('emits the repos workspace kind when Repositories is clicked', async () => {
+    const fixture = await setup();
+    const emitted: string[] = [];
+    fixture.componentInstance.workspaceSelected.subscribe((kind) => emitted.push(kind));
+
+    (all(fixture, 'st-sidebar-workspace-repos')[0] as HTMLElement).click();
+
+    expect(emitted).toEqual(['repos']);
+  });
+
   it('shows the change-count pill on Local changes only when there is a count', async () => {
     const hidden = await setup({ changeCount: 0 });
     expect(

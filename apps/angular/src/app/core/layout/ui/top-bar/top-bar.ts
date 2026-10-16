@@ -1,11 +1,6 @@
-import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import {
-  BadgeComponent,
-  ButtonComponent,
-  IconComponent,
-  PopoverComponent,
-} from '@singularitree/ui-kit';
+import { BadgeComponent, ButtonComponent, IconComponent } from '@singularitree/ui-kit';
 
 /** One top-bar repository tab: a stable id, its display name and an optional branch byline. */
 export interface TopBarTab {
@@ -17,10 +12,10 @@ export interface TopBarTab {
 
 /**
  * Dumb 64px shell top bar (plan §3/§4.1): brand glyph + wordmark, a hairline,
- * the repo tab strip, the live remote-op cluster, a sync pill, an overflow menu
- * and the drawer pin toggle. The parent owns every piece of state and routing;
- * this component only renders and emits intents (D3: the retired toolbar's live
- * actions live here, its inert chrome buttons are gone).
+ * the repo tab strip, the live remote-op cluster, a sync pill, the account /
+ * settings destinations and the drawer pin toggle. The parent owns every piece
+ * of state and routing; this component only renders and emits intents (D3: the
+ * retired toolbar's live actions live here, its inert chrome buttons are gone).
  *
  * Emphasis hierarchy (Dark Neon): exactly one action is highlighted — Push, the
  * `primary` variant (turquoise fill + dark contrast text). Pull and Fetch stay
@@ -32,7 +27,7 @@ export interface TopBarTab {
 @Component({
   selector: 'st-top-bar',
   standalone: true,
-  imports: [RouterLink, BadgeComponent, ButtonComponent, IconComponent, PopoverComponent],
+  imports: [RouterLink, BadgeComponent, ButtonComponent, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <header class="st-topbar">
@@ -171,39 +166,23 @@ export interface TopBarTab {
         </st-badge>
       </div>
 
-      <div class="st-topbar__overflow">
-        <st-button
-          variant="icon"
-          size="sm"
-          data-testid="top-bar-overflow-toggle"
-          aria-haspopup="dialog"
-          [attr.aria-expanded]="overflowOpen()"
-          (click)="toggleOverflow()"
+      <div class="st-topbar__nav">
+        <a
+          class="st-topbar__nav-link st-focus-ring"
+          routerLink="/github-account"
+          data-testid="top-bar-nav-github"
         >
-          <st-icon name="menu" />
-          <span class="st-topbar__sr" i18n>Menu</span>
-        </st-button>
-        <st-popover [open]="overflowOpen()" (closed)="overflowOpen.set(false)">
-          <nav class="st-topbar__menu">
-            <a class="st-topbar__menu-item" routerLink="/repos" data-testid="top-bar-nav-repos" i18n
-              >Repositories</a
-            >
-            <a
-              class="st-topbar__menu-item"
-              routerLink="/github-account"
-              data-testid="top-bar-nav-github"
-              i18n
-              >GitHub account</a
-            >
-            <a
-              class="st-topbar__menu-item"
-              routerLink="/settings"
-              data-testid="top-bar-nav-settings"
-              i18n
-              >Settings</a
-            >
-          </nav>
-        </st-popover>
+          <st-icon name="github" />
+          <span class="st-topbar__sr" i18n>GitHub account</span>
+        </a>
+        <a
+          class="st-topbar__nav-link st-focus-ring"
+          routerLink="/settings"
+          data-testid="top-bar-nav-settings"
+        >
+          <st-icon name="settings" />
+          <span class="st-topbar__sr" i18n>Settings</span>
+        </a>
       </div>
 
       <div class="st-topbar__drawer">
@@ -398,36 +377,47 @@ export interface TopBarTab {
       -webkit-app-region: no-drag;
     }
 
-    .st-topbar__overflow,
     .st-topbar__drawer {
       position: relative;
       flex: none;
       -webkit-app-region: no-drag;
     }
 
-    .st-topbar__menu {
+    .st-topbar__nav {
       display: flex;
-      flex-direction: column;
-      min-width: 180px;
-      padding: var(--st-space-1);
+      align-items: center;
+      gap: var(--st-space-1);
+      flex: none;
+      -webkit-app-region: no-drag;
     }
 
-    .st-topbar__menu-item {
-      display: block;
-      padding: var(--st-space-2) var(--st-space-3);
+    /* Icon-only destination links, matching the sm icon button's square
+       geometry, hairline border and muted glyph. Native anchors (not the
+       st-button component) because a RouterLink anchor supplies the href and
+       keyboard semantics the account/settings destinations require. */
+    .st-topbar__nav-link {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+      width: var(--st-size-control-sm);
+      height: var(--st-size-control-sm);
+      border: var(--st-hairline) solid var(--st-color-border);
       border-radius: var(--st-radius-2);
-      color: var(--st-color-text);
-      font-size: var(--st-font-12);
+      background: var(--st-color-surface);
+      color: var(--st-color-muted);
       text-decoration: none;
+      cursor: pointer;
     }
 
-    .st-topbar__menu-item:hover,
-    .st-topbar__menu-item:focus-visible {
-      background: var(--st-color-accent-soft);
-      outline: none;
+    .st-topbar__nav-link:hover,
+    .st-topbar__nav-link:focus-visible {
+      border-color: var(--st-color-accent);
+      color: var(--st-color-text);
     }
 
-    /* Accessible name for the two icon-only controls. */
+    /* Accessible name for the icon-only controls. */
     .st-topbar__sr {
       position: absolute;
       width: 1px;
@@ -468,15 +458,8 @@ export class TopBar {
   readonly copyRepoUrlRequested = output<void>();
   readonly drawerToggled = output<void>();
 
-  /** Open state of the overflow menu (Repositories / GitHub / Settings). */
-  readonly overflowOpen = signal(false);
-
   readonly pinTitle = $localize`Pin repositories`;
   readonly unpinTitle = $localize`Unpin repositories`;
-
-  toggleOverflow(): void {
-    this.overflowOpen.update((open) => !open);
-  }
 
   /** Enter/Space activation for a tab (role="tab"). */
   selectFromKeyboard(event: Event, id: string): void {

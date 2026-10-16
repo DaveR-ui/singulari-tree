@@ -234,36 +234,29 @@ describe('CommitDetailsPanel', () => {
     expect(el.querySelector('[data-testid="commit-details-description"]')).toBeNull();
   });
 
-  it('emits viewInTree and back when the navigation row is opted in', () => {
+  it('emits back when the navigation row is opted in', () => {
     const fixture = render(COMMIT, false, false, false, true);
     const el = fixture.nativeElement as HTMLElement;
-    let viewed = 0;
     let backed = 0;
-    fixture.componentInstance.viewInTree.subscribe(() => (viewed += 1));
     fixture.componentInstance.back.subscribe(() => (backed += 1));
 
-    const viewInTree = el.querySelector<HTMLElement>('[data-testid="commit-details-view-in-tree"]');
     const back = el.querySelector<HTMLElement>('[data-testid="commit-details-back"]');
-    expect(viewInTree).not.toBeNull();
     expect(back).not.toBeNull();
 
-    viewInTree?.click();
     back?.click();
 
-    expect(viewed).toBe(1);
     expect(backed).toBe(1);
   });
 
   it('hides the navigation controls unless showNavigation opts in', () => {
     const el = render(COMMIT).nativeElement as HTMLElement;
-    expect(el.querySelector('[data-testid="commit-details-view-in-tree"]')).toBeNull();
     expect(el.querySelector('[data-testid="commit-details-back"]')).toBeNull();
   });
 });
 
-// -- ADR-032: changed-file list tooltip next to the CTA ----------------------
+// -- Changed-file list: an inline, expandable panel next to the CTA ----------
 
-describe('CommitDetailsPanel — changed-file tooltip (ADR-032)', () => {
+describe('CommitDetailsPanel — changed-file panel', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       providers: [provideZonelessChangeDetection()],
@@ -286,35 +279,40 @@ describe('CommitDetailsPanel — changed-file tooltip (ADR-032)', () => {
     // the CTA, so the read-only embed never grows a History-only control.
     const embed = render(COMMIT, false, false).nativeElement as HTMLElement;
     expect(embed.querySelector('[data-testid="commit-details-files"]')).toBeNull();
+    expect(embed.querySelector('[data-testid="commit-details-file-path"]')).toBeNull();
   });
 
-  it('toggles the changed-file popover and closes it on the primitive (closed)', () => {
+  it('toggles the inline changed-file list and never mounts a popover', () => {
     const fixture = render(COMMIT, false, true, false, false, ['src/a.ts', 'src/b.ts']);
     const el = fixture.nativeElement as HTMLElement;
 
-    expect(el.querySelector('[data-testid="popover"]')).toBeNull();
+    // Collapsed: the trigger exists, the rows do not, and no popover layer is
+    // ever in the DOM (the ADR-032 `st-popover` was removed).
     const trigger = el.querySelector('[data-testid="commit-details-files"]');
-    // The disclosure state and popup role must land on the focusable control
-    // (`st-button` forwards `[expanded]`/`[haspopup]` to the native button).
     const triggerButton = trigger?.querySelector('button') ?? null;
+    expect(triggerButton).not.toBeNull();
+    // The disclosure state lands on the focusable control (`st-button` forwards
+    // `[expanded]` to the native button), not the host.
     expect(triggerButton?.getAttribute('aria-expanded')).toBe('false');
-    expect(triggerButton?.getAttribute('aria-haspopup')).toBe('dialog');
+    expect(triggerButton?.getAttribute('aria-haspopup')).toBeNull();
+    expect(el.querySelector('[data-testid="commit-details-file-path"]')).toBeNull();
+    expect(el.querySelector('[data-testid="popover"]')).toBeNull();
 
     triggerButton?.click();
     fixture.detectChanges();
 
-    expect(el.querySelector('[data-testid="popover"]')).not.toBeNull();
+    // Expanded: the rows render inline and still no popover.
     expect(triggerButton?.getAttribute('aria-expanded')).toBe('true');
-    // The dialog is named for assistive tech (not an action menu).
-    const body = el.querySelector('[data-testid="popover"] [role="dialog"]');
-    expect(body?.getAttribute('aria-label')).toBe('Changed files');
+    expect(el.querySelector('[data-testid="commit-details-file-path"]')).not.toBeNull();
+    expect(el.querySelector('[data-testid="popover"]')).toBeNull();
 
-    // Clicking the primitive's backdrop raises `closed`, closing the tooltip.
-    el.querySelector<HTMLElement>('[data-testid="popover-backdrop"]')?.click();
+    // Toggling back hides the list again.
+    triggerButton?.click();
     fixture.detectChanges();
 
-    expect(el.querySelector('[data-testid="popover"]')).toBeNull();
     expect(triggerButton?.getAttribute('aria-expanded')).toBe('false');
+    expect(el.querySelector('[data-testid="commit-details-file-path"]')).toBeNull();
+    expect(el.querySelector('[data-testid="popover"]')).toBeNull();
   });
 
   it('lists the changed file paths passed via the input as mono rows', () => {
@@ -342,13 +340,13 @@ describe('CommitDetailsPanel — changed-file tooltip (ADR-032)', () => {
     expect(el.querySelector('[data-testid="commit-details-file-path"]')).toBeNull();
   });
 
-  it('stays read-only: the tooltip never mounts a diff surface', () => {
+  it('stays read-only: the inline panel never mounts a diff surface', () => {
     const fixture = render(COMMIT, false, true, false, false, ['src/a.ts']);
     const el = fixture.nativeElement as HTMLElement;
     el.querySelector('[data-testid="commit-details-files"]')?.querySelector('button')?.click();
     fixture.detectChanges();
 
-    // No `st-diff-viewer`, no Monaco, no hunk/code grid: paths only (ADR-032).
+    // No `st-diff-viewer`, no Monaco, no hunk/code grid: paths only.
     expect(el.querySelector('st-diff-viewer')).toBeNull();
     expect(el.querySelector('[data-testid="diff-viewer"]')).toBeNull();
     expect(el.querySelector('.st-diff-viewer')).toBeNull();

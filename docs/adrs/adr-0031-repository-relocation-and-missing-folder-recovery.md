@@ -4,11 +4,13 @@ category: adrs
 tags: [adr, contracts, core, renderer, repositories, relocation, errors]
 aliases: [ADR-031, Repository relocation and missing-folder recovery]
 related: [adr-index, adr-0030-history-screen-is-compare-free, adr-0029-file-status-screen, adr-024-multi-repo-workspaces, renderer-slice, contracts-slice, core-slice, desktop-shell-slice]
-version: 1.0
+version: 1.1
 status: active
 ---
 
 # ADR-031: Repository relocation and missing-folder recovery
+
+> **Record clarification (2026-10-16):** solution item 2 lists the repointed columns as `fs_path` and `common_dir`. `RelocateRepository` also re-derives `repos.name` as the new path's basename, which is the exact derivation `RepoStore.Open` performs for a fresh registration (`domain.NewRepository`, `domain/repository.go:35`). No code path anywhere in the stack writes a user-supplied `repos.name` — the only two writers of the row are the `Open` INSERT and this UPDATE, and `gitcore.proto` exposes no repository-rename RPC — so the value is, and always was, a pure projection of `fs_path`. This completes the recorded same-row repoint contract rather than changing its decision; the text below is left verbatim (ADRs are append-only).
 
 ## Problem
 

@@ -5,11 +5,13 @@ tags: [adr, renderer, graph, status, diff]
 aliases: [ADR-032, History commit file-list tooltip]
 related: [adr-index, adr-0030-history-screen-is-compare-free, adr-0031-repository-relocation-and-missing-folder-recovery, adr-0029-file-status-screen, adr-0022-graph-context-menu-shell, feature-gap-analysis, renderer-slice]
 version: 1.0
-status: active
+status: superseded
 supersedes: adr-0030-history-screen-is-compare-free
 ---
 
 # ADR-032: History aside shows the selected commit's changed files (narrow repeal of ADR-0030's compare-free lock)
+
+> **Superseded in part by [[adr-0033-commit-details-files-expandable-panel]] (2026-10-16):** the changed-file list's *surface* is now an inline expandable panel inside the commit-details panel body, not the `st-popover` tooltip this ADR chose (its solution item 2). The data source (`StatusStore` + `getDiff`), the read-only contract and the compare-free boundaries recorded here are unchanged; ADR-0032 remains the record of the file-list decision and of the narrow repeal of ADR-0030. Its decision text below is left verbatim (ADRs are append-only).
 
 ## Problem
 

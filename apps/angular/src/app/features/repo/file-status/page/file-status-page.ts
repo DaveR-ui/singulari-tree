@@ -177,6 +177,14 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
       min-height: 0;
     }
 
+    /* Local variant only: the changes panel owns a bounded column and its own
+       scroll, so its commit box pins to the pane bottom. Scoped with :has() to
+       the panel's mount point, so the commit and pr variants — which rely on the
+       body's own overflow — keep their content-sized column. */
+    .st-file-status__left:has(st-changes-panel) {
+      flex: 1 1 auto;
+    }
+
     .st-file-status__body {
       display: flex;
       flex: 1 1 auto;

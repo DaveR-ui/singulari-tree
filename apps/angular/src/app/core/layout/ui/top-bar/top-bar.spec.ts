@@ -194,21 +194,36 @@ describe('TopBar', () => {
     expect(pendingPill?.querySelector('.st-badge--success')).toBeNull();
   });
 
-  it('opens the overflow menu with the three navigation entries', async () => {
+  it('renders no overflow toggle and no popover', async () => {
     const fixture = await setup();
+    const el = fixture.nativeElement as HTMLElement;
 
+    expect(host(fixture, 'top-bar-overflow-toggle')).toBeNull();
     expect(host(fixture, 'popover')).toBeNull();
-    expect(host(fixture, 'top-bar-overflow-toggle')?.getAttribute('aria-expanded')).toBe('false');
+    expect(el.querySelector('st-popover')).toBeNull();
+  });
 
-    button(fixture, 'top-bar-overflow-toggle')!.click();
-    fixture.detectChanges();
+  it('routes to the GitHub account from a labelled direct icon link', async () => {
+    const fixture = await setup();
+    const link = host(fixture, 'top-bar-nav-github');
 
-    expect(host(fixture, 'top-bar-overflow-toggle')?.getAttribute('aria-expanded')).toBe('true');
-    const menu = host(fixture, 'popover');
-    expect(menu).not.toBeNull();
-    expect(menu!.textContent).toContain('Repositories');
-    expect(menu!.textContent).toContain('GitHub account');
-    expect(menu!.textContent).toContain('Settings');
+    expect(link).not.toBeNull();
+    expect(link!.tagName).toBe('A');
+    expect(link!.getAttribute('href')).toBe('/github-account');
+    expect(link!.textContent).toContain('GitHub account');
+    // A native anchor is keyboard-operable on its own; it carries no popup contract.
+    expect(link!.hasAttribute('aria-haspopup')).toBe(false);
+    expect(link!.hasAttribute('aria-expanded')).toBe(false);
+  });
+
+  it('routes to Settings from a labelled direct icon link', async () => {
+    const fixture = await setup();
+    const link = host(fixture, 'top-bar-nav-settings');
+
+    expect(link).not.toBeNull();
+    expect(link!.tagName).toBe('A');
+    expect(link!.getAttribute('href')).toBe('/settings');
+    expect(link!.textContent).toContain('Settings');
   });
 
   it('reflects the pinned drawer state and emits the toggle intent', async () => {

@@ -325,4 +325,77 @@ describe('ChangesPanel', () => {
 
     expect(query(fixture, 'hunk-actions-truncated')?.textContent).toContain('truncated');
   });
+
+  it('anchors the commit box as the fixed last child of the panel column', () => {
+    const fixture = render({ unstagedFiles: [file('dirty.ts', false)] });
+    const host = fixture.nativeElement as HTMLElement;
+    const panel = host.querySelector('.st-changes') as HTMLElement;
+    const sections = host.querySelector('.st-changes__sections') as HTMLElement;
+    const commit = host.querySelector('.st-changes__commit') as HTMLElement;
+
+    expect(panel).not.toBeNull();
+    expect(sections).not.toBeNull();
+    expect(commit).not.toBeNull();
+
+    // The footer closes the panel column...
+    expect(panel.lastElementChild).toBe(commit);
+    // ...and owns none of the flexible slack: the sections take and can give it.
+    expect(getComputedStyle(sections).flexGrow).toBe('1');
+    expect(getComputedStyle(sections).flexShrink).toBe('1');
+    expect(getComputedStyle(commit).flexGrow).toBe('0');
+    expect(getComputedStyle(commit).flexShrink).toBe('0');
+  });
+
+  it('makes the file sections the scrollable region', () => {
+    const fixture = render({ unstagedFiles: [file('a.ts', false)] });
+    const sections = fixture.nativeElement.querySelector('.st-changes__sections') as HTMLElement;
+
+    expect(getComputedStyle(sections).overflowY).toBe('auto');
+  });
+
+  it('keeps the hunk-actions section fixed so it never squeezes the lists', () => {
+    const fixture = render({
+      unstagedFiles: [file('a.ts', false)],
+      selectedPath: 'a.ts',
+      unstagedFile: fileDiff('a.ts'),
+    });
+    const hunks = fixture.nativeElement.querySelector('.st-changes__hunks') as HTMLElement;
+
+    expect(hunks).not.toBeNull();
+    expect(getComputedStyle(hunks).flexGrow).toBe('0');
+    expect(getComputedStyle(hunks).flexShrink).toBe('0');
+  });
+
+  it('keeps every contract data-testid in a full render', () => {
+    const fixture = render({
+      stagedFiles: [file('staged.ts', true)],
+      unstagedFiles: [file('dirty.ts', false)],
+      message: 'feat',
+      selectedPath: 'dirty.ts',
+      statusError: 'status failed',
+      commitError: 'commit failed',
+      unstagedFile: fileDiff('dirty.ts'),
+      stagedFile: fileDiff('staged.ts'),
+    });
+
+    for (const id of [
+      'status-error',
+      'status-file',
+      'status-stage',
+      'status-unstage',
+      'status-discard',
+      'changes-hunks',
+      'commit-message-input',
+      'commit-button',
+      'commit-error',
+    ]) {
+      expect(query(fixture, id), id).not.toBeNull();
+    }
+  });
+
+  it('keeps the empty-state testid while no files are present', () => {
+    const fixture = render({ stagedFiles: [], unstagedFiles: [] });
+
+    expect(query(fixture, 'status-empty')).not.toBeNull();
+  });
 });

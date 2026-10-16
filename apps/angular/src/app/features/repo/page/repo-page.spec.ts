@@ -382,9 +382,6 @@ class RepoRelocatePanelStub {
     <button type="button" data-testid="review-changes" (click)="reviewChanges.emit()">
       Review changes
     </button>
-    <button type="button" data-testid="view-in-tree" (click)="viewInTree.emit()">
-      View in tree
-    </button>
     <button type="button" data-testid="back" (click)="back.emit()">Back</button>
   `,
 })
@@ -395,7 +392,6 @@ class CommitDetailsPanelStub {
   readonly showNavigation = input(false);
   readonly changedFiles = input<readonly string[]>([]);
   readonly reviewChanges = output<void>();
-  readonly viewInTree = output<void>();
   readonly back = output<void>();
 }
 
@@ -682,28 +678,6 @@ describe('RepoPage workspace split', () => {
   });
 
   // -- item 7a: detail-pane navigation -------------------------------------
-
-  it('reveals the selected commit in the graph when viewInTree fires', async () => {
-    const { fixture, graphStore } = await renderWithGraph();
-    graphStore.selectedOid.set(COMMIT_OID);
-    fixture.detectChanges();
-
-    const button = host(fixture).querySelector<HTMLButtonElement>('[data-testid="view-in-tree"]');
-    expect(button).not.toBeNull();
-    button!.click();
-
-    expect(graphStore.focusCommit).toHaveBeenCalledWith(COMMIT_OID);
-  });
-
-  it('is a no-op for viewInTree when only the WIP node is selected', async () => {
-    const { fixture, graphStore } = await renderWithGraph();
-    graphStore.selectedOid.set(WIP_OID);
-    fixture.detectChanges();
-
-    host(fixture).querySelector<HTMLButtonElement>('[data-testid="view-in-tree"]')!.click();
-
-    expect(graphStore.focusCommit).not.toHaveBeenCalled();
-  });
 
   it('clears the selection when back fires', async () => {
     const { fixture, graphStore } = await renderWithGraph();

@@ -11,7 +11,6 @@ import {
   BadgeComponent,
   ButtonComponent,
   IconComponent,
-  PopoverComponent,
   isMainlineBranch,
   normalizeRefKind,
   shortOidHex,
@@ -26,10 +25,10 @@ const BLANK_LINE = String.fromCharCode(10, 10);
  * the single primary intent. It holds no services and does not route — the
  * owning page decides what `reviewChanges` means.
  *
- * ADR-032 adds one read-only surface: a changed-file **path list** disclosed
- * from a small affordance next to the primary CTA, never inlined into the body.
- * It renders the `changedFiles` input as plain rows (no hunks, no diff,
- * no `st-diff-viewer`); the host owns the read.
+ * One read-only surface: a changed-file **path list** disclosed from a small
+ * affordance next to the primary CTA and rendered inline in the panel body
+ * while expanded. It renders the `changedFiles` input as plain rows (no hunks,
+ * no diff, no `st-diff-viewer`); the host owns the read.
  *
  * `collapsible` is the File-status embed: there the panel is the *header* above
  * a changed-file list, so it must never eat the list's vertical slack. In that
@@ -41,7 +40,7 @@ const BLANK_LINE = String.fromCharCode(10, 10);
 @Component({
   selector: 'st-commit-details-panel',
   standalone: true,
-  imports: [BadgeComponent, ButtonComponent, IconComponent, PopoverComponent],
+  imports: [BadgeComponent, ButtonComponent, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (isWip()) {
@@ -166,72 +165,26 @@ const BLANK_LINE = String.fromCharCode(10, 10);
                 >Review changes</st-button
               >
               <!--
-                ADR-032: the selected commit's changed-file list lives behind
-                this affordance, next to the CTA — never inlined into the panel
-                body. It is gated on the same showCta condition that renders the
-                CTA, so the File-status embed (which leaves showCta at its
-                default) never grows a History-only control. The WIP and empty
-                branches render no affordance at all.
+                The selected commit's changed-file list is disclosed from this
+                affordance next to the CTA and rendered inline in the panel body
+                below while expanded. It is gated on the same showCta condition
+                that renders the CTA, so the File-status embed (which leaves
+                showCta at its default) never grows a History-only control. The
+                WIP and empty branches render no affordance at all.
               -->
               <st-button
                 variant="ghost"
                 size="sm"
                 data-testid="commit-details-files"
-                [haspopup]="'dialog'"
                 [expanded]="filesOpen()"
+                [attr.aria-controls]="filesBodyId"
                 [ariaLabel]="filesLabel"
                 (click)="toggleFiles()"
               >
                 <st-icon name="changes" />
               </st-button>
-              <st-popover [open]="filesOpen()" (closed)="filesOpen.set(false)">
-                <!--
-                  The ui-kit popover panel already carries role=dialog but
-                  exposes no naming hook, so the listing region names itself here
-                  (a menu/menuitem role would be a lie — these rows are not
-                  actions). Paths only: no hunks, no diff.
-                -->
-                <div
-                  class="st-commit-details__files-body"
-                  role="dialog"
-                  [attr.aria-label]="filesLabel"
-                >
-                  <p class="st-commit-details__files-heading" data-testid="commit-details-files-heading">
-                    {{ filesHeading() }}
-                  </p>
-                  @if (changedFiles().length) {
-                    <ul class="st-commit-details__files-list">
-                      @for (path of changedFiles(); track path) {
-                        <li
-                          class="st-commit-details__file-path st-mono"
-                          data-testid="commit-details-file-path"
-                        >
-                          {{ path }}
-                        </li>
-                      }
-                    </ul>
-                  } @else {
-                    <p
-                      class="st-commit-details__files-empty"
-                      data-testid="commit-details-files-empty"
-                      i18n
-                    >
-                      No changed files.
-                    </p>
-                  }
-                </div>
-              </st-popover>
             }
             @if (showNavigation()) {
-              <st-button
-                variant="default"
-                size="sm"
-                data-testid="commit-details-view-in-tree"
-                (click)="viewInTree.emit()"
-              >
-                <st-icon name="branch" />
-                <span i18n>View in tree</span>
-              </st-button>
               <st-button
                 variant="ghost"
                 size="sm"
@@ -241,6 +194,49 @@ const BLANK_LINE = String.fromCharCode(10, 10);
                 <st-icon name="chevron-left" />
                 <span i18n>Back</span>
               </st-button>
+            }
+          </div>
+        }
+
+        @if (showCta() && filesOpen()) {
+          <!--
+            Read-only changed-file list, inline in the panel body. The expanded
+            block owns its own inset/bordered surface (distinct from the panel
+            background) and its own scroll so a very long list never pushes the
+            panel past the viewport. Paths only — no hunks, no diff.
+          -->
+          <div
+            class="st-commit-details__files-body"
+            [attr.id]="filesBodyId"
+            role="region"
+            [attr.aria-labelledby]="filesHeadingId"
+          >
+            <p
+              class="st-commit-details__files-heading"
+              data-testid="commit-details-files-heading"
+              [attr.id]="filesHeadingId"
+            >
+              {{ filesHeading() }}
+            </p>
+            @if (changedFiles().length) {
+              <ul class="st-commit-details__files-list">
+                @for (path of changedFiles(); track path) {
+                  <li
+                    class="st-commit-details__file-path st-mono"
+                    data-testid="commit-details-file-path"
+                  >
+                    {{ path }}
+                  </li>
+                }
+              </ul>
+            } @else {
+              <p
+                class="st-commit-details__files-empty"
+                data-testid="commit-details-files-empty"
+                i18n
+              >
+                No changed files.
+              </p>
             }
           </div>
         }
@@ -334,8 +330,6 @@ const BLANK_LINE = String.fromCharCode(10, 10);
       align-items: center;
       flex-wrap: wrap;
       gap: var(--st-space-2);
-      /* Anchor for the ADR-032 changed-file popover (the primitive is absolute). */
-      position: relative;
     }
 
     /* The primary CTA keeps the full-width prominence it had as a direct flex
@@ -344,11 +338,17 @@ const BLANK_LINE = String.fromCharCode(10, 10);
       flex: 1 1 auto;
     }
 
+    /* Inline changed-file list: its own inset, bordered surface so it reads as
+       distinct from the panel body, and its own scroll so a very long list never
+       pushes the panel past the viewport (the host already scrolls). */
     .st-commit-details__files-body {
       display: flex;
       flex-direction: column;
       gap: var(--st-space-2);
-      padding: var(--st-space-3);
+      padding: var(--st-space-2) var(--st-space-3);
+      border: var(--st-hairline) solid var(--st-color-border);
+      border-radius: var(--st-radius-2);
+      background: var(--st-color-surface-2);
       max-height: 320px;
       overflow: auto;
     }
@@ -369,7 +369,7 @@ const BLANK_LINE = String.fromCharCode(10, 10);
       list-style: none;
     }
 
-    /* Paths only: mono, no hunks and no diff (ADR-032). */
+    /* Paths only: mono, no hunks and no diff. */
     .st-commit-details__file-path {
       font-size: var(--st-font-12);
       color: var(--st-color-text);
@@ -500,21 +500,19 @@ export class CommitDetailsPanel {
    */
   readonly collapsible = input(false);
   /**
-   * Opt-in navigation row (`View in tree` + `Back`). Only the History host wires
-   * it; the File-status embed leaves it off so no inert control leaks in.
+   * Opt-in navigation row (the `Back` control). Only the History host wires it;
+   * the File-status embed leaves it off so no inert control leaks in.
    */
   readonly showNavigation = input(false);
   /**
-   * Changed-file paths of the selected commit (ADR-032). Rendered read-only
-   * behind the disclosure next to the CTA — paths only, never a diff. Default
-   * empty so a host that does not wire it simply shows the empty-state line.
+   * Changed-file paths of the selected commit. Rendered read-only inline behind
+   * the disclosure next to the CTA — paths only, never a diff. Default empty so
+   * a host that does not wire it simply shows the empty-state line.
    */
   readonly changedFiles = input<readonly string[]>([]);
 
   /** Single primary intent: the owning page routes it to `/repo/file-status`. */
   readonly reviewChanges = output<void>();
-  /** Jump to this commit's node in the tree/working-tree view (History host). */
-  readonly viewInTree = output<void>();
   /** Go back to the previous History selection (History host). */
   readonly back = output<void>();
 
@@ -524,16 +522,20 @@ export class CommitDetailsPanel {
    */
   readonly expanded = signal(false);
 
-  /** Disclosure state of the ADR-032 changed-file tooltip next to the CTA. */
+  /** Disclosure state of the inline changed-file list next to the CTA. */
   readonly filesOpen = signal(false);
+
+  /** Stable ids linking the changed-file trigger to the region it reveals. */
+  readonly filesBodyId = 'st-commit-details-files-body';
+  readonly filesHeadingId = 'st-commit-details-files-heading';
 
   readonly showDetailsLabel = $localize`Commit details`;
   readonly hideDetailsLabel = $localize`Hide details`;
 
-  /** Accessible name of both the trigger and the changed-file dialog. */
+  /** Accessible name of the changed-file trigger. */
   readonly filesLabel = $localize`Changed files`;
 
-  /** `N changed files` heading inside the tooltip (singular/plural aware). */
+  /** `N changed files` heading inside the expanded panel (singular/plural aware). */
   readonly filesHeading = computed(() => {
     const count = this.changedFiles().length;
     return count === 1 ? $localize`1 changed file` : $localize`${count} changed files`;

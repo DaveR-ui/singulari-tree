@@ -70,6 +70,7 @@ SingulariTree is a **monorepo** for a cross-platform desktop Git client. System 
 | `./tools/ci/verify-contracts.sh` | contracts breaking check |
 | `./tools/ci/verify-migrations.sh` | validates SQLite migrations |
 | `./tools/scripts/build-go-core.sh` | builds the core binary |
+| `node tools/scripts/verify-go-core-fresh.js` | staleness guard: fails loudly when `dist/go-core` predates the Go core sources (runs automatically from root `prestart`, i.e. on every `npm start`) |
 | `./tools/scripts/run-tests-local.sh` | reproduce the CI suites locally (build + go test + Electron vitest + Playwright smoke); `--go-only`/`--ts-only`/`--e2e-only`/`--build-only` narrow it, `--windows-paths` adds a best-effort Wine run |
 | `node tools/docs/validate.js` | validates the corpus (exit 1 on errors) |
 | `node tools/docs/validate.js --write` | regenerates `docs/index.md` + `docs/tag-index.md` |

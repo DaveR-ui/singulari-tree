@@ -47,7 +47,6 @@ import { RepoRelocatePanel } from '../ui/repo-relocate-panel';
         [showCta]="true"
         [showNavigation]="true"
         (reviewChanges)="openChanges()"
-        (viewInTree)="viewInTree()"
         (back)="clearSelection()"
       />
       <!--
@@ -106,7 +105,8 @@ export class RepoPage {
   private readonly prefs = inject(PreferencesService);
   /**
    * The route-scoped `StatusStore` (the same instance `FileStatusStore` composes),
-   * used read-only for the History aside's changed-file tooltip (ADR-032).
+   * used read-only for the History aside's inline expandable changed-file panel
+   * (ADR-0033).
    */
   private readonly status = inject(StatusStore);
   /**
@@ -169,8 +169,8 @@ export class RepoPage {
 
   /**
    * Changed-file paths of the selected commit, for the aside's read-only
-   * tooltip (ADR-032). Empty for the WIP row and for a cleared selection; the
-   * panel owns the disclosure, this page owns the read.
+   * inline expandable panel (ADR-0033). Empty for the WIP row and for a cleared
+   * selection; the panel owns the disclosure, this page owns the read.
    */
   readonly changedFiles = signal<readonly string[]>([]);
 
@@ -229,7 +229,7 @@ export class RepoPage {
     const unsubscribe = this.bridge.onFsChanged(() => this.graphStore.reload());
     this.destroyRef.onDestroy(unsubscribe);
 
-    // ADR-032: the aside's changed-file tooltip. Point the route-scoped
+    // ADR-0033: the aside's inline expandable changed-file panel. Point the route-scoped
     // `StatusStore` at the open repository (mirroring `FileStatusPage`) and,
     // when a real commit is selected, read its first-parent / empty-tree file
     // list. The read is deliberately non-mutating (`readCommitChangedFiles`), so
@@ -305,13 +305,6 @@ export class RepoPage {
    */
   onRemoved(): void {
     // No-op by design; kept as the panel's explicit-intent seam.
-  }
-
-  /** Item 7a: reveal the selected commit's node in the graph list (no-op for WIP/none). */
-  viewInTree(): void {
-    const oid = this.selectedCommit()?.oid?.hex;
-    if (!oid) return;
-    void this.graphStore.focusCommit(oid);
   }
 
   /** Item 7a: clear the selection so the aside returns to "select a commit". */

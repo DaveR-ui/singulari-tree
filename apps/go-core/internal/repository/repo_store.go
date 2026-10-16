@@ -122,9 +122,9 @@ func (s *RepoStore) Get(ctx context.Context, id domain.RepositoryId) (*domain.Re
 }
 
 // Relocate repoints an already-tracked repository at a new filesystem path,
-// preserving its id and created_at and refreshing common_dir. The recorded id
-// is kept on purpose: a delete + re-create would mint a new id, cascade away the
-// cached rows and silently lose the registration.
+// preserving its id and created_at and refreshing fs_path, common_dir and name.
+// The recorded id is kept on purpose: a delete + re-create would mint a new id,
+// cascade away the cached rows and silently lose the registration.
 //
 // A target already tracked by a different repository id is rejected with
 // ErrRepoPathInUse. The repos.fs_path column is UNIQUE, so the conflict check
@@ -134,7 +134,7 @@ func (s *RepoStore) Get(ctx context.Context, id domain.RepositoryId) (*domain.Re
 // raw constraint error instead of the typed envelope. As belt-and-braces, a
 // UNIQUE failure on the UPDATE itself is also mapped to ErrRepoPathInUse (other
 // sqlite errors are returned unchanged). A no-op relocate (same path) is allowed
-// and still refreshes common_dir.
+// and still refreshes common_dir and name.
 func (s *RepoStore) Relocate(ctx context.Context, id domain.RepositoryId, fsPath string) (*domain.Repository, error) {
 	if strings.TrimSpace(fsPath) == "" {
 		return nil, domain.ErrRepoPathMissing.WithDetail("fs_path", fsPath)
@@ -167,12 +167,14 @@ func (s *RepoStore) Relocate(ctx context.Context, id domain.RepositoryId, fsPath
 		return nil, domain.ErrRepoPathInUse.WithDetail("fs_path", abs)
 	}
 
-	// common_dir is refreshed from the new path exactly like Open derives it for
-	// a fresh registration (the default .git under the normalized work tree).
+	// common_dir and name are refreshed from the new path exactly like Open
+	// derives them for a fresh registration (the default .git under the
+	// normalized work tree, and its basename).
 	commonDir := filepath.Join(abs, ".git")
+	name := filepath.Base(abs)
 	if _, err := tx.ExecContext(ctx,
-		`UPDATE repos SET fs_path = ?, common_dir = ? WHERE id = ?`,
-		abs, commonDir, string(id),
+		`UPDATE repos SET fs_path = ?, common_dir = ?, name = ? WHERE id = ?`,
+		abs, commonDir, name, string(id),
 	); err != nil {
 		if isUniqueConstraintErr(err) {
 			return nil, domain.ErrRepoPathInUse.WithDetail("fs_path", abs)

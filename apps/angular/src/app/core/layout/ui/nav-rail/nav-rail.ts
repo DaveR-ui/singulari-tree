@@ -896,6 +896,7 @@ export class NavRail {
     { kind: 'status', label: $localize`Local changes`, icon: 'changes' },
     { kind: 'history', label: $localize`History`, icon: 'history' },
     { kind: 'search', label: $localize`Search`, icon: 'search' },
+    { kind: 'repos', label: $localize`Repositories`, icon: 'repo' },
   ];
 
   /** Explanatory tooltip shown when "Delete…" targets the current branch. */

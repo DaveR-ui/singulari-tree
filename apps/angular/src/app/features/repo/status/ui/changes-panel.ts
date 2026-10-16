@@ -148,24 +148,39 @@ import { HunkActions, type HunkActionEvent } from './hunk-actions';
     </section>
   `,
   styles: `
+    /* The host is a bounded flex column: the file-status page hands it the full
+       height of the left pane, so the panel can pin its commit box to the bottom
+       while the file sections scroll in the space that remains. flex (not a
+       percentage height) plus min-height: 0 lets it shrink below its content
+       when the lists overflow instead of growing the pane. */
     :host {
-      display: block;
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 0;
       color: var(--st-color-text);
     }
 
     .st-changes {
       display: flex;
       flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 0;
       gap: 8px;
       padding: 8px 12px;
       font-size: 12px;
     }
 
+    /* The scrollable region: it takes all the slack, so a short list still
+       pushes the fixed commit box to the bottom rather than leaving it mid-pane. */
     .st-changes__sections {
       display: flex;
       flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 0;
       gap: 10px;
-      overflow: auto;
+      overflow-y: auto;
+      overflow-x: hidden;
     }
 
     .st-changes__heading {
@@ -210,15 +225,23 @@ import { HunkActions, type HunkActionEvent } from './hunk-actions';
       gap: var(--st-space-1);
     }
 
+    /* Sits between the lists and the footer: fixed, so it never eats the
+       scrollable slack and is never squeezed to zero. */
     .st-changes__hunks {
-      border-top: 1px solid var(--st-color-border);
-      padding-top: 8px;
+      flex: none;
+      border-top: var(--st-hairline) solid var(--st-color-border);
+      padding-top: var(--st-space-2);
     }
 
+    /* Pinned footer: fixed (never grows or shrinks), so the sections keep the
+       scrollable slack; the top hairline reads it as the commit box. */
     .st-changes__commit {
       display: flex;
       flex-direction: column;
+      flex: none;
       gap: 6px;
+      border-top: var(--st-hairline) solid var(--st-color-border);
+      padding-top: var(--st-space-2);
     }
 
     .st-changes__empty {

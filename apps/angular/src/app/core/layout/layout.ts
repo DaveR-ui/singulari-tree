@@ -221,8 +221,9 @@ export class LayoutComponent implements OnInit {
       const url = this.currentUrl();
       if (url.startsWith('/repo/file-status')) this.activeWorkspace.set('status');
       else if (url === '/repo' || url.startsWith('/repo?')) this.activeWorkspace.set('history');
-      // Every other route has no WORKSPACE entry (repos manager `/repos`, github
-      // account, settings, and the tab-close fallback): clear any stale highlight.
+      else if (url === '/repos' || url.startsWith('/repos?')) this.activeWorkspace.set('repos');
+      // Every other route has no WORKSPACE entry (github account, settings, and
+      // the tab-close fallback): clear any stale highlight.
       else this.activeWorkspace.set('');
     });
 
@@ -759,7 +760,8 @@ export class LayoutComponent implements OnInit {
    * Rail WORKSPACE selection (ADR-024 tabs, ADR-026 search, ADR-0029 file
    * status). History is the routed repository screen and File status is a routed
    * child of it, so both leave the center region to the `router-outlet`; Search
-   * stays an in-shell workspace rendered next to that outlet.
+   * stays an in-shell workspace rendered next to that outlet. Repositories
+   * routes out to the repository manager.
    */
   onWorkspaceSelected(kind: string): void {
     this.activeWorkspace.set(kind);
@@ -769,6 +771,10 @@ export class LayoutComponent implements OnInit {
     }
     if (kind === 'history') {
       void this.router.navigate(['/repo']);
+      return;
+    }
+    if (kind === 'repos') {
+      void this.router.navigate(['/repos']);
     }
   }
 

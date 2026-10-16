@@ -11,9 +11,24 @@ import { GoCoreClient } from '../src/main/go-core-client';
  *   git fixture repo → real go-core (gRPC) → GoCoreClient
  *     Ping → OpenRepository → GetCommits (asserts fixture messages & oids)
  *     GetBranches → GetRemotes → GetTags (refs read path) + domain error codes.
+ *     RelocateRepository (P4.1 missing-folder recovery: same-id repoint + the
+ *       REPO_PATH_MISSING / NOT_A_GIT_REPO / REPO_PATH_IN_USE typed failures).
  *
  * Spawns `go run ./apps/go-core/cmd/go-core --headless ...` from the repo root
  * (or `dist/go-core[.exe]` when already built). Skipped only if no Go toolchain.
+ *
+ * Stale-binary hazard: `dist/go-core[.exe]` is a build artifact that no `npm
+ * start` script rebuilds, while the Electron shell spawns it preferentially
+ * (main.ts getGoCoreBinary → Supervisor.spawn only falls back to `go run` when
+ * it is ABSENT). A core RPC added after the artifact was built is therefore
+ * missing from the running app even though every unit suite is green — the
+ * renderer's relocation panel silently stops applying a new path. The
+ * RelocateRepository case below is the guard: it fails with "unknown method …
+ * for service singularitree.v1.GitCore" whenever the deployed binary predates
+ * the contract, so a new core RPC must ship with `./tools/scripts/build-go-core.sh`.
+ * The staleness itself is now caught earlier and more cheaply by
+ * `tools/scripts/verify-go-core-fresh.js` (root `prestart`); this suite stays
+ * the behavioural proof that a *fresh* contract works end to end.
  */
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
@@ -445,6 +460,98 @@ describe.skipIf(!goAvailable)(
       for (const value of Object.values(err.details)) {
         expect(String(value)).not.toContain('fatal:');
         expect(String(value)).not.toContain('not logged');
+      }
+    });
+
+    it('repoints the same repository id when the folder moves (RelocateRepository) and names its typed failures', async () => {
+      if (!client) throw new Error('client not initialised');
+
+      // Dedicated fixture: the shared `fixture` is asserted by the tests above
+      // and the folder must not be moved on disk.
+      const second = createFixtureRepo();
+      const moved = path.join(tmpRoot, 'relocated-repo');
+      // An existing folder that is not a Git repository (typed failure target).
+      const nonRepo = fs.mkdtempSync(path.join(tmpRoot, 'singularitree-nonrepo-'));
+      try {
+        const before = await client.openRepository({ fsPath: second.dir });
+        expect(before.id).toBeTruthy();
+
+        // Simulate the operator moving/renaming the tracked folder outside the
+        // app: the row still records the old path, the folder is gone from it.
+        fs.renameSync(second.dir, moved);
+
+        // GoCoreClient has no typed wrapper for RelocateRepository (the TS
+        // surface predates it), so dispatch generically and cast the `unknown`
+        // response to the same locally-declared shape Auth results use.
+        const relocated = (await client.invoke('RelocateRepository', {
+          repoId: before.id,
+          fsPath: moved,
+        })) as {
+          id: string;
+          fsPath: string;
+          commonDir: string;
+          name: string;
+          createdAt: string;
+        };
+
+        // Same id: relocate repoints the row, it never deletes + re-adds (which
+        // would mint a new id and cascade the cached rows away).
+        expect(relocated.id).toBe(before.id);
+        // Both sides canonicalised: the core echoes the long-form path it gets
+        // from `git rev-parse --show-toplevel` while the fixture lives under the
+        // 8.3 short TEMP form (RUNNER~1) on the GitHub Windows runner — same
+        // rationale as the OpenRepository assertion above.
+        expect(canonicalFsPath(relocated.fsPath)).toBe(canonicalFsPath(moved));
+        // Registration history survives: created_at is the row's original value.
+        expect(relocated.createdAt).toBe(before.createdAt);
+        // common_dir and name are re-derived from the new path exactly like Open.
+        expect(canonicalFsPath(relocated.commonDir)).toBe(
+          canonicalFsPath(path.join(moved, '.git')),
+        );
+        expect(relocated.name).toBe(path.basename(moved));
+
+        // The persisted list reflects the repointed path under the same id.
+        const listed = await client.listRepositories({});
+        const row = listed.repositories.find((r) => r.id === before.id);
+        expect(row, 'relocated repo must stay listed under its original id').toBeDefined();
+        expect(canonicalFsPath(row?.fsPath ?? '')).toBe(canonicalFsPath(moved));
+
+        // Reopening the new path resolves to the same registration — a fresh
+        // OpenRepository must not mint a second id (the renderer's
+        // reopen-after-relocate path).
+        const reopened = await client.openRepository({ fsPath: moved });
+        expect(reopened.id).toBe(before.id);
+
+        // Typed failures, each with its own target, carried by the
+        // x-app-error-code trailer exactly like REPO_NOT_FOUND / NOT_A_GIT_REPO.
+        await expect(
+          client.invoke('RelocateRepository', {
+            repoId: before.id,
+            fsPath: path.join(tmpRoot, 'relocated-repo-gone'),
+          }),
+        ).rejects.toMatchObject({ code: 'REPO_PATH_MISSING' });
+
+        await expect(
+          client.invoke('RelocateRepository', {
+            repoId: before.id,
+            fsPath: nonRepo,
+          }),
+        ).rejects.toMatchObject({ code: 'NOT_A_GIT_REPO' });
+
+        // A target already tracked by a *different* id → REPO_PATH_IN_USE. The
+        // shared fixture is only registered here (never moved) to supply that
+        // distinct id.
+        await client.openRepository({ fsPath: fixture.dir });
+        await expect(
+          client.invoke('RelocateRepository', {
+            repoId: before.id,
+            fsPath: fixture.dir,
+          }),
+        ).rejects.toMatchObject({ code: 'REPO_PATH_IN_USE' });
+      } finally {
+        rmTmpDir(moved);
+        rmTmpDir(second.dir);
+        rmTmpDir(nonRepo);
       }
     });
   },
