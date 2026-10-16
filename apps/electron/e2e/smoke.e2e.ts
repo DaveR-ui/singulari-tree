@@ -191,6 +191,60 @@ let window: Page | null = null;
 let server: http.Server | null = null;
 let fixture: Fixture | null = null;
 
+/**
+ * Test isolation — each test owns its own entry steps through these helpers
+ * (variant: explicit per-test entry, NOT a blanket `beforeEach`). Test 1's
+ * subject IS the picker → open flow, so a blanket `beforeEach` reopening the
+ * repo would conflict with it. Explicit entry steps make every test
+ * self-contained and re-runnable (`--grep` of any single test works from a
+ * fresh run) while keeping all existing assertions intact.
+ */
+
+/**
+ * Ensure a repo session is open. Races the picker against the rendered graph
+ * (both with a generous timeout): the picker winning means there is no session,
+ * so open the fixture through it and wait for the graph; the graph winning means
+ * the repo is already open. The open-path log is load-bearing observability: in a
+ * full-suite run it appearing under test 2/3 means the repo session was torn down
+ * between tests.
+ */
+async function ensureRepoOpen(): Promise<void> {
+  if (!window || !fixture) throw new Error('e2e setup did not initialise');
+  const pathInput = window.getByTestId('repo-path-input');
+  const graphFirst = window.getByTestId('graph-row-message').first();
+  // Race the two states with a generous timeout so a slow cold boot (lazy route
+  // chunks render after `domcontentloaded`) can never be mistaken for "repo
+  // already open"; the race resolves as soon as EITHER state appears, so the fast
+  // path stays fast. Both sides catch, so a losing/rejecting waiter can never
+  // surface as an unhandled rejection.
+  const state = await Promise.race([
+    pathInput
+      .waitFor({ state: 'visible', timeout: 30_000 })
+      .then(() => 'picker' as const)
+      .catch(() => 'neither' as const),
+    graphFirst
+      .waitFor({ state: 'visible', timeout: 30_000 })
+      .then(() => 'graph' as const)
+      .catch(() => 'neither' as const),
+  ]);
+  if (state !== 'picker') {
+    console.log('ensureRepoOpen: repo already open');
+    return;
+  }
+  console.log('ensureRepoOpen: opened repo via picker');
+  await pathInput.fill(fixture.dir);
+  await window.getByTestId('repo-open').click();
+  await expect(graphFirst).toBeVisible({ timeout: 60_000 });
+}
+
+/** Ensure the History workspace (`/repo`) is open and its graph is rendered. */
+async function ensureHistory(): Promise<void> {
+  if (!window) throw new Error('e2e setup did not initialise');
+  await window.getByTestId('st-sidebar-workspace-history').click();
+  await expect(window).toHaveURL(/\/repo$/);
+  await expect(window.getByTestId('graph-row-message').first()).toBeVisible({ timeout: 60_000 });
+}
+
 test.describe('SingulariTree Electron smoke: open repo → graph → stage → commit → diff', () => {
   test.beforeAll(async () => {
     if (missing.length > 0) {
@@ -267,11 +321,15 @@ test.describe('SingulariTree Electron smoke: open repo → graph → stage → c
     test.skip(missing.length > 0 && !requirePrereqs, `missing prerequisites: ${missing.join('; ')}`);
     if (!window || !fixture) throw new Error('e2e setup did not initialise');
 
+    // Entry steps (self-contained): open the repo if needed, then go to History.
+    await ensureRepoOpen();
+    await ensureHistory();
+
     // (c) selection → details panel (read-only history + details, ADR-0030).
     await window.getByTestId('graph-row-message').first().click();
-    const detailMessage = window.getByTestId('commit-details-message');
-    await expect(detailMessage).toBeVisible();
-    await expect(detailMessage).toContainText('second commit');
+    const detailSubject = window.getByTestId('commit-details-subject');
+    await expect(detailSubject).toBeVisible();
+    await expect(detailSubject).toContainText('second commit');
     await expect(window.getByTestId('commit-details-oid')).toBeVisible();
 
     // (d) pinned synthetic WIP row → routes to the File status screen (ADR-0030).
@@ -293,9 +351,21 @@ test.describe('SingulariTree Electron smoke: open repo → graph → stage → c
     test.skip(missing.length > 0 && !requirePrereqs, `missing prerequisites: ${missing.join('; ')}`);
     if (!window || !fixture) throw new Error('e2e setup did not initialise');
 
-    // (e) the WIP hand-off in the previous test left us on the File status `local`
-    // variant; the fixture's untracked `wip.txt` must be listed there
-    // (IPC → gRPC → git status).
+    // Entry steps (self-contained): open the repo if needed, go to History, then
+    // navigate to the File status screen through the sidebar WORKSPACE "Local
+    // changes" entry. This test performs its own navigation instead of inheriting
+    // test 2's WIP hand-off. With no real commit selected (WIP or nothing
+    // selected), FileStatusPage's selection-following effect dispatches
+    // `openLocal()`, so the screen lands on the `local` variant. Verified: the
+    // WORKSPACE `status` entry routes to `/repo/file-status` via
+    // `LayoutComponent.onWorkspaceSelected` and defaults to the local variant.
+    await ensureRepoOpen();
+    await ensureHistory();
+    await window.getByTestId('st-sidebar-workspace-status').click();
+    await expect(window).toHaveURL(/\/repo\/file-status/);
+
+    // (e) File status `local` variant: the fixture's untracked `wip.txt` must be
+    // listed here (IPC → gRPC → git status).
     const wipFile = window.getByTestId('status-file').filter({ hasText: 'wip.txt' });
     await expect(wipFile).toHaveCount(1, { timeout: 30_000 });
     await expect(wipFile).toBeVisible();
@@ -327,7 +397,9 @@ test.describe('SingulariTree Electron smoke: open repo → graph → stage → c
       window.getByTestId('status-file').filter({ hasText: 'wip.txt' }).getByTestId('status-unstage'),
     ).toBeVisible({ timeout: 30_000 });
 
-    await window.getByTestId('commit-message-input').fill('wip commit');
+    // `commit-message-input` sits on the `<st-textarea>` host; `fill` must target
+    // the inner native control (the host is not fillable). Same app, test-side fix.
+    await window.getByTestId('commit-message-input').locator('textarea').fill('wip commit');
     const commitButton = window.getByTestId('commit-button');
     await expect(commitButton).toBeEnabled();
     await commitButton.click();
