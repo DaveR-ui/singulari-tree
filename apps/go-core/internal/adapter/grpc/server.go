@@ -28,7 +28,6 @@ type Server struct {
 	graphSvc   *service.GraphService
 	watcherSvc *service.WatcherService
 	cacheSvc   *service.CacheService
-	searchSvc  *service.SearchService
 	gitflowSvc *service.GitFlowService
 	token      string
 	startedAt  time.Time
@@ -36,14 +35,13 @@ type Server struct {
 
 // NewServer creates the GitCore gRPC adapter. token, when non-empty, is enforced
 // by the auth interceptors returned from UnaryAuthInterceptor/StreamAuthInterceptor.
-func NewServer(repoSvc *service.RepoService, gitSvc *service.GitService, graphSvc *service.GraphService, watcherSvc *service.WatcherService, cacheSvc *service.CacheService, searchSvc *service.SearchService, gitflowSvc *service.GitFlowService, token string) *Server {
+func NewServer(repoSvc *service.RepoService, gitSvc *service.GitService, graphSvc *service.GraphService, watcherSvc *service.WatcherService, cacheSvc *service.CacheService, gitflowSvc *service.GitFlowService, token string) *Server {
 	return &Server{
 		repoSvc:    repoSvc,
 		gitSvc:     gitSvc,
 		graphSvc:   graphSvc,
 		watcherSvc: watcherSvc,
 		cacheSvc:   cacheSvc,
-		searchSvc:  searchSvc,
 		gitflowSvc: gitflowSvc,
 		token:      token,
 		startedAt:  time.Now(),
@@ -490,26 +488,6 @@ func (s *Server) StashDrop(ctx context.Context, req *singularitreev1.StashDropRe
 		return nil, appErrorToStatus(ctx, err)
 	}
 	return &singularitreev1.StashDropResponse{}, nil
-}
-
-// SearchCommits searches the SQLite metadata cache across the requested repos
-// (ADR-026). It never reads Git objects; repositories with no cached rows may
-// get a bounded per-repo backfill inside SearchService.
-func (s *Server) SearchCommits(ctx context.Context, req *singularitreev1.SearchCommitsRequest) (*singularitreev1.SearchCommitsResponse, error) {
-	if s.searchSvc == nil {
-		return nil, status.Error(codes.FailedPrecondition, "search service not configured")
-	}
-	hits, err := s.searchSvc.Search(ctx, req.GetRepoIds(), req.GetQuery(), int(req.GetLimit()))
-	if err != nil {
-		return nil, appErrorToStatus(ctx, err)
-	}
-	out := &singularitreev1.SearchCommitsResponse{
-		Hits: make([]*singularitreev1.CommitSearchHit, 0, len(hits)),
-	}
-	for i := range hits {
-		out.Hits = append(out.Hits, commitSearchHitToProto(hits[i]))
-	}
-	return out, nil
 }
 
 // GetGitFlowConfig returns a repository's git-flow preset configuration,

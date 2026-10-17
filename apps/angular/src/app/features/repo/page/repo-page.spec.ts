@@ -88,6 +88,26 @@ function makeGraphStore() {
   });
   const focusCommit = vi.fn(async (_oid: string) => {});
   const reload = vi.fn();
+  // Lock API mirror of the frozen store contract: `RepoPage`'s selectedCommit
+  // reads `lockedCommit()`, so the hydration-effect unit needs it present even
+  // though it never renders the template.
+  const lockedOid = signal<string | null>(null);
+  const lockedCommit = signal<Commit | null>(null);
+  const lock = vi.fn((): void => {
+    const oid = selectedOid();
+    if (!oid || oid === WIP_OID) return;
+    lockedOid.set(oid);
+    lockedCommit.set(commits().find((c) => c.oid?.hex === oid) ?? null);
+  });
+  const unlock = vi.fn((): void => {
+    lockedOid.set(null);
+    lockedCommit.set(null);
+  });
+  const release = vi.fn((): void => {
+    lockedOid.set(null);
+    lockedCommit.set(null);
+    selectedOid.set(null);
+  });
   return {
     repoId,
     commits,
@@ -98,6 +118,11 @@ function makeGraphStore() {
     focusCommit,
     reload,
     error: signal<AppError | null>(null),
+    lockedOid,
+    lockedCommit,
+    lock,
+    unlock,
+    release,
   };
 }
 
@@ -252,7 +277,7 @@ describe('RepoPage hydration', () => {
     expect(graphStore.repoId()).toBe(REPO_B.id);
   });
 
-  // -- cross-repo search focus hand-off (ADR-026) --------------------------
+  // -- deep-link commit focus hand-off -------------------------------------
 
   it('focuses a queued commit when its repository is already open', async () => {
     const { graphStore } = await setup(REPO_A);
@@ -404,23 +429,34 @@ class RepoRelocatePanelStub {
     <button type="button" data-testid="review-changes" (click)="reviewChanges.emit()">
       Review changes
     </button>
-    <button type="button" data-testid="back" (click)="back.emit()">Back</button>
+    <button type="button" data-testid="lock-toggle" (click)="lockToggle.emit()">Lock</button>
+    <button type="button" data-testid="release" (click)="release.emit()">Release</button>
   `,
 })
 class CommitDetailsPanelStub {
   readonly commit = input<Commit | null>(null);
   readonly isWip = input(false);
   readonly showCta = input(false);
-  readonly showNavigation = input(false);
+  readonly showSubject = input(true);
+  readonly showFiles = input(false);
+  readonly navMode = input<'none' | 'release' | 'history'>('none');
+  readonly locked = input(false);
+  readonly showInGraph = input(false);
   readonly changedFiles = input<readonly string[]>([]);
   readonly reviewChanges = output<void>();
-  readonly back = output<void>();
+  readonly lockToggle = output<void>();
+  readonly release = output<void>();
+  readonly openHistory = output<void>();
+  readonly revealInGraph = output<void>();
 }
 
 /**
  * Selection-aware `GraphStore` stand-in for the render tests: exposes the
  * signals `RepoPage` derives its split inputs from and keeps `selectedRow`
- * consistent with `selectedOid` (null for the WIP pseudo-oid).
+ * consistent with `selectedOid` (null for the WIP pseudo-oid). The lock API
+ * mirrors the frozen store contract: `lock()` captures the current real-commit
+ * selection, `unlock()` clears the lock but keeps the selection, and
+ * `release()` clears both.
  */
 function makeRenderGraphStore(
   opts: { openError?: AppError; failOn?: (fsPath: string) => boolean } = {},
@@ -429,6 +465,8 @@ function makeRenderGraphStore(
   const commits = signal<Commit[]>([COMMIT_A, COMMIT_B]);
   const selectedOid = signal<string | null>(null);
   const error = signal<AppError | null>(null);
+  const lockedOid = signal<string | null>(null);
+  const lockedCommit = signal<Commit | null>(null);
   const openRepository = vi.fn(async (fsPath: string) => {
     // A failed open leaves `repoId` null and records the error — the state that
     // drives the recovery panel instead of the picker. The fixed store clears
@@ -462,7 +500,43 @@ function makeRenderGraphStore(
       : null;
   });
   const isWipSelected = computed(() => selectedOid() === WIP_OID);
-  return { repoId, commits, selectedOid, selectedRow, isWipSelected, error, openRepository, focusCommit, reload, requestScrollRestore, select };
+  // Lock captures the current real-commit selection's oid and commit; the
+  // captured commit survives the row falling out of the loaded window.
+  const lock = vi.fn((): void => {
+    const oid = selectedOid();
+    if (!oid || oid === WIP_OID) return;
+    lockedOid.set(oid);
+    lockedCommit.set(commits().find((c) => c.oid?.hex === oid) ?? null);
+  });
+  // Unlock clears the lock but keeps the selection.
+  const unlock = vi.fn((): void => {
+    lockedOid.set(null);
+    lockedCommit.set(null);
+  });
+  // Release clears the lock AND the selection.
+  const release = vi.fn((): void => {
+    lockedOid.set(null);
+    lockedCommit.set(null);
+    selectedOid.set(null);
+  });
+  return {
+    repoId,
+    commits,
+    selectedOid,
+    selectedRow,
+    isWipSelected,
+    error,
+    openRepository,
+    focusCommit,
+    reload,
+    requestScrollRestore,
+    select,
+    lockedOid,
+    lockedCommit,
+    lock,
+    unlock,
+    release,
+  };
 }
 
 async function render(
@@ -699,18 +773,74 @@ describe('RepoPage workspace split', () => {
     expect(graphStore.openRepository).toHaveBeenCalledWith('/tmp/a-moved');
   });
 
-  // -- item 7a: detail-pane navigation -------------------------------------
+  // -- item 7a: detail-pane release + graph lock ---------------------------
 
-  it('clears the selection when back fires', async () => {
+  it('releases the selection and the lock when the panel releases', async () => {
+    const { fixture, graphStore } = await renderWithGraph();
+    graphStore.selectedOid.set(COMMIT_OID);
+    graphStore.lock();
+    fixture.detectChanges();
+
+    host(fixture).querySelector<HTMLButtonElement>('[data-testid="release"]')!.click();
+    fixture.detectChanges();
+
+    expect(graphStore.release).toHaveBeenCalled();
+    expect(graphStore.selectedOid()).toBeNull();
+    expect(graphStore.lockedOid()).toBeNull();
+    expect(host(fixture).querySelector('[data-testid="workspace-detail"]')).toBeNull();
+  });
+
+  it('locks the store when the padlock toggles on', async () => {
     const { fixture, graphStore } = await renderWithGraph();
     graphStore.selectedOid.set(COMMIT_OID);
     fixture.detectChanges();
+    expect(detailsStub(fixture).locked()).toBe(false);
 
-    host(fixture).querySelector<HTMLButtonElement>('[data-testid="back"]')!.click();
+    host(fixture).querySelector<HTMLButtonElement>('[data-testid="lock-toggle"]')!.click();
     fixture.detectChanges();
 
-    expect(graphStore.selectedOid()).toBeNull();
-    expect(host(fixture).querySelector('[data-testid="workspace-detail"]')).toBeNull();
+    expect(graphStore.lock).toHaveBeenCalledTimes(1);
+    expect(graphStore.unlock).not.toHaveBeenCalled();
+    expect(graphStore.lockedOid()).toBe(COMMIT_OID);
+    expect(detailsStub(fixture).locked()).toBe(true);
+  });
+
+  it('unlocks the store when the padlock toggles off, keeping the selection', async () => {
+    const { fixture, graphStore } = await renderWithGraph();
+    graphStore.selectedOid.set(COMMIT_OID);
+    graphStore.lock();
+    fixture.detectChanges();
+    expect(detailsStub(fixture).locked()).toBe(true);
+
+    host(fixture).querySelector<HTMLButtonElement>('[data-testid="lock-toggle"]')!.click();
+    fixture.detectChanges();
+
+    expect(graphStore.unlock).toHaveBeenCalledTimes(1);
+    expect(graphStore.lockedOid()).toBeNull();
+    // Unlock keeps the selection: the pane stays pinned on the same commit.
+    expect(graphStore.selectedOid()).toBe(COMMIT_OID);
+    expect(detailsStub(fixture).locked()).toBe(false);
+  });
+
+  it('keeps rendering the locked commit after the window reloads without it', async () => {
+    const { fixture, graphStore } = await renderWithGraph();
+    graphStore.selectedOid.set(COMMIT_OID);
+    graphStore.lock();
+    fixture.detectChanges();
+    expect(detailsStub(fixture).commit()).toEqual(COMMIT_A);
+
+    // A reload drops the locked commit out of the loaded window while the
+    // selection is kept: the `lockedCommit` fallback must keep the pane pinned.
+    graphStore.commits.set([COMMIT_B]);
+    fixture.detectChanges();
+
+    expect(graphStore.selectedRow()).toBeNull();
+    expect(fixture.componentInstance.selectedCommit()).toEqual(COMMIT_A);
+
+    const detail = host(fixture).querySelector('[data-testid="workspace-detail"]');
+    expect(detail).not.toBeNull();
+    expect(detail!.querySelector('[data-testid="commit-details"]')).not.toBeNull();
+    expect(detailsStub(fixture).commit()).toEqual(COMMIT_A);
   });
 
   // -- ADR-032: changed-file list read -------------------------------------

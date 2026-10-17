@@ -9,6 +9,7 @@ interface BarInputs {
   branches?: string[];
   baseRef?: string;
   targetRef?: string;
+  pendingCount?: number;
 }
 
 function render(inputs: BarInputs = {}): ComponentFixture<FileStatusVariantBar> {
@@ -18,6 +19,7 @@ function render(inputs: BarInputs = {}): ComponentFixture<FileStatusVariantBar> 
   ref.setInput('branches', inputs.branches ?? []);
   ref.setInput('baseRef', inputs.baseRef ?? '');
   ref.setInput('targetRef', inputs.targetRef ?? '');
+  ref.setInput('pendingCount', inputs.pendingCount ?? 0);
   fixture.detectChanges();
   return fixture;
 }
@@ -49,8 +51,32 @@ describe('FileStatusVariantBar', () => {
     const el = fixture.nativeElement as HTMLElement;
     expect(query(fixture, 'toggle-segment-local')?.textContent?.trim()).toBe('Local');
     expect(query(fixture, 'toggle-segment-commit')?.textContent?.trim()).toBe('Commit');
-    expect(query(fixture, 'toggle-segment-pr')?.textContent?.trim()).toBe('Pull request');
+    expect(query(fixture, 'toggle-segment-pr')?.textContent?.trim()).toBe('Branch comparator');
     expect(el.querySelectorAll('[role="group"] [data-testid^="toggle-segment-"]')).toHaveLength(3);
+  });
+
+  it('badges the Local segment with the pending count', () => {
+    const fixture = render({ pendingCount: 4 });
+
+    const badge = query(fixture, 'toggle-segment-local')?.querySelector(
+      '[data-testid="toggle-segment-count"]',
+    );
+    expect(badge?.textContent?.trim()).toBe('4');
+  });
+
+  it('hides the Local badge at zero and never badges the other segments', () => {
+    const zero = render({ pendingCount: 0 });
+    expect(
+      query(zero, 'toggle-segment-local')?.querySelector('[data-testid="toggle-segment-count"]'),
+    ).toBeNull();
+
+    const counted = render({ pendingCount: 2 });
+    expect(
+      query(counted, 'toggle-segment-commit')?.querySelector('[data-testid="toggle-segment-count"]'),
+    ).toBeNull();
+    expect(
+      query(counted, 'toggle-segment-pr')?.querySelector('[data-testid="toggle-segment-count"]'),
+    ).toBeNull();
   });
 
   it('emits the variant picked by the user', () => {

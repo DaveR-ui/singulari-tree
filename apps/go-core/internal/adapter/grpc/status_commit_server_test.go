@@ -125,7 +125,7 @@ func (f *fakeGitPort) CommitStats(_ context.Context, _ domain.RepositoryId, oids
 func startGitServer(t *testing.T, port domain.GitPort) string {
 	t.Helper()
 	gitSvc := service.NewGitService(port, nil, nil)
-	grpcSrv := grpcadapter.NewServer(nil, gitSvc, nil, nil, nil, nil, nil, testToken)
+	grpcSrv := grpcadapter.NewServer(nil, gitSvc, nil, nil, nil, nil, testToken)
 	gs := googlegrpc.NewServer(
 		googlegrpc.UnaryInterceptor(grpcadapter.UnaryAuthInterceptor(testToken)),
 	)
@@ -391,7 +391,7 @@ func TestCommitInvalidWhenMapsTrailer(t *testing.T) {
 // TestStatusCommitNilGitService asserts each new handler fails fast with
 // FailedPrecondition when no git service is wired, instead of panicking.
 func TestStatusCommitNilGitService(t *testing.T) {
-	srv := grpcadapter.NewServer(nil, nil, nil, nil, nil, nil, nil, "")
+	srv := grpcadapter.NewServer(nil, nil, nil, nil, nil, nil, "")
 	ctx := context.Background()
 
 	if _, err := srv.GetStatus(ctx, &singularitreev1.GetStatusRequest{RepoId: "r"}); status.Code(err) != codes.FailedPrecondition {

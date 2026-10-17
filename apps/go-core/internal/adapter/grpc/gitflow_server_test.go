@@ -2,7 +2,6 @@ package grpc_test
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	googlegrpc "google.golang.org/grpc"
@@ -17,60 +16,7 @@ import (
 // newNilServer builds a GitCore server with every optional service unwired, to
 // prove the new handlers nil-guard instead of panicking.
 func newNilServer() *grpcadapter.Server {
-	return grpcadapter.NewServer(nil, nil, nil, nil, nil, nil, nil, "")
-}
-
-// TestSearchCommitsRPC covers the cross-repo search RPC over the real gRPC stack
-// (ADR-026): the bounded backfill populates the metadata cache and the hit
-// carries metadata only.
-func TestSearchCommitsRPC(t *testing.T) {
-	addr := startServer(t)
-	fixture := initFixtureRepo(t)
-
-	client, closeConn := newGitCoreClient(t, addr)
-	defer closeConn()
-	ctx := authed(context.Background())
-
-	repo, err := client.OpenRepository(ctx, &singularitreev1.OpenRepositoryRequest{FsPath: fixture})
-	if err != nil {
-		t.Fatalf("OpenRepository: %v", err)
-	}
-	repoID := repo.GetId()
-
-	resp, err := client.SearchCommits(ctx, &singularitreev1.SearchCommitsRequest{
-		Query:   "SECOND",
-		RepoIds: []string{repoID},
-		Limit:   10,
-	})
-	if err != nil {
-		t.Fatalf("SearchCommits: %v", err)
-	}
-	hits := resp.GetHits()
-	if len(hits) != 1 {
-		t.Fatalf("hits = %d, want 1 (%+v)", len(hits), hits)
-	}
-	hit := hits[0]
-	if hit.GetRepoId() != repoID || hit.GetOid() == "" {
-		t.Errorf("hit = %+v, want repo_id/oid", hit)
-	}
-	if !strings.Contains(hit.GetMessage(), "second commit") {
-		t.Errorf("message = %q", hit.GetMessage())
-	}
-	if hit.GetAuthorName() != "Alice" || hit.GetAuthorEmail() != "alice@example.com" {
-		t.Errorf("author = %q <%q>", hit.GetAuthorName(), hit.GetAuthorEmail())
-	}
-	if hit.GetCommittedAt() <= 0 {
-		t.Errorf("committed_at = %d, want unix seconds", hit.GetCommittedAt())
-	}
-
-	// A non-matching query yields no hits.
-	empty, err := client.SearchCommits(ctx, &singularitreev1.SearchCommitsRequest{Query: "zzz-nope", RepoIds: []string{repoID}, Limit: 10})
-	if err != nil {
-		t.Fatalf("SearchCommits(no match): %v", err)
-	}
-	if len(empty.GetHits()) != 0 {
-		t.Errorf("no-match hits = %+v, want none", empty.GetHits())
-	}
+	return grpcadapter.NewServer(nil, nil, nil, nil, nil, nil, "")
 }
 
 // TestGitFlowConfigRPC covers defaults on an unset repo and set/get round-trip
@@ -250,15 +196,12 @@ func TestGitFlowUnspecifiedKindRPC(t *testing.T) {
 	}
 }
 
-// TestSearchAndGitFlowNilServices asserts the new handlers fail fast with
-// FailedPrecondition when their services are not wired.
-func TestSearchAndGitFlowNilServices(t *testing.T) {
+// TestGitFlowNilServices asserts the git-flow handlers fail fast with
+// FailedPrecondition when their service is not wired.
+func TestGitFlowNilServices(t *testing.T) {
 	srv := newNilServer()
 	ctx := context.Background()
 
-	if _, err := srv.SearchCommits(ctx, &singularitreev1.SearchCommitsRequest{Query: "x"}); status.Code(err) != codes.FailedPrecondition {
-		t.Errorf("SearchCommits(nil) code = %v, want FailedPrecondition", status.Code(err))
-	}
 	if _, err := srv.GetGitFlowConfig(ctx, &singularitreev1.GetGitFlowConfigRequest{RepoId: "r"}); status.Code(err) != codes.FailedPrecondition {
 		t.Errorf("GetGitFlowConfig(nil) code = %v, want FailedPrecondition", status.Code(err))
 	}

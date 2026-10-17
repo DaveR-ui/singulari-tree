@@ -1,6 +1,14 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import type { Commit, Diff } from '@contracts/domain';
-import { DiffViewer, ToggleGroupComponent, WorkspaceSplitComponent } from '@singularitree/ui-kit';
+import {
+  DiffViewer,
+  ToggleGroupComponent,
+  WorkspaceSplitComponent,
+  shortOidHex,
+  type HunkActionSlot,
+} from '@singularitree/ui-kit';
+import { CommitFocusService } from '@core/services/commit-focus.service';
 import { DiffModeService } from '@core/services/diff-mode.service';
 import type { DiffMode } from '@core/services/diff-mode.service';
 import { IpcBridge } from '@core/services/ipc-bridge.service';
@@ -8,8 +16,9 @@ import { PreferencesService } from '@core/services/preferences.service';
 import { RepoState } from '@core/services/repo-state.service';
 import { GraphStore, WIP_OID } from '../../graph/graph.store';
 import { CommitDetailsPanel } from '../../graph/ui/commit-details-panel';
+import { splitCommitMessage } from '../../graph/ui/commit-message';
 import { ChangesPanel } from '../../status/ui/changes-panel';
-import type { HunkActionEvent } from '../../status/ui/hunk-actions';
+import { isHunkActionable } from '../../status/ui/hunk-actions.model';
 import { FileStatusStore } from '../file-status.store';
 import type { FileStatusVariant } from '../file-status.models';
 import { commitChangeSummary, toSingleFileDiff } from '../file-status-mappers';
@@ -21,16 +30,22 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
  * file's diff on the RIGHT — the diff is always on the right, never on the left.
  *
  * Three variants share that scaffold: **local** reuses the existing working-tree
- * `st-changes-panel`, **commit** reuses `st-commit-details-panel` as its header
- * plus the changed-file list, and **pull request** diffs a local ref against a
- * base branch. The screen never talks to Git: every value comes from
- * `FileStatusStore`, which composes the route-scoped `StatusStore` and calls the
- * existing `getStatus`/`getDiff`/`getBranches` RPCs through `IpcBridge`.
+ * `st-changes-panel` (with the pinned-commit `st-commit-details-panel` section
+ * rendered above it as the contrast anchor / entry point), **commit** reuses
+ * `st-commit-details-panel` as its header plus the changed-file list, and **pull
+ * request** diffs a local ref against a base branch. The screen never talks to
+ * Git: every value comes from `FileStatusStore`, which composes the route-scoped
+ * `StatusStore` and calls the existing `getStatus`/`getDiff`/`getBranches` RPCs
+ * through `IpcBridge`.
  *
  * The right pane is a **pure projection**: `toSingleFileDiff` lifts the selected
- * file into a single-file `Diff` for the unchanged `DiffViewer` (which reads
- * only the deprecated flat `hunks` field), so the whole diff is never handed to
- * the viewer.
+ * file into a single-file `Diff` for the `DiffViewer`, so the whole diff is
+ * never handed to the viewer.
+ *
+ * Hunk/line actions live INLINE inside `st-diff-viewer` now: the page supplies
+ * per-hunk action slots (`hunkActions`) for the selected actionable unstaged
+ * file, and the viewer renders the buttons/checkboxes and echoes back
+ * `hunkIndex`/`lineIndex` — the exact indices the core's per-hunk RPCs address.
  *
  * The persisted diff typography and pane-width preferences now flow through the
  * viewer's and split's inputs.
@@ -54,6 +69,7 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
       <div class="st-file-status__left" detail>
         <st-file-status-variant-bar
           [variant]="fs.variant()"
+          [pendingCount]="fs.unstagedFiles().length"
           [branches]="branchNames()"
           [baseRef]="fs.baseRef()"
           [targetRef]="fs.targetRef()"
@@ -62,9 +78,36 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
           (targetRefChange)="fs.setTargetRef($event)"
         />
 
-        <div class="st-file-status__body">
+        <div
+          class="st-file-status__body"
+          [class.st-file-status__body--local]="fs.variant() === 'local'"
+          [class.st-file-status__body--commit]="fs.variant() === 'commit'"
+        >
           @switch (fs.variant()) {
             @case ('local') {
+              <!--
+                Contrast anchor / entry point: the SAME pinned-commit section
+                the commit variant uses, but here it heads the working-tree
+                column. Unlocked it renders the panel's empty state (with the
+                History shortcut) so picking a commit is one click away; locked
+                it shows the pinned commit above the changes it contrasts with.
+                Both panel sectors are opted out (showSubject/showFiles
+                false): the page owns this screen's identity, so the panel
+                renders identity + metadata only and never grows its own switch.
+              -->
+              <st-commit-details-panel
+                [commit]="graph.lockedCommit()"
+                [isWip]="false"
+                [showSubject]="false"
+                [showFiles]="false"
+                [navMode]="graph.lockedCommit() ? 'release' : 'history'"
+                [locked]="graph.lockedOid() !== null"
+                [showInGraph]="true"
+                (release)="releaseCommit()"
+                (lockToggle)="toggleLock()"
+                (revealInGraph)="showInGraph()"
+                (openHistory)="goHistory()"
+              />
               <st-changes-panel
                 [stagedFiles]="fs.stagedFiles()"
                 [unstagedFiles]="fs.unstagedFiles()"
@@ -73,33 +116,54 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
                 [selectedPath]="fs.selectedPath()"
                 [statusError]="fs.statusError()"
                 [commitError]="fs.commitError()"
-                [unstagedFile]="fs.selectedUnstagedFile()"
-                [stagedFile]="fs.selectedStagedFile()"
-                [diffTruncated]="fs.truncated()"
                 (stage)="fs.stage($event)"
                 (unstage)="fs.unstage($event)"
                 (discardFile)="fs.discardFiles([$event])"
-                (stageHunk)="onStageHunk($event)"
-                (unstageHunk)="onUnstageHunk($event)"
-                (discardHunk)="onDiscardHunk($event)"
                 (messageChange)="fs.setMessage($event)"
                 (commit)="fs.commit()"
                 (fileSelect)="fs.selectFile($event)"
               />
             }
             @case ('commit') {
+              @if (effectiveAnalyzerMode() === 'files') {
+                <!--
+                  Files mode: the change summary + the commit's changed-file
+                  list own the left column. In description mode both are hidden
+                  (the right-pane title sector shows the message instead), so
+                  exactly one of the two sectors is visible at a time. A commit
+                  with no message at all never reaches description mode — see
+                  the effectiveAnalyzerMode computed below.
+                -->
+                <p class="st-file-status__summary" data-testid="file-status-summary">
+                  {{ summaryText() }}
+                </p>
+                <st-file-diff-list
+                  [files]="fs.diffFiles()"
+                  [selectedPath]="fs.selectedPath()"
+                  (fileSelect)="fs.selectFile($event)"
+                />
+              }
+              <!--
+                The subject/body live in the right-pane title sector and the
+                file list in this column, both owned by the page's exclusive
+                mode; the panel therefore opts out of BOTH sectors
+                (showSubject/showFiles false) and renders identity +
+                metadata only, resting on the floor of this column
+                (margin-top: auto, scoped to the --commit body). The
+                pin/release/History/reveal actions live in the panel's toolbar,
+                driven by the shared graph lock.
+              -->
               <st-commit-details-panel
                 [commit]="fs.activeCommit()"
                 [isWip]="false"
-                [collapsible]="true"
-              />
-              <p class="st-file-status__summary" data-testid="file-status-summary">
-                {{ summaryText() }}
-              </p>
-              <st-file-diff-list
-                [files]="fs.diffFiles()"
-                [selectedPath]="fs.selectedPath()"
-                (fileSelect)="fs.selectFile($event)"
+                [showSubject]="false"
+                [showFiles]="false"
+                [navMode]="'release'"
+                [locked]="graph.lockedOid() === fs.activeCommit()?.oid?.hex"
+                [showInGraph]="true"
+                (release)="releaseCommit()"
+                (lockToggle)="toggleLock()"
+                (revealInGraph)="showInGraph()"
               />
             }
             @case ('pr') {
@@ -118,6 +182,50 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
 
       <!-- flexible RIGHT: the selected file's diff, always -->
       <div class="st-file-status__right" data-testid="file-status-diff">
+        @if (fs.variant() === 'commit' && hasMessage()) {
+          <header class="st-file-status__pane-title st-hairline" data-testid="file-status-title">
+            @if (effectiveAnalyzerMode() === 'description') {
+              <!--
+                Description mode: the subject in full (wrapping) when there is
+                one, plus the commit body when there is one — whichever the
+                message carries, so the sector is never empty. The page's
+                exclusive switch drives the choice.
+              -->
+              <div class="st-file-status__pane-title-description">
+                @if (commitTitle()) {
+                  <h2
+                    class="st-file-status__pane-title-text st-file-status__pane-title-text--wrap"
+                    [title]="commitTitle()"
+                  >
+                    {{ commitTitle() }}
+                  </h2>
+                }
+                @if (commitBody()) {
+                  <p class="st-file-status__pane-title-body" data-testid="file-status-title-body">
+                    {{ commitBody() }}
+                  </p>
+                }
+              </div>
+            } @else {
+              <!--
+                Files mode: the title bar keeps the commit identifiable by its
+                short sha alone, so the left column's file list and the diff own
+                the space while the context stays visible.
+              -->
+              <span class="st-file-status__pane-title-sha st-mono st-tabular-nums">{{
+                titleShortOid()
+              }}</span>
+            }
+            <st-toggle-group
+              class="st-file-status__pane-title-switch"
+              data-testid="file-status-view-switch"
+              [ariaLabel]="viewSwitchLabel"
+              [options]="analyzerModeOptions()"
+              [value]="effectiveAnalyzerMode()"
+              (valueChange)="onAnalyzerMode($event)"
+            />
+          </header>
+        }
         @if (untrackedSelected()) {
           <p class="st-file-status__notice" data-testid="file-status-untracked" i18n>
             Untracked file — nothing to diff until it is staged.
@@ -135,14 +243,21 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
                 <span class="st-file-status__diff-del">−{{ rightFileDiff()!.deletions }}</span>
               </span>
             }
-            <st-toggle-group
-              class="st-file-status__diff-mode"
-              data-testid="diff-mode-toggle"
-              [ariaLabel]="diffModeLabel"
-              [options]="diffModeOptions()"
-              [value]="diffMode.mode()"
-              (valueChange)="onDiffMode($event)"
-            />
+            <!--
+              Hidden while inline hunk actions are supplied: the action grid
+              ignores side-by-side, so an inert layout toggle would mislead. The
+              read-only paths (commit/PR) keep it.
+            -->
+            @if (hunkActionSlots() === null) {
+              <st-toggle-group
+                class="st-file-status__diff-mode"
+                data-testid="diff-mode-toggle"
+                [ariaLabel]="diffModeLabel"
+                [options]="diffModeOptions()"
+                [value]="diffMode.mode()"
+                (valueChange)="onDiffMode($event)"
+              />
+            }
           </header>
         }
         <st-diff-viewer
@@ -153,6 +268,9 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
           [renderSideBySide]="diffMode.sideBySide()"
           [fontSize]="diffFontSizePx()"
           [wordWrap]="diffWordWrapOn()"
+          [hunkActions]="hunkActionSlots()"
+          (hunkAction)="onHunkAction($event)"
+          (hunkLineToggle)="onHunkLineToggle($event)"
         />
       </div>
     </st-workspace-split>
@@ -204,12 +322,21 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
       opacity: 0.75;
     }
 
-    /* Commit variant: the changed-file list owns the slack, the collapsible
-       commit header shrinks to its compact head. min-height: 0 lets both
-       shrink below their content inside the flex column. */
+    /* The pinned-commit section is content-sized in every variant; the commit
+       variant alone pushes it to the floor of the column (the local variant
+       heads the column instead, above the changes panel). */
     :host st-commit-details-panel {
       flex: 0 1 auto;
       min-height: 0;
+    }
+
+    /* Commit variant: the free space lands between the changed-file list and
+       the commit panel, so the panel rests on the floor of the column
+       (margin-top: auto) and shrinks to its compact head. min-height: 0 lets
+       it shrink below its content; when the column overflows, the auto margin
+       collapses to 0 and the body scrolls. */
+    .st-file-status__body--commit st-commit-details-panel {
+      margin-top: auto;
     }
 
     :host st-file-diff-list {
@@ -250,6 +377,73 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
       color: var(--st-color-muted);
     }
 
+    /* Commit variant: the moved subject, above the diff and below its own
+       hairline so it heads the right pane. */
+    .st-file-status__pane-title {
+      display: flex;
+      align-items: center;
+      gap: var(--st-space-2);
+      flex: none;
+      padding: 0 var(--st-space-3);
+      min-height: var(--st-size-row-tree-dense);
+      color: var(--st-color-muted);
+    }
+
+    .st-file-status__pane-title-text {
+      flex: 1 1 auto;
+      margin: 0;
+      min-width: 0;
+      font-size: var(--st-font-13);
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      word-break: break-word;
+    }
+
+    /* Collapsed title bar: just the commit's short sha, in the mono/muted style
+       already used for oids across the app. */
+    .st-file-status__pane-title-sha {
+      min-width: 0;
+      font-size: var(--st-font-12);
+    }
+
+    /* Exclusive view switch (description / changed files): far right of the
+       title header, replacing the old disclosure. */
+    .st-file-status__pane-title-switch {
+      flex: none;
+      margin-left: auto;
+    }
+
+    /* Description mode wrapper: stacks the wrapping subject over the body. */
+    .st-file-status__pane-title-description {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    /* Wrapping variant of the title text: drops the single-line clamp so the
+       full subject reads in description mode. Declared after the base rule so
+       it wins the equal-specificity tie. */
+    .st-file-status__pane-title-text--wrap {
+      white-space: normal;
+      overflow: visible;
+      text-overflow: clip;
+    }
+
+    /* Commit body under the subject in description mode: muted and pre-wrapped
+       so the author's line breaks survive. */
+    .st-file-status__pane-title-body {
+      margin: 0;
+      color: var(--st-color-muted);
+      font-size: var(--st-font-11);
+      line-height: var(--st-leading-ui);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
     .st-file-status__diff-path {
       flex: 1 1 auto;
       min-width: 0;
@@ -281,14 +475,42 @@ export class FileStatusPage {
   /** Renderer-local diff-layout preference (unified by default). */
   readonly diffMode = inject(DiffModeService);
 
-  private readonly graph = inject(GraphStore);
+  /**
+   * Shared, route-scoped graph. Exposed to the template because the local and
+   * commit variants read the padlock/pinned commit directly.
+   */
+  protected readonly graph = inject(GraphStore);
   private readonly repoState = inject(RepoState);
   private readonly bridge = inject(IpcBridge);
   private readonly destroyRef = inject(DestroyRef);
   private readonly prefs = inject(PreferencesService);
+  /** Optional so unit tests without a router keep working (navigation no-ops). */
+  private readonly router = inject(Router, { optional: true });
+  /** Deep-link hand-off: queue a commit focus for `RepoPage` to consume. */
+  private readonly commitFocus = inject(CommitFocusService);
 
   /** Last observed `RepoState.statusRefreshRequested` token (dedupes the effect). */
   private lastStatusRefresh = this.repoState.statusRefreshRequested();
+
+  /**
+   * Exclusive analyzer mode: exactly one of `description` (the right-pane title
+   * sector: full subject + body) or `files` (the left column: summary + changed
+   * file list) is visible. Page view state; independent from the panel's own
+   * mode, so the two hosts never share it.
+   */
+  readonly analyzerMode = signal<'description' | 'files'>('description');
+
+  /**
+   * The mode actually rendered. `description` is the default and stays
+   * reachable whenever the commit carries any message content — the title
+   * sector then shows the subject and/or the body, so that sector is never
+   * empty and the segment is never a dead control. Only a commit with NO
+   * message at all forces `files`: there is nothing to describe, the file list
+   * is the only sector, and no title sector (nor switch) renders.
+   */
+  readonly effectiveAnalyzerMode = computed<'description' | 'files'>(() =>
+    this.hasMessage() ? this.analyzerMode() : 'files',
+  );
 
   /**
    * The persisted `st:paneWidth` drives the pinned left pane; `null` keeps the
@@ -316,8 +538,7 @@ export class FileStatusPage {
 
   /**
    * The single-file `Diff` fed to the viewer: a pure projection of the currently
-   * selected file, never the whole diff (`DiffViewer` reads only the deprecated
-   * flat `hunks`, which this synthetic object carries).
+   * selected file, never the whole diff.
    */
   readonly rightFileDiff = computed<Diff | null>(() =>
     toSingleFileDiff(this.fs.wholeDiff(), this.fs.selectedPath()),
@@ -360,6 +581,24 @@ export class FileStatusPage {
   /** Accessible name for the diff-pane layout toggle. */
   readonly diffModeLabel = $localize`Diff layout`;
 
+  /**
+   * Segments of the analyzer's exclusive view switch. Neither segment is ever
+   * disabled: the description sector shows whatever message exists (subject
+   * and/or body) and the files sector always lists the diff, so both are real
+   * choices. The files segment carries the changed-file count.
+   */
+  readonly analyzerModeOptions = computed(() => [
+    { value: 'description', label: $localize`Description` },
+    { value: 'files', label: $localize`Files`, count: this.fs.diffFiles().length },
+  ]);
+
+  /** Shared accessible name of the exclusive view switch (same id as the panel). */
+  readonly viewSwitchLabel = $localize`Description or changed files`;
+
+  /** Accessible names of the inline per-hunk actions. */
+  readonly a11yStageHunk = $localize`Stage hunk`;
+  readonly a11yDiscardHunk = $localize`Discard hunk`;
+
   /** Count-only summary of the diff shown by the commit/PR variants. */
   readonly changeSummary = computed(() => commitChangeSummary(this.fs.wholeDiff()));
 
@@ -370,6 +609,77 @@ export class FileStatusPage {
     const filesChanged = this.changeSummary().filesChanged;
     const files = filesChanged === 1 ? $localize`1 file` : $localize`${filesChanged} files`;
     return $localize`+${additions} −${deletions} across ${files}`;
+  });
+
+  /**
+   * Subject of the active commit, shown as the right-pane title in the commit
+   * variant's `description` mode (the panel itself no longer renders it there).
+   * Empty when there is no active commit. Together with `commitBody` it decides
+   * whether the title sector renders at all (`hasMessage`); on its own it
+   * decides whether the subject line renders inside that sector.
+   */
+  readonly commitTitle = computed(() => {
+    const commit = this.fs.activeCommit();
+    return commit ? splitCommitMessage(commit.message ?? '').subject : '';
+  });
+
+  /**
+   * Body of the active commit (everything after the first blank line), shown
+   * under the subject in the right-pane title's `description` mode. Empty when
+   * there is no active commit or no body.
+   */
+  readonly commitBody = computed(() => {
+    const commit = this.fs.activeCommit();
+    return commit ? splitCommitMessage(commit.message ?? '').description : '';
+  });
+
+  /**
+   * Whether the commit carries ANY message content — a subject or a body. The
+   * title sector (and its switch) renders on this, not on the subject alone: a
+   * commit whose message starts with a blank line has an empty subject but a
+   * real body, and that body must stay reachable. A commit with no message at
+   * all renders no title sector and no switch, and `files` is forced (see
+   * `effectiveAnalyzerMode`), so the left column is never left empty either.
+   */
+  readonly hasMessage = computed(
+    () => this.commitTitle().length > 0 || this.commitBody().length > 0,
+  );
+
+  /** Short sha shown when the right-pane title is in `files` mode. */
+  readonly titleShortOid = computed(() => shortOidHex(this.fs.activeCommit()?.oid?.hex));
+
+  // -- inline hunk actions (viewer-driven, ADR-0020) ------------------------
+
+  /**
+   * Page-owned per-line selection: `hunkIndex` → sorted 0-based indices into
+   * `hunk.lines`. Held here (not in the viewer) because the asynchronously
+   * refreshed diff can re-render at any time, and the page is the one place
+   * that survives it and owns the `hunkIndex`/`lineIndex` addressing.
+   */
+  private readonly selectedHunkLines = signal<Record<number, number[]>>({});
+
+  /**
+   * Per-hunk action slots for the selected actionable unstaged file, or `null`
+   * for every read-only path (commit/PR variants, no selection, staged/binary/
+   * conflicted/deleted files) so the viewer keeps its Monaco surface. One slot
+   * per hunk, addressed by index — the core re-derives the patch (ADR-0020).
+   */
+  readonly hunkActionSlots = computed<readonly HunkActionSlot[] | null>(() => {
+    if (!this.fs.isLocal()) return null;
+    const path = this.fs.selectedPath();
+    if (!path) return null;
+    const file = this.fs.selectedUnstagedFile();
+    if (!file || !isHunkActionable(file)) return null;
+    const selected = this.selectedHunkLines();
+    const disabled = this.fs.filesLoading();
+    return file.hunks.map((_, hunkIndex) => ({
+      hunkIndex,
+      actions: [
+        { key: 'stage', icon: 'plus', label: this.a11yStageHunk, disabled },
+        { key: 'discard', icon: 'discard', label: this.a11yDiscardHunk, disabled },
+      ],
+      selectedLines: selected[hunkIndex] ?? [],
+    }));
   });
 
   constructor() {
@@ -396,13 +706,18 @@ export class FileStatusPage {
     effect(() => {
       const repoId = this.graph.repoId();
       const oid = this.graph.selectedOid();
+      // Resolve the followed commit through the lock: once pinned, the cached
+      // `lockedCommit()` keeps the commit variant alive even after a reload
+      // drops the locked row out of the loaded window.
       const commit =
         repoId && oid && oid !== WIP_OID
-          ? this.graph.commits().find((candidate) => candidate.oid?.hex === oid)
+          ? this.graph.lockedOid() === oid
+            ? this.graph.lockedCommit() ?? undefined
+            : this.graph.commits().find((candidate) => candidate.oid?.hex === oid)
           : undefined;
       // Dedupe on the RESOLVED selection, not on `oid`. `commits()` stays a
       // tracked dependency on purpose: a selection whose commit is not yet in
-      // the loaded window (the ADR-026 cross-repo search hand-off) resolves to
+      // the loaded window (the open-commit deep-link focus) resolves to
       // `null` here and must re-fire once the window that names it loads. But a
       // background `reload()` (fs:changed after stage/unstage/commit) installs a
       // NEW `commits()` array that still names the selected commit; without this
@@ -414,6 +729,19 @@ export class FileStatusPage {
       this.lastFollowedOid = resolved;
       if (commit) void this.fs.openCommit(commit);
       else void this.fs.openLocal();
+    });
+
+    // Switching the selected file invalidates every per-hunk line index: the new
+    // file's hunks are unrelated, so a selection carried over from the previous
+    // file would render as checked lines on a file the user never touched — and
+    // a Discard would then destroy lines that were never selected there. Reset
+    // the whole map whenever the selected path changes.
+    let lastSelectedPath: string | null | undefined = undefined;
+    effect(() => {
+      const path = this.fs.selectedPath();
+      if (path === lastSelectedPath) return;
+      lastSelectedPath = path;
+      this.selectedHunkLines.set({});
     });
 
     // A successful commit moves HEAD: reload the graph window.
@@ -455,6 +783,12 @@ export class FileStatusPage {
     });
   }
 
+  /** Pick the visible analyzer sector. Unknown values are ignored. */
+  onAnalyzerMode(value: string): void {
+    if (value !== 'description' && value !== 'files') return;
+    this.analyzerMode.set(value);
+  }
+
   /** Switch variant through the store; only the store owns the variant state. */
   onVariantChange(variant: FileStatusVariant): void {
     if (variant === 'local') {
@@ -465,11 +799,58 @@ export class FileStatusPage {
       void this.fs.openPr();
       return;
     }
-    const commit = this.fs.activeCommit() ?? this.selectedCommit();
+    // Prefer the locked anchor (the commit the padlock is actually pinning) over
+    // a possibly stale `activeCommit` retained across `openLocal`, then the
+    // selection that resolves to a loaded row.
+    const commit = this.graph.lockedCommit() ?? this.fs.activeCommit() ?? this.selectedCommit();
     // Without a commit to show, fall back to the working tree rather than an
     // empty screen: the variant state only changes through `openCommit`.
-    if (commit) void this.fs.openCommit(commit);
-    else void this.fs.openLocal();
+    if (!commit) {
+      void this.fs.openLocal();
+      return;
+    }
+    // Reaching the commit variant with no graph selection (release, then this
+    // segment, with `activeCommit` retained) leaves the padlock enabled but
+    // inert: `graph.lock()` needs a selected oid present in `rows()`. Select the
+    // resolved commit first so the padlock has something to lock — skipped when a
+    // lock already exists, because the locked commit is then already the selection.
+    const oid = commit.oid?.hex ?? null;
+    if (oid && oid !== this.graph.selectedOid() && this.graph.lockedOid() === null) {
+      this.graph.select(oid);
+    }
+    void this.fs.openCommit(commit);
+  }
+
+  /** Release the pinned selection: drop the lock AND the selection. */
+  releaseCommit(): void {
+    this.graph.release();
+  }
+
+  /** Toggle the graph lock: pin the current commit, or lift the pin. */
+  toggleLock(): void {
+    if (this.graph.lockedOid()) this.graph.unlock();
+    else this.graph.lock();
+  }
+
+  /** Return to the History screen so the user can pick a commit. */
+  goHistory(): void {
+    void this.router?.navigate(['/repo']);
+  }
+
+  /**
+   * Reveal the current commit in the graph. The oid is resolved through the
+   * lock/selection because in the local variant there is no `activeCommit()`;
+   * the focus hand-off makes this work even when the commit is outside the
+   * loaded window (RepoPage runs the bounded `focusCommit` paging).
+   */
+  showInGraph(): void {
+    const oid =
+      this.fs.activeCommit()?.oid?.hex ??
+      this.graph.lockedCommit()?.oid?.hex ??
+      this.graph.selectedOid();
+    const repoId = this.graph.repoId();
+    if (repoId) this.commitFocus.request(repoId, oid ?? '');
+    void this.router?.navigate(['/repo']);
   }
 
   /** Apply a diff-layout picked by the user (renderer-local preference). */
@@ -485,16 +866,40 @@ export class FileStatusPage {
     this.prefs.setPaneWidth(String(Math.round(width)));
   }
 
-  onStageHunk(event: HunkActionEvent): void {
-    void this.fs.stageHunk(event.path, event.hunkIndex, event.lineIndices);
+  /**
+   * A per-hunk action button was clicked. The addressing is by indices only
+   * (ADR-0020): the page forwards the current line selection and clears the
+   * WHOLE selection map once the mutation is dispatched, because the reload
+   * re-indexes every hunk — so the next action starts from a fresh, valid map.
+   */
+  onHunkAction(event: { hunkIndex: number; actionKey: string }): void {
+    const path = this.fs.selectedPath();
+    if (!path) return;
+    const lines = this.selectedHunkLines()[event.hunkIndex] ?? [];
+    if (event.actionKey === 'stage') {
+      void this.fs.stageHunk(path, event.hunkIndex, lines);
+    } else if (event.actionKey === 'discard') {
+      // Hunk discard has never asked for a file-level confirmation; the action
+      // itself is the intent.
+      void this.fs.discardHunk(path, event.hunkIndex, lines);
+    } else {
+      return;
+    }
+    // A mutation reloads the worktree diff and re-indexes EVERY hunk, so the
+    // whole map is stale — clearing only the acted-on hunk would leave the other
+    // indices pointing at unrelated lines in the refreshed diff.
+    this.selectedHunkLines.set({});
   }
 
-  onUnstageHunk(event: HunkActionEvent): void {
-    void this.fs.unstageHunk(event.path, event.hunkIndex, event.lineIndices);
-  }
-
-  onDiscardHunk(event: HunkActionEvent): void {
-    void this.fs.discardHunk(event.path, event.hunkIndex, event.lineIndices);
+  /** Toggle one changed line's membership in a hunk's selection (sorted). */
+  onHunkLineToggle(event: { hunkIndex: number; lineIndex: number }): void {
+    this.selectedHunkLines.update((current) => {
+      const lines = current[event.hunkIndex] ?? [];
+      const next = lines.includes(event.lineIndex)
+        ? lines.filter((index) => index !== event.lineIndex)
+        : [...lines, event.lineIndex].sort((a, b) => a - b);
+      return { ...current, [event.hunkIndex]: next };
+    });
   }
 
   /** Commit the graph currently has selected, or null for WIP/no selection. */

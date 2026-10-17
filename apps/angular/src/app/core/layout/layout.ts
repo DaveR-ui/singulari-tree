@@ -12,7 +12,7 @@ import {
 import { Router, RouterOutlet, NavigationEnd } from '@angular/router';
 import { LiveRegionService, type RepoCardView } from '@singularitree/ui-kit';
 import type { Repository, Stash } from '@contracts/domain';
-import type { CommitSearchHit, GitFlowConfig } from '@contracts/gitcore';
+import type { GitFlowConfig } from '@contracts/gitcore';
 import { CommitFocusService } from '@core/services/commit-focus.service';
 import {
   IpcBridge,
@@ -30,7 +30,6 @@ import { FetchAllStatus } from '@features/remote/ui/fetch-all-status/fetch-all-s
 import { FetchDialog } from '@features/remote/ui/fetch-dialog/fetch-dialog';
 import { PullDialog } from '@features/remote/ui/pull-dialog/pull-dialog';
 import { PushDialog } from '@features/remote/ui/push-dialog/push-dialog';
-import { SearchWorkspace } from '@features/search/ui/search-workspace';
 import { BranchCreateDialog } from '@shared/ui/ref-dialogs/branch-create-dialog';
 import { MergeDialog } from '@shared/ui/ref-dialogs/merge-dialog';
 import type { BranchCreateValue, MergeValue, TagCreateValue } from '@shared/ui/ref-dialogs/ref-dialog.models';
@@ -84,7 +83,6 @@ interface CheckoutPrompt {
     PushDialog,
     FetchDialog,
     FetchAllStatus,
-    SearchWorkspace,
     SwitchBranchConfirmDialog,
     MergeConflictBanner,
     BranchCreateDialog,
@@ -209,9 +207,7 @@ export class LayoutComponent implements OnInit {
 
     // Keep the nav-rail WORKSPACE highlight truthful when navigation originates
     // outside the rail (e.g. the graph/WIP "Changes" hand-off to File status):
-    // mirror the router URL and derive the active workspace from it. This never
-    // touches `onWorkspaceSelected`, which still sets the highlight eagerly for
-    // the non-routed Search workspace.
+    // mirror the router URL and derive the active workspace from it.
     const unsubscribeRoutes = this.router.events.subscribe((event) => {
       if (event instanceof NavigationEnd) this.currentUrl.set(event.urlAfterRedirects);
     });
@@ -757,11 +753,10 @@ export class LayoutComponent implements OnInit {
   }
 
   /**
-   * Rail WORKSPACE selection (ADR-024 tabs, ADR-026 search, ADR-0029 file
-   * status). History is the routed repository screen and File status is a routed
-   * child of it, so both leave the center region to the `router-outlet`; Search
-   * stays an in-shell workspace rendered next to that outlet. Repositories
-   * routes out to the repository manager.
+   * Rail WORKSPACE selection (ADR-024 tabs, ADR-0029 file status). History is
+   * the routed repository screen and File status is a routed child of it, so
+   * both render through the shared `router-outlet`; Repositories routes out to
+   * the repository manager.
    */
   onWorkspaceSelected(kind: string): void {
     this.activeWorkspace.set(kind);
@@ -800,21 +795,5 @@ export class LayoutComponent implements OnInit {
   /** Fan out `fetch` across every open repository tab. */
   onFetchAll(): void {
     void this.remoteOps.runFetchAll(this.fetchAllRepos());
-  }
-
-  // -- cross-repo commit search (ADR-026) ----------------------------------
-
-  /**
-   * Open a search hit: switch to that repository's tab, queue the commit focus,
-   * leave the search workspace and route to the graph so the commit is selected.
-   */
-  onSearchHitSelected(hit: CommitSearchHit): void {
-    const repo = this.repoState.repos().find((candidate) => candidate.id === hit.repoId);
-    if (!repo) return;
-    this.workspaces.openTab(repo);
-    this.workspaces.selectTab(hit.repoId);
-    this.commitFocus.request(hit.repoId, hit.oid);
-    this.activeWorkspace.set('history');
-    void this.router.navigate(['/repo']);
   }
 }

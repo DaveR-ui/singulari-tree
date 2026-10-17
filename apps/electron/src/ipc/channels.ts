@@ -35,8 +35,7 @@ export const CHANNELS = {
   pull: 'git:pull',
   push: 'git:push',
   watch: 'git:watch',
-  // Cross-repo commit search (ADR-026) + git-flow presets (ADR-027).
-  searchCommits: 'git:searchCommits',
+  // git-flow presets (ADR-027).
   getGitFlowConfig: 'git:getGitFlowConfig',
   setGitFlowConfig: 'git:setGitFlowConfig',
   startGitFlow: 'git:startGitFlow',
@@ -85,7 +84,7 @@ export type MenuChannelName = (typeof MENU_CHANNELS)[keyof typeof MENU_CHANNELS]
  * Renderer → main readiness ack for deep-link delivery (ADR-025).
  *
  * A one-way, non-RPC signal (never an `ipcMain.handle` target), so it stays
- * outside `CHANNELS`/`CHANNEL_TO_RPC` and does not alter the frozen 44-channel
+ * outside `CHANNELS`/`CHANNEL_TO_RPC` and does not alter the frozen 43-channel
  * RPC surface. The renderer sends it once its Angular bootstrap has subscribed
  * to the `deeplink:open` event, letting the shell drain its queued links in
  * order without racing `did-finish-load`.
@@ -132,7 +131,6 @@ export const CHANNEL_TO_RPC = {
   [CHANNELS.pull]: 'Pull',
   [CHANNELS.push]: 'Push',
   [CHANNELS.watch]: 'Watch',
-  [CHANNELS.searchCommits]: 'SearchCommits',
   [CHANNELS.getGitFlowConfig]: 'GetGitFlowConfig',
   [CHANNELS.setGitFlowConfig]: 'SetGitFlowConfig',
   [CHANNELS.startGitFlow]: 'StartGitFlow',

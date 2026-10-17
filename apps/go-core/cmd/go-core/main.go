@@ -141,10 +141,6 @@ func main() {
 	))
 	gitSvc := service.NewGitService(gitAdapter, cacheSvc, watcherSvc)
 
-	// Cross-repo commit search over the SQLite metadata cache (ADR-026): the
-	// persistent commit cache is both the search store and the backfill sink, so
-	// occupancy is checked against real rows (L2) rather than the empty L1.
-	searchSvc := service.NewSearchService(commitCache, gitAdapter, commitCache)
 	// git-flow presets (ADR-027): workflow semantics over the ADR-028 Git ops,
 	// with per-repo config persisted as SQLite metadata.
 	gitflowSvc := service.NewGitFlowService(gitAdapter, repository.NewGitFlowStore(db))
@@ -188,7 +184,7 @@ func main() {
 	}()
 
 	// gRPC server with token interceptors.
-	grpcSrv := grpcadapter.NewServer(repoSvc, gitSvc, graphSvc, watcherSvc, cacheSvc, searchSvc, gitflowSvc, token)
+	grpcSrv := grpcadapter.NewServer(repoSvc, gitSvc, graphSvc, watcherSvc, cacheSvc, gitflowSvc, token)
 	gs := googlegrpc.NewServer(
 		googlegrpc.UnaryInterceptor(grpcadapter.UnaryAuthInterceptor(token)),
 		googlegrpc.StreamInterceptor(grpcadapter.StreamAuthInterceptor(token)),

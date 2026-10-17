@@ -9,11 +9,14 @@ import {
   effect,
   inject,
   input,
+  output,
   signal,
   viewChild,
 } from '@angular/core';
 import type { Diff } from '@contracts/domain';
-import { diffToGridRows, hunksToTexts } from './hunks-to-texts';
+import { ButtonComponent } from '../button/button';
+import { IconComponent } from '../icon/icon';
+import { diffToGridRows, hunkGridSegments, hunksToTexts, type HunkLineSegment } from './hunks-to-texts';
 import { singularitreeThemeName } from './monaco-theme';
 
 type MonacoDiffEditor = import('monaco-editor').editor.IStandaloneDiffEditor;
@@ -60,6 +63,32 @@ export function diffLineHeight(fontSize: number): number {
   return fontSize * 2;
 }
 
+/** One host-supplied action button rendered on a hunk's header row. */
+export interface HunkActionSpec {
+  /** Host-defined action id, e.g. `'stage' | 'discard'` (echoed on `hunkAction`). */
+  readonly key: string;
+  /** ui-kit icon registry key (`'plus'`, `'discard'`, …). */
+  readonly icon: string;
+  /** Accessible name, host-localized (the viewer adds no label of its own). */
+  readonly label: string;
+  readonly disabled?: boolean;
+}
+
+/**
+ * The per-hunk affordance the host supplies to the viewer. `hunkIndex` is the
+ * index into `diff().hunks`, which the inline surface maps 1:1 to the
+ * `hunk_index` the core's per-hunk RPCs address; `selectedLines` are 0-based
+ * indices into `hunk.lines`, echoed back through `hunkLineToggle`.
+ */
+export interface HunkActionSlot {
+  /** Index into `diff().hunks` — the stable mapping to the RPC's `hunk_index`. */
+  readonly hunkIndex: number;
+  /** Buttons rendered on that hunk's header row. */
+  readonly actions: readonly HunkActionSpec[];
+  /** 0-based indices into `hunk.lines` that are checked. */
+  readonly selectedLines: readonly number[];
+}
+
 /**
  * Environment probe used before the dynamic import. The default checks the
  * browser worker environment; tests override it to exercise the init path in
@@ -95,9 +124,16 @@ export const MONACO_LOADER = new InjectionToken<MonacoLoader>('MONACO_LOADER', {
  * and binds them here (this dumb component never reads preferences itself). Both
  * drive the Monaco editor and the fallback grid live, and the code line height is
  * always exactly 2× the font size (see `diffLineHeight`).
+ *
+ * When the host supplies `hunkActions` the viewer switches to an inline-action
+ * surface: per-hunk action buttons and per-line checkboxes rendered in its own
+ * 5-column tokenized grid (Monaco never mounts), emitting `hunkAction` /
+ * `hunkLineToggle` addressed by `hunkIndex` / `lineIndex`. Every read-only
+ * consumer (commit/PR variants, History) passes no actions and keeps Monaco.
  */
 @Component({
   selector: 'st-diff-viewer',
+  imports: [ButtonComponent, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { 'data-testid': 'diff-viewer' },
   template: `
@@ -125,25 +161,80 @@ export const MONACO_LOADER = new InjectionToken<MonacoLoader>('MONACO_LOADER', {
     } @else if (isEmpty()) {
       <p class="st-diff-viewer__notice" data-testid="diff-empty" i18n>No changes to display.</p>
     } @else {
-      <div class="st-diff-viewer__editor" #container></div>
-      @if (!monacoReady()) {
+      @if (hunkActions() !== null) {
+        <!--
+          Inline-action surface. When the host supplies per-hunk actions the
+          viewer owns this 5-column grid (checkbox | old-num | new-num | sign |
+          text) instead of Monaco, so per-hunk buttons and per-line checkboxes
+          live in one consistent, unit-testable surface. Monaco never mounts in
+          this state — read-only consumers without the action input keep the
+          Monaco editor unchanged.
+        -->
         <div
-          class="st-diff-viewer__fallback"
+          class="st-diff-viewer__fallback st-diff-viewer__fallback--actions"
           data-testid="diff-fallback"
           [attr.data-wrap]="wordWrap() ? 'on' : 'off'"
           [style.font-size.px]="fontSize()"
           [style.line-height.px]="diffLineHeight(fontSize())"
         >
-          @for (row of fallbackRows(); track $index) {
-            @if (row.kind === 'hunk' || row.kind === 'meta') {
+          @for (row of fallbackRows(); track $index; let rowIndex = $index) {
+            @if (row.kind === 'hunk') {
               <div
-                class="st-diff-viewer__fallback-hunk st-tabular-nums"
+                class="st-diff-viewer__fallback-hunk st-diff-viewer__fallback-hunk--actions st-tabular-nums"
                 data-testid="diff-fallback-hunk"
               >
-                {{ row.text }}
+                <span class="st-diff-viewer__gcheck"></span>
+                <span class="st-diff-viewer__gnum"></span>
+                <span class="st-diff-viewer__gnum"></span>
+                <span class="st-diff-viewer__gsign"></span>
+                <span class="st-diff-viewer__gtext st-diff-viewer__hunk-header">
+                  <span class="st-diff-viewer__hunk-range">{{ row.text }}</span>
+                  <span class="st-diff-viewer__hunk-actions">
+                    @for (action of actionsForRow(rowIndex); track action.key) {
+                      <st-button
+                        variant="icon"
+                        size="sm"
+                        data-testid="diff-hunk-action"
+                        [attr.data-action]="action.key"
+                        [ariaLabel]="action.label"
+                        [disabled]="action.disabled ?? false"
+                        (click)="onHunkAction(rowIndex, action.key)"
+                      >
+                        <st-icon [name]="action.icon"></st-icon>
+                      </st-button>
+                    }
+                  </span>
+                </span>
+              </div>
+            } @else if (row.kind === 'meta') {
+              <div
+                class="st-diff-viewer__fallback-hunk st-diff-viewer__fallback-hunk--actions st-tabular-nums"
+                data-testid="diff-fallback-hunk"
+              >
+                <span class="st-diff-viewer__gcheck"></span>
+                <span class="st-diff-viewer__gnum"></span>
+                <span class="st-diff-viewer__gnum"></span>
+                <span class="st-diff-viewer__gsign"></span>
+                <span class="st-diff-viewer__gtext">{{ row.text }}</span>
               </div>
             } @else {
-              <div class="st-diff-viewer__fallback-row" [attr.data-kind]="row.kind">
+              <div
+                class="st-diff-viewer__fallback-row st-diff-viewer__fallback-row--actions"
+                [attr.data-kind]="row.kind"
+              >
+                <span class="st-diff-viewer__gcheck">
+                  @if (lineMeta(rowIndex); as line) {
+                    <input
+                      type="checkbox"
+                      class="st-diff-viewer__gcheck-input"
+                      data-testid="diff-hunk-line"
+                      [attr.data-line]="line.lineIndex"
+                      [attr.aria-label]="lineCheckboxLabel"
+                      [checked]="isLineChecked(line.hunkIndex, line.lineIndex)"
+                      (change)="onHunkLineToggle(line.hunkIndex, line.lineIndex)"
+                    />
+                  }
+                </span>
                 <span class="st-diff-viewer__gnum st-tabular-nums">{{ row.oldNum ?? '' }}</span>
                 <span class="st-diff-viewer__gnum st-tabular-nums">{{ row.newNum ?? '' }}</span>
                 <span class="st-diff-viewer__gsign">{{ row.sign }}</span>
@@ -152,6 +243,35 @@ export const MONACO_LOADER = new InjectionToken<MonacoLoader>('MONACO_LOADER', {
             }
           }
         </div>
+      } @else {
+        <div class="st-diff-viewer__editor" #container></div>
+        @if (!monacoReady()) {
+          <div
+            class="st-diff-viewer__fallback"
+            data-testid="diff-fallback"
+            [attr.data-wrap]="wordWrap() ? 'on' : 'off'"
+            [style.font-size.px]="fontSize()"
+            [style.line-height.px]="diffLineHeight(fontSize())"
+          >
+            @for (row of fallbackRows(); track $index) {
+              @if (row.kind === 'hunk' || row.kind === 'meta') {
+                <div
+                  class="st-diff-viewer__fallback-hunk st-tabular-nums"
+                  data-testid="diff-fallback-hunk"
+                >
+                  {{ row.text }}
+                </div>
+              } @else {
+                <div class="st-diff-viewer__fallback-row" [attr.data-kind]="row.kind">
+                  <span class="st-diff-viewer__gnum st-tabular-nums">{{ row.oldNum ?? '' }}</span>
+                  <span class="st-diff-viewer__gnum st-tabular-nums">{{ row.newNum ?? '' }}</span>
+                  <span class="st-diff-viewer__gsign">{{ row.sign }}</span>
+                  <span class="st-diff-viewer__gtext">{{ row.text }}</span>
+                </div>
+              }
+            }
+          </div>
+        }
       }
     }
   `,
@@ -207,6 +327,50 @@ export const MONACO_LOADER = new InjectionToken<MonacoLoader>('MONACO_LOADER', {
       font-size: var(--st-font-11);
     }
 
+    /* Inline-action surface: line rows and the hunk header share ONE 5-column
+       grid (checkbox | old-num | new-num | sign | text), so the per-hunk buttons
+       on the header row line up with the per-line checkboxes below them. */
+    .st-diff-viewer__fallback--actions .st-diff-viewer__fallback-row,
+    .st-diff-viewer__fallback--actions .st-diff-viewer__fallback-hunk--actions {
+      display: grid;
+      grid-template-columns: 28px 36px 36px 20px minmax(0, 1fr);
+      align-items: center;
+    }
+
+    /* The header carries no padding of its own: its range text must start in the
+       same code column as the line text below it. */
+    .st-diff-viewer__fallback--actions .st-diff-viewer__fallback-hunk--actions {
+      padding: 0;
+    }
+
+    .st-diff-viewer__gcheck {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .st-diff-viewer__gcheck-input {
+      margin: 0;
+      cursor: pointer;
+    }
+
+    /* Range text left, buttons right, inside the shared text column. */
+    .st-diff-viewer__hunk-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--st-space-2);
+      min-width: 0;
+    }
+
+    .st-diff-viewer__hunk-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--st-space-1);
+      flex: none;
+      margin-left: auto;
+    }
+
     .st-diff-viewer__gnum {
       color: var(--st-color-diff-gutter-fg);
       text-align: right;
@@ -242,6 +406,14 @@ export const MONACO_LOADER = new InjectionToken<MonacoLoader>('MONACO_LOADER', {
       min-width: 100%;
     }
 
+    /* Same wrap contract on the 5-column inline-action surface. */
+    .st-diff-viewer__fallback--actions[data-wrap='off'] .st-diff-viewer__fallback-row,
+    .st-diff-viewer__fallback--actions[data-wrap='off'] .st-diff-viewer__fallback-hunk--actions {
+      grid-template-columns: 28px 36px 36px 20px max-content;
+      width: max-content;
+      min-width: 100%;
+    }
+
     .st-diff-viewer__fallback-row[data-kind='added'] {
       background: var(--st-color-diff-insert-bg);
       color: var(--st-color-diff-insert-fg);
@@ -268,6 +440,22 @@ export class DiffViewer {
   readonly fontSize = input(12);
   /** Diff soft wrap (Settings on/off). Default false. */
   readonly wordWrap = input(false);
+  /**
+   * Host-supplied per-hunk actions. `null` (the default) keeps the viewer a
+   * Monaco read-only surface for every read-only consumer (commit/PR variants,
+   * History). When non-null the viewer renders its OWN 5-column tokenized grid
+   * — per-hunk buttons on the header rows and a checkbox on every changed line —
+   * and Monaco never mounts, so the inline affordances live in one consistent,
+   * unit-testable surface instead of hacking the editor's DOM.
+   */
+  readonly hunkActions = input<readonly HunkActionSlot[] | null>(null);
+  /** A hunk action button was clicked; the host maps the key back to its RPC. */
+  readonly hunkAction = output<{ hunkIndex: number; actionKey: string }>();
+  /** A changed-line checkbox was toggled. */
+  readonly hunkLineToggle = output<{ hunkIndex: number; lineIndex: number }>();
+
+  /** Accessible name for a changed-line checkbox (the label is viewer-owned). */
+  protected readonly lineCheckboxLabel = $localize`Select changed line`;
 
   /** Exposed to the template for the fallback grid's inline line height (2×). */
   protected readonly diffLineHeight = diffLineHeight;
@@ -299,6 +487,63 @@ export class DiffViewer {
     if (diff.isBinary || diff.hasConflictMarkers) return false;
     return (diff.hunks?.length ?? 0) === 0;
   });
+
+  /**
+   * Per-hunk render anchors, derived from the SAME walk that produces
+   * `fallbackRows` (never a second diff computation): each rendered hunk's
+   * header row and the changed lines' `(rowIndex, lineIndex)` pairs. This is the
+   * single mapping from a rendered row to the `hunk_index`/`line_indices` the
+   * host's per-hunk RPCs address.
+   */
+  private readonly actionSegments = computed(() => hunkGridSegments(this.diff()));
+
+  /** Header row index → hunk index. */
+  private readonly hunkIndexByHeaderRow = computed(() => {
+    const map = new Map<number, number>();
+    for (const segment of this.actionSegments()) {
+      map.set(segment.headerRowIndex, segment.hunkIndex);
+    }
+    return map;
+  });
+
+  /** Changed line row index → `{ hunkIndex, lineIndex }`. */
+  private readonly changedLineByRow = computed(() => {
+    const map = new Map<number, HunkLineSegment & { hunkIndex: number }>();
+    for (const segment of this.actionSegments()) {
+      for (const line of segment.lines) {
+        map.set(line.rowIndex, { ...line, hunkIndex: segment.hunkIndex });
+      }
+    }
+    return map;
+  });
+
+  /** Action buttons rendered on the hunk whose header row is `rowIndex`. */
+  protected actionsForRow(rowIndex: number): readonly HunkActionSpec[] {
+    const hunkIndex = this.hunkIndexByHeaderRow().get(rowIndex);
+    if (hunkIndex === undefined) return [];
+    return this.hunkActions()?.find((slot) => slot.hunkIndex === hunkIndex)?.actions ?? [];
+  }
+
+  /** Changed-line address for a rendered row, or `null` for context/header rows. */
+  protected lineMeta(rowIndex: number): (HunkLineSegment & { hunkIndex: number }) | null {
+    return this.changedLineByRow().get(rowIndex) ?? null;
+  }
+
+  protected isLineChecked(hunkIndex: number, lineIndex: number): boolean {
+    const slot = this.hunkActions()?.find((candidate) => candidate.hunkIndex === hunkIndex);
+    return slot?.selectedLines.includes(lineIndex) ?? false;
+  }
+
+  /** Emit the clicked action addressed by its hunk index (not the row index). */
+  protected onHunkAction(rowIndex: number, actionKey: string): void {
+    const hunkIndex = this.hunkIndexByHeaderRow().get(rowIndex);
+    if (hunkIndex === undefined) return;
+    this.hunkAction.emit({ hunkIndex, actionKey });
+  }
+
+  protected onHunkLineToggle(hunkIndex: number, lineIndex: number): void {
+    this.hunkLineToggle.emit({ hunkIndex, lineIndex });
+  }
 
   constructor() {
     // Keep the Monaco models in sync when the diff input changes post-init.
@@ -351,6 +596,10 @@ export class DiffViewer {
   }
 
   private shouldInitialize(): boolean {
+    // The inline-action surface replaces Monaco entirely: when the host supplies
+    // per-hunk actions the viewer owns the grid (buttons + line checkboxes), so
+    // Monaco must never mount even in a real browser environment.
+    if (this.hunkActions() !== null) return false;
     return shouldInitializeMonaco({
       loading: this.loading(),
       error: this.errorMsg() !== null,
@@ -367,6 +616,13 @@ export class DiffViewer {
    * (e.g. the diff briefly disappeared and the `@else` block re-rendered).
    */
   private async maybeInitializeMonaco(): Promise<void> {
+    // Actions appearing after Monaco mounted must tear the editor down: the
+    // inline surface takes over the container slot. `hunkActions` is read here
+    // (and in `shouldInitialize`) so the effect tracks it.
+    if (this.hunkActions() !== null) {
+      this.disposeEditor();
+      return;
+    }
     // Read all reactive inputs synchronously so the effect tracks them.
     const canMount = this.shouldInitialize();
     const container = this.container()?.nativeElement ?? null;

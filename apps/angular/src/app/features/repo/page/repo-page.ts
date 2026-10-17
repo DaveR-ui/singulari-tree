@@ -45,9 +45,12 @@ import { RepoRelocatePanel } from '../ui/repo-relocate-panel';
         [isWip]="isWipSelected()"
         [changedFiles]="changedFiles()"
         [showCta]="true"
-        [showNavigation]="true"
+        [showFiles]="true"
+        [navMode]="'release'"
+        [locked]="graphStore.lockedOid() === selectedCommit()?.oid?.hex"
         (reviewChanges)="openChanges()"
-        (back)="clearSelection()"
+        (lockToggle)="toggleLock()"
+        (release)="releaseCommit()"
       />
       <!--
         Recovery wins over the picker: GraphStore.openRepository leaves repoId()
@@ -86,6 +89,12 @@ import { RepoRelocatePanel } from '../ui/repo-relocate-panel';
       min-height: 0;
     }
 
+    /* The History aside's commit panel rests on the floor of the detail pane. */
+    :host st-commit-details-panel {
+      margin-top: auto;
+      align-self: stretch;
+    }
+
     :host st-graph-page,
     :host st-repo-picker,
     :host st-repo-relocate-panel {
@@ -116,8 +125,17 @@ export class RepoPage {
    */
   private readonly router = inject(Router, { optional: true });
 
-  /** Selected commit row's commit, or null when nothing/WIP is selected. */
-  readonly selectedCommit = computed(() => this.graphStore.selectedRow()?.commit ?? null);
+  /**
+   * Commit rendered by the pinned detail pane: the LOCKED commit when one is
+   * held, otherwise the selected row's commit.
+   *
+   * The graph lock captures the commit at lock time, so a reload (or a filter)
+   * that drops the row out of the loaded window keeps the pinned pane rendering
+   * the locked commit instead of blanking to "select a commit".
+   */
+  readonly selectedCommit = computed(
+    () => this.graphStore.lockedCommit() ?? this.graphStore.selectedRow()?.commit ?? null,
+  );
   /** Whether the synthetic working-tree (WIP) node is the current selection. */
   readonly isWipSelected = computed(() => this.graphStore.isWipSelected());
   /** The detail pane is pinned whenever any row (commit or WIP) is selected. */
@@ -190,7 +208,7 @@ export class RepoPage {
     // `setActive` swaps the repo object, so without it the effect would fire a
     // second `openRepository` that races the explicit one.
     //
-    // The same effect consumes a pending cross-repo search focus (ADR-026): once
+    // The same effect consumes a pending deep-link commit focus: once
     // the matching repository is open it selects (and, if needed, pages to) the
     // requested commit. A focus for the already-open repo is handled in place.
     effect(() => {
@@ -319,8 +337,23 @@ export class RepoPage {
     // No-op by design; kept as the panel's explicit-intent seam.
   }
 
-  /** Item 7a: clear the selection so the aside returns to "select a commit". */
-  clearSelection(): void {
-    this.graphStore.select(null);
+  /**
+   * Item 7a: release the pinned selection. `release()` clears the graph lock and
+   * the selection together, so the padlock and the aside both reset.
+   */
+  releaseCommit(): void {
+    this.graphStore.release();
+  }
+
+  /**
+   * Toggle the graph lock: pin the current real-commit selection, or release the
+   * lock while keeping the selection (the padlock's on/off intent).
+   */
+  toggleLock(): void {
+    if (this.graphStore.lockedOid()) {
+      this.graphStore.unlock();
+    } else {
+      this.graphStore.lock();
+    }
   }
 }

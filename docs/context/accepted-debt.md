@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-10-11
+last_updated: 2026-10-17
 status: active
 description: Accepted debt of the corpus — legacy documents not yet migrated and explicitly tolerated decisions, with the criterion to reduce it.
 tags:
@@ -7,7 +7,7 @@ tags:
 - debt
 - legacy
 - ratchet
-version: 1.7.1
+version: 1.8.0
 related:
 - documentation-system
 ---
@@ -34,7 +34,6 @@ Record here **every exception explicitly**, with its reason and the criterion to
 | No `git:unwatch` — the `git:watch` server-stream persists for the last-opened repo until another repo is opened or the app quits (M1.5/M2). | The stream is replace-any-existing and bounded to a single repo, so it cannot accumulate; an explicit unsubscribe channel is not yet wired. | Add a `git:unwatch` channel (or cancel-on-navigate) so the stream is released when the repo view is left. |
 | `buf` breaking check is SKIPPED when `buf` is not installed (`tools/ci/verify-contracts.sh` prints "buf not found — skipping"). | The host lacks `buf`; the ADR-020/021/023 proto change was additive-only and hand-verified, so no wire break was introduced. | Ensure `buf` is present in CI so `verify-contracts.sh` actually runs the breaking check instead of skipping it. |
 | Branch/tag mutations reuse `BRANCH_NOT_FOUND` / `TAG_NOT_FOUND` for generic failures (the real reason travels in `AppError.details`); no dedicated `*_FAILED` codes yet. | [[adr-028-advanced-git-rpcs]] defined only `*_EXISTS` / `*_NOT_FOUND`; the M3 branch/tag mutations reuse the not-found codes when a generic git failure occurs, keeping the underlying message in `details`. | Append dedicated `BRANCH_FAILED` / `TAG_FAILED` codes after the current last code when a concrete need appears (append-only, per ADR-028). |
-| Cross-repo `SearchCommits` `LIKE` is ASCII-case-insensitive only (non-ASCII author/message case-folding degrades); it reuses `commit_cache` with no dedicated search index, so a leading-wildcard `LIKE` is unindexed. | [[adr-026-cross-repo-commit-search]] §4 makes the operator provisional and the metadata table the decision; results are "what is cached" and coverage is partial by design. | Upgrade to FTS5 (or add the dedicated index) behind an append-only migration; document the ASCII-only limitation until then. |
 | `StashApply` / `StashPop` conflicts surface as `STASH_FAILED` and leave the working tree conflicted; there is no stash-conflict code yet. | M3 stash apply/pop land on [[adr-028-advanced-git-rpcs]], which defines no conflict code for stash; a conflicted apply is reported through the generic failure code. | Add a dedicated stash-conflict code (append-only) when the renderer needs to distinguish it from a generic failure; surface `GetStatus.is_conflicted` in the meantime. |
 
 **What is NOT debt** (complies with the contract and must be validated):

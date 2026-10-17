@@ -7,13 +7,14 @@ export interface CommitFocusRequest {
 }
 
 /**
- * Root hand-off for "focus this commit" navigation (ADR-026).
+ * Root hand-off for "focus this commit" navigation (ADR-025 deep links).
  *
- * Cross-repo search results live in a root store, while the commit graph is
- * route-scoped and only exists once `/repo` is mounted for the target
- * repository. This tiny signal service bridges the two: the search view (or any
- * caller) publishes a pending focus, and the route-scoped `RepoPage` consumes it
- * once the matching repository is open, selecting the commit in the graph.
+ * A deep link that names a commit can arrive before the commit graph is mounted:
+ * the graph is route-scoped and only exists once `/repo` is mounted for the
+ * target repository. This tiny signal service bridges the two: the shell's
+ * `open-commit` deep-link path (or any caller) publishes a pending focus, and the
+ * route-scoped `RepoPage` consumes it once the matching repository is open,
+ * selecting the commit in the graph.
  */
 @Injectable({ providedIn: 'root' })
 export class CommitFocusService {

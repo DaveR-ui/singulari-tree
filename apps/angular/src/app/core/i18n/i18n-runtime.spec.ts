@@ -125,8 +125,18 @@ describe('locale catalogues', () => {
     'Pin repositories',
     'Review changes',
     'Synced',
-    'Local changes',
+    'Commit analyzer',
     'Commit / author',
+    // Plain (non-interpolated) strings added by the graph / diff / file-status pass.
+    'Lock commit',
+    'Unlock commit',
+    'Show in graph',
+    'Filter files',
+    'Filter changed files',
+    'Select changed line',
+    'Description',
+    'Files',
+    'Description or changed files',
   ];
 
   it.each(newMessages)('resolves the new message %j in both catalogues', (message) => {

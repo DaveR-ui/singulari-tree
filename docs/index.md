@@ -4,13 +4,13 @@
 # SingulariTree — Documentation index
 
 <!-- BEGIN GENERATED: index -->
-<!-- snapshot: 2026-10-15 -->
+<!-- snapshot: 2026-10-17 -->
 ## Generated index
 
 ### Overview
 
-- Markdown files: 39
-- Context docs: 6 | Notes: 6 | Hubs: 2 | adrs: 20 | templates: 0 | protocols: 3
+- Markdown files: 41
+- Context docs: 6 | Notes: 6 | Hubs: 2 | adrs: 22 | templates: 0 | protocols: 3
 
 ### Tree
 
@@ -32,6 +32,8 @@
   - adr-0031-repository-relocation-and-missing-folder-recovery.md — adr, id: `adr-0031-repository-relocation-and-missing-folder-recovery`
   - adr-0032-history-commit-file-list-tooltip.md — adr, id: `adr-0032-history-commit-file-list-tooltip`
   - adr-0033-commit-details-files-expandable-panel.md — adr, id: `adr-0033-commit-details-files-expandable-panel`
+  - adr-0034-retire-cross-repo-commit-search.md — adr, id: `adr-0034-retire-cross-repo-commit-search`
+  - adr-0035-commit-details-redesign-and-inline-hunk-actions.md — adr, id: `adr-0035-commit-details-redesign-and-inline-hunk-actions`
   - adr-024-multi-repo-workspaces.md — adr, id: `adr-024-multi-repo-workspaces`
   - adr-025-deep-links-and-clipboard-clone.md — adr, id: `adr-025-deep-links-and-clipboard-clone`
   - adr-026-cross-repo-commit-search.md — adr, id: `adr-026-cross-repo-commit-search`

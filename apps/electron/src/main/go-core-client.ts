@@ -65,7 +65,6 @@ export const GIT_CORE_RPC_METHODS = [
   'Push',
   'Pull',
   'Watch',
-  'SearchCommits',
   'GetGitFlowConfig',
   'SetGitFlowConfig',
   'StartGitFlow',
@@ -619,28 +618,7 @@ export interface FsChangedEvent {
   paths: string[];
 }
 
-// --- Commit search (ADR-026) + git-flow presets (ADR-027) ------------------
-
-/** One cross-repo commit search hit; metadata only (never Git objects/blobs). */
-export interface CommitSearchHit {
-  repoId: string;
-  oid: string;
-  message: string;
-  authorName: string;
-  authorEmail: string;
-  /** unix seconds (converted from the stored RFC3339) */
-  committedAt: number;
-}
-
-export interface SearchCommitsRequest {
-  query: string;
-  repoIds: string[];
-  limit: number;
-}
-
-export interface SearchCommitsResponse {
-  hits: CommitSearchHit[];
-}
+// --- git-flow presets (ADR-027) --------------------------------------------
 
 /**
  * git-flow workflow kind (ADR-027). proto-loader decodes the enum with
@@ -1026,10 +1004,6 @@ export class GoCoreClient {
 
   stashDrop(req: StashDropRequest): Promise<StashDropResponse> {
     return this.unary<StashDropResponse>('StashDrop', req);
-  }
-
-  searchCommits(req: SearchCommitsRequest): Promise<SearchCommitsResponse> {
-    return this.unary<SearchCommitsResponse>('SearchCommits', req);
   }
 
   getGitFlowConfig(req: GetGitFlowConfigRequest): Promise<GitFlowConfig> {

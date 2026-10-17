@@ -8,7 +8,7 @@ aliases:
 - Contracts slice
 related:
 - slices-index
-version: 1.1.0
+version: 1.1.1
 status: active
 ---
 
@@ -51,6 +51,6 @@ Single source of proto contracts and generated stubs. It is the compatibility bo
 
 ## Known gaps & accepted debt
 
-- M1–M3 landed: the proto surface carries the full core contract — status/stage/commit/diff, hunk/line staging & discard, reset, commit stats, branch CRUD, merge, tag CRUD, stash apply/pop/drop, cross-repo search and git-flow (plus the shell-only deep-link IPC, which is not a proto change) — [[adr-0020-diff-per-file-and-hunk-staging]], [[adr-0021-reset-modes]], [[adr-0023-commit-change-size-gauge]], [[adr-026-cross-repo-commit-search]], [[adr-027-git-flow-presets]], [[adr-028-advanced-git-rpcs]].
+- M1–M3 landed: the proto surface carries the full core contract — status/stage/commit/diff, hunk/line staging & discard, reset, commit stats, branch CRUD, merge, tag CRUD, stash apply/pop/drop, cross-repo search (RPC and messages removed — **retired by [[adr-0034-retire-cross-repo-commit-search]]**) and git-flow (plus the shell-only deep-link IPC, which is not a proto change) — [[adr-0020-diff-per-file-and-hunk-staging]], [[adr-0021-reset-modes]], [[adr-0023-commit-change-size-gauge]], [[adr-026-cross-repo-commit-search]], [[adr-027-git-flow-presets]], [[adr-028-advanced-git-rpcs]].
 - Remaining gaps: `GetWorktrees` is still a stub and `StreamCommits` IPC streaming is not wired; the 3-way conflict editor is not contracted (M3 surfaces conflicts only).
 - The `gitclient.v1` alias is transient.

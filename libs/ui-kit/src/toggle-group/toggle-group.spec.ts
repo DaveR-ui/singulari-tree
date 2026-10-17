@@ -32,6 +32,15 @@ function segment(
   )!;
 }
 
+/** Trimmed text of a segment's count pill, or null when it renders nothing. */
+function count(
+  fixture: ComponentFixture<ToggleGroupComponent>,
+  value: string,
+): string | null {
+  const pill = segment(fixture, value).querySelector('[data-testid="toggle-segment-count"]');
+  return pill?.textContent?.trim() ?? null;
+}
+
 describe('ToggleGroupComponent', () => {
   beforeEach(() => {
     TestBed.resetTestingModule();
@@ -62,6 +71,21 @@ describe('ToggleGroupComponent', () => {
     expect(segment(fixture, 'light').disabled).toBe(true);
   });
 
+  it('disables only a per-segment disabled option, leaving the group enabled', async () => {
+    const fixture = await setup({
+      disabled: false,
+      options: [
+        { value: 'description', label: 'Description', disabled: true },
+        { value: 'files', label: 'Files' },
+      ],
+    });
+
+    // The per-segment flag disables ONLY that segment; the group-level input
+    // stays false, so the sibling segment remains selectable.
+    expect(segment(fixture, 'description').disabled).toBe(true);
+    expect(segment(fixture, 'files').disabled).toBe(false);
+  });
+
   it('forwards an accessible name to the group', async () => {
     const named = await setup({ ariaLabel: 'Diff layout' });
     expect(
@@ -78,5 +102,48 @@ describe('ToggleGroupComponent', () => {
         .querySelector('[role="group"]')
         ?.getAttribute('aria-label'),
     ).toBeNull();
+  });
+
+  it('renders a count pill for a positive option count', async () => {
+    const fixture = await setup({
+      options: [
+        { value: 'local', label: 'Local', count: 5 },
+        { value: 'commit', label: 'Commit' },
+      ],
+    });
+
+    expect(count(fixture, 'local')).toBe('5');
+    // A segment without a count carries no pill.
+    expect(
+      segment(fixture, 'commit').querySelector('[data-testid="toggle-segment-count"]'),
+    ).toBeNull();
+  });
+
+  it('renders no count pill for a zero or undefined count', async () => {
+    const fixture = await setup({
+      options: [
+        { value: 'zero', label: 'Zero', count: 0 },
+        { value: 'none', label: 'None' },
+      ],
+    });
+
+    expect(
+      segment(fixture, 'zero').querySelector('[data-testid="toggle-segment-count"]'),
+    ).toBeNull();
+    expect(
+      segment(fixture, 'none').querySelector('[data-testid="toggle-segment-count"]'),
+    ).toBeNull();
+  });
+
+  it('renders 99 verbatim and caps 100 at 99+', async () => {
+    const fixture = await setup({
+      options: [
+        { value: 'edge', label: 'Edge', count: 99 },
+        { value: 'many', label: 'Many', count: 100 },
+      ],
+    });
+
+    expect(count(fixture, 'edge')).toBe('99');
+    expect(count(fixture, 'many')).toBe('99+');
   });
 });
