@@ -102,14 +102,17 @@ function makeGraphStore() {
 }
 
 /**
- * Minimal route-scoped `StatusStore` stand-in: only the two members `RepoPage`
- * touches — the repo pointer and the ADR-032 read-only file-list read.
+ * Minimal route-scoped `StatusStore` stand-in: the members `RepoPage` touches —
+ * the repo pointer, the ADR-032 read-only file-list read, and the monotonic
+ * `graphReloadRequested` token the post-commit graph reload consumes.
  */
-function makeStatusStore() {
+function makeStatusStore(initialGraphReload = 0) {
   const repoId = signal<string | null>(null);
+  const graphReloadRequested = signal(initialGraphReload);
   const readCommitChangedFiles = vi.fn(async (_commit: Commit) => [] as readonly string[]);
   return {
     repoId,
+    graphReloadRequested,
     setRepoId: vi.fn((id: string | null) => repoId.set(id)),
     readCommitChangedFiles,
   };
@@ -130,11 +133,11 @@ function makeBridge() {
   };
 }
 
-async function setup(initial: Repository | null = REPO_A) {
+async function setup(initial: Repository | null = REPO_A, initialGraphReload = 0) {
   const repoState = makeRepoState(initial);
   const graphStore = makeGraphStore();
   const bridge = makeBridge();
-  const status = makeStatusStore();
+  const status = makeStatusStore(initialGraphReload);
 
   await TestBed.configureTestingModule({
     providers: [
@@ -294,6 +297,25 @@ describe('RepoPage hydration', () => {
 
     repoState.statusRefreshRequested.set(1);
     TestBed.tick();
+
+    expect(graphStore.reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('reloads the graph window when a commit requests it', async () => {
+    const { status, graphStore } = await setup(REPO_A);
+    graphStore.reload.mockClear();
+
+    status.graphReloadRequested.set(1);
+    TestBed.tick();
+
+    expect(graphStore.reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('reloads the graph on mount when a commit landed before navigation', async () => {
+    // The smoke flow commits on the File-status screen and navigates to History
+    // before the bump resolves there; the token is already > 0 when RepoPage is
+    // constructed, so the mount observation is what must trigger the reload.
+    const { graphStore } = await setup(REPO_A, 1);
 
     expect(graphStore.reload).toHaveBeenCalledTimes(1);
   });

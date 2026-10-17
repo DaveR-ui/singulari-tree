@@ -106,7 +106,8 @@ export class RepoPage {
   /**
    * The route-scoped `StatusStore` (the same instance `FileStatusStore` composes),
    * used read-only for the History aside's inline expandable changed-file panel
-   * (ADR-0033).
+   * (ADR-0033) and to observe `graphReloadRequested` so a commit's post-commit
+   * graph reload survives navigating away from the File-status screen.
    */
   private readonly status = inject(StatusStore);
   /**
@@ -228,6 +229,17 @@ export class RepoPage {
     // `StatusWorkspace` fired on `fs:changed` before the band was removed.
     const unsubscribe = this.bridge.onFsChanged(() => this.graphStore.reload());
     this.destroyRef.onDestroy(unsubscribe);
+
+    // A successful commit bumps the route-scoped `StatusStore.graphReloadRequested`
+    // (StatusStore.commit). Its other consumer is a PAGE-scoped effect in
+    // `FileStatusPage` that dies the moment the user navigates to History, so a
+    // commit made there could leave the graph window stale. Consuming the SAME
+    // route-scoped signal here makes the post-commit reload navigation-proof:
+    // RepoPage observes the (already-bumped) token on mount and reloads, so the
+    // new commit is visible on return regardless of which screen performed it.
+    effect(() => {
+      if (this.status.graphReloadRequested() > 0) this.graphStore.reload();
+    });
 
     // ADR-0033: the aside's inline expandable changed-file panel. Point the route-scoped
     // `StatusStore` at the open repository (mirroring `FileStatusPage`) and,

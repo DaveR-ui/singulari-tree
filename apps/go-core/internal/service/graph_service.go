@@ -45,6 +45,18 @@ func NewGraphService(gitPort domain.CommitLister, cachePort domain.CachePort) *G
 	}
 }
 
+// invalidationGeneration is an optional capability a domain.CachePort may
+// implement to expose its invalidation generation (see CacheService.Generation).
+// GraphService uses it to skip a write-through whose read straddled an
+// invalidation: an invalidation that races the read means the fetched window
+// may predate the mutation that invalidated it, so caching it would resurrect
+// pre-commit data after the mutation's Invalidate. Ports that do not implement
+// it (test stubs, alternate implementations) keep the unconditional
+// write-through behavior.
+type invalidationGeneration interface {
+	Generation() uint64
+}
+
 // Commits returns windowed commits (200+100 pattern, handled by Angular GraphStore).
 func (s *GraphService) Commits(ctx context.Context, repoID domain.RepositoryId, offset, limit int) ([]domain.Commit, int, error) {
 	if s.cachePort != nil {
@@ -55,14 +67,26 @@ func (s *GraphService) Commits(ctx context.Context, repoID domain.RepositoryId, 
 	if s.gitPort == nil {
 		return nil, 0, nil
 	}
-	// Real implementation would delegate to a GraphPort; stub returns empty window
+	// Capture the invalidation generation before the read when the port exposes
+	// one, so a mutation's Invalidate racing this read can be detected after it.
+	gen, hasGen := s.cachePort.(invalidationGeneration)
+	var genBefore uint64
+	if hasGen {
+		genBefore = gen.Generation()
+	}
 	commits, total, err := s.gitPort.List(ctx, repoID, offset, limit)
 	if err != nil {
 		return nil, 0, err
 	}
 	// Write-through to the persistent cache is best-effort: a failed write must
-	// never turn a successful read into an error.
+	// never turn a successful read into an error. It is skipped when an
+	// invalidation raced the read (the generation moved): the window may predate
+	// the mutation, and caching it would resurrect stale pre-commit data after
+	// the mutation's Invalidate; the next read repopulates from Git instead.
 	if s.cachePort != nil {
+		if hasGen && gen.Generation() != genBefore {
+			return commits, total, nil
+		}
 		_ = s.cachePort.PutCommits(ctx, repoID, offset, total, commits)
 	}
 	return commits, total, nil
