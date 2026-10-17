@@ -66,9 +66,9 @@ function readConflictPaths(error: AppError | null): string[] | null {
       align-items: flex-start;
       gap: 10px;
       padding: 8px 12px;
-      background: rgba(255, 69, 58, 0.12);
-      border-bottom: 1px solid rgba(255, 69, 58, 0.45);
-      color: #ff8a80;
+      background: var(--st-color-danger-soft);
+      border-bottom: 1px solid var(--st-color-danger);
+      color: var(--st-color-danger);
       font-size: 12.5px;
     }
 
@@ -87,7 +87,7 @@ function readConflictPaths(error: AppError | null): string[] | null {
       padding-left: 18px;
       max-height: 120px;
       overflow: auto;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-family: var(--st-font-mono);
       font-size: 11.5px;
     }
 
@@ -98,8 +98,8 @@ function readConflictPaths(error: AppError | null): string[] | null {
     .st-checkout-error__dismiss {
       flex: none;
       background: transparent;
-      border: 1px solid rgba(255, 69, 58, 0.45);
-      color: #ff8a80;
+      border: 1px solid var(--st-color-danger);
+      color: var(--st-color-danger);
       border-radius: 4px;
       cursor: pointer;
       padding: 1px 6px;
@@ -107,7 +107,7 @@ function readConflictPaths(error: AppError | null): string[] | null {
     }
 
     .st-checkout-error__dismiss:hover {
-      background: rgba(255, 69, 58, 0.18);
+      background: var(--st-color-danger-soft);
     }
   `,
 })

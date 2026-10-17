@@ -1,9 +1,10 @@
 import { provideZonelessChangeDetection, signal, type WritableSignal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Branch, Commit, Diff, FileDiff, FileStatus, Hunk, Repository } from '@contracts/domain';
 import { DiffViewer } from '@singularitree/ui-kit';
+import { DiffModeService } from '@core/services/diff-mode.service';
 import { IpcBridge } from '@core/services/ipc-bridge.service';
 import { RepoState } from '@core/services/repo-state.service';
 import { GraphStore, WIP_OID } from '../../graph/graph.store';
@@ -131,7 +132,13 @@ interface Harness {
 }
 
 async function setup(
-  options: { selection?: string | null; files?: FileStatus[]; diff?: () => Diff } = {},
+  options: {
+    selection?: string | null;
+    files?: FileStatus[];
+    diff?: () => Diff;
+    commits?: () => Commit[];
+  } = {},
+  storage?: Record<string, string>,
 ): Promise<Harness> {
   const getDiff = vi.fn(() => Promise.resolve(options.diff ? options.diff() : wholeDiff()));
   const stageHunk = vi.fn(() => Promise.resolve({}));
@@ -141,7 +148,8 @@ async function setup(
     getStatus: () => Promise.resolve({ files: options.files ?? [file('a.ts', false)] }),
     getDiff,
     getBranches: () => Promise.resolve({ branches: BRANCHES }),
-    getCommits: () => Promise.resolve({ commits: [], total: 0, lanes: [] }),
+    getCommits: () =>
+      Promise.resolve({ commits: options.commits ? options.commits() : [], total: 0, lanes: [] }),
     stageHunk,
     unstageHunk,
     discardHunk,
@@ -184,6 +192,10 @@ async function setup(
       { provide: GraphStore, useValue: graph },
     ],
   }).compileComponents();
+
+  // Root preferences are read in PreferencesService's constructor, so any
+  // persisted value must be in place before the page (and its viewer) mount.
+  if (storage) installStorage(storage);
 
   const fixture = TestBed.createComponent(FileStatusPage);
   fixture.detectChanges();
@@ -247,21 +259,71 @@ function lastPayload(mock: { mock: { calls: unknown[][] } }): Record<string, unk
 
 /**
  * The diff pane must render to the RIGHT of the variant-body left column, never
- * swapped: assert both the DOM order (the pane FOLLOWS the left column) and
- * that it is the last flex child of the screen container. Fails if the two
- * panes are reordered.
+ * swapped: the workspace split projects the `detail` slot (file list) into the
+ * detail/left pane and the default slot (diff) into the primary/right pane.
+ * Fails if the two panes are reordered.
  */
 function assertDiffOnRight(fixture: ComponentFixture<FileStatusPage>): void {
   const host = fixture.nativeElement as HTMLElement;
-  const left = host.querySelector<HTMLElement>('.st-file-status__left');
+  const detail = host.querySelector('[data-testid="workspace-detail"]');
+  const primary = host.querySelector('[data-testid="workspace-primary"]');
   const right = query(fixture, 'file-status-diff');
+  const left = host.querySelector('.st-file-status__left');
+  expect(detail).not.toBeNull();
+  expect(primary).not.toBeNull();
   expect(left).not.toBeNull();
   expect(right).not.toBeNull();
-  expect(left!.compareDocumentPosition(right!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  const screen = host.querySelector<HTMLElement>('.st-file-status');
-  expect(screen).not.toBeNull();
-  const flexChildren = Array.from(screen!.children);
-  expect(flexChildren[flexChildren.length - 1]).toBe(right);
+  // detail (file list) precedes primary (diff); the split puts detail left/primary right.
+  expect(detail!.compareDocumentPosition(primary!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  // The file list is inside the detail; the diff is inside the primary, never swapped.
+  expect(detail!.contains(left!)).toBe(true);
+  expect(primary!.contains(right!)).toBe(true);
+  expect(detail!.contains(right!)).toBe(false);
+}
+
+/** In-memory Storage stand-in: jsdom's own localStorage is absent on globalThis. */
+class MemoryStorage implements Storage {
+  private readonly map = new Map<string, string>();
+
+  get length(): number {
+    return this.map.size;
+  }
+
+  clear(): void {
+    this.map.clear();
+  }
+
+  getItem(key: string): string | null {
+    return this.map.has(key) ? (this.map.get(key) as string) : null;
+  }
+
+  key(index: number): string | null {
+    return Array.from(this.map.keys())[index] ?? null;
+  }
+
+  removeItem(key: string): void {
+    this.map.delete(key);
+  }
+
+  setItem(key: string, value: string): void {
+    this.map.set(key, String(value));
+  }
+}
+
+/** Install a memory `localStorage` on `globalThis` and return its restore handle. */
+function installStorage(entries: Record<string, string> = {}): () => void {
+  const storage = new MemoryStorage();
+  for (const [key, value] of Object.entries(entries)) storage.setItem(key, value);
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: storage,
+    configurable: true,
+    writable: true,
+  });
+  return () => {
+    if (previous) Object.defineProperty(globalThis, 'localStorage', previous);
+    else delete (globalThis as { localStorage?: unknown }).localStorage;
+  };
 }
 
 describe('FileStatusPage', () => {
@@ -308,17 +370,133 @@ describe('FileStatusPage', () => {
     expect(fs.variant()).toBe('commit');
   });
 
+  it('keeps an explicit local variant when a reload replaces commits() for the same oid', async () => {
+    // The bug: staging fires fs:changed -> graph.reload() -> commits() becomes a
+    // NEW array that still names the selected commit. The original effect treated
+    // that as a fresh selection and re-opened the commit, flipping the variant
+    // bar from `local` to `commit`. Staging must never change the variant.
+    const { fixture, fs, emitFsChanged } = await setup({
+      selection: HEAD_HEX,
+      commits: () => [commit(HEAD_HEX, [OTHER_HEX]), commit(OTHER_HEX)],
+    });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+
+    // The user moves to the working tree and starts staging.
+    all(fixture, 'toggle-segment-local')[0].click();
+    await vi.waitFor(() => expect(fs.variant()).toBe('local'));
+
+    emitFsChanged();
+    // Settle the reload so `commits()` is genuinely replaced before the effect
+    // re-runs with the new array reference.
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fs.variant()).toBe('local');
+  });
+
+  it('still follows a genuinely new graph selection into the commit variant', async () => {
+    const { fixture, fs, graph } = await setup({
+      selection: HEAD_HEX,
+      commits: () => [commit(HEAD_HEX, [OTHER_HEX]), commit(OTHER_HEX)],
+    });
+    await vi.waitFor(() => expect(fs.activeCommit()?.oid?.hex).toBe(HEAD_HEX));
+
+    // A resolved selection change is the one case the dedupe must NOT swallow.
+    graph.select(OTHER_HEX);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    await vi.waitFor(() => expect(fs.activeCommit()?.oid?.hex).toBe(OTHER_HEX));
+    expect(fs.variant()).toBe('commit');
+  });
+
+  it('defers a graph selection until its commit loads, then follows it exactly once', async () => {
+    const PENDING_HEX = 'c'.repeat(40);
+    // The graph names a commit the loaded window does not contain yet (the
+    // ADR-026 cross-repo search hand-off): the screen cannot resolve it and must
+    // not wedge on the working tree.
+    const { fixture, fs, graph } = await setup({
+      selection: PENDING_HEX,
+      commits: () => [commit(HEAD_HEX, [OTHER_HEX]), commit(OTHER_HEX)],
+    });
+    const openCommit = vi.spyOn(fs, 'openCommit');
+    await vi.waitFor(() => expect(fs.variant()).toBe('local'));
+    expect(openCommit).not.toHaveBeenCalled();
+
+    // The window that names the selected commit arrives: the deferred follow runs.
+    graph.commits.set([commit(PENDING_HEX), commit(HEAD_HEX, [OTHER_HEX]), commit(OTHER_HEX)]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+    expect(fs.activeCommit()?.oid?.hex).toBe(PENDING_HEX);
+    expect(openCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns to local when the selection resolves to WIP and stays there across a reload', async () => {
+    const { fixture, fs, graph, emitFsChanged } = await setup({
+      selection: HEAD_HEX,
+      commits: () => [commit(HEAD_HEX, [OTHER_HEX]), commit(OTHER_HEX)],
+    });
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+
+    graph.select(WIP_OID);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await vi.waitFor(() => expect(fs.variant()).toBe('local'));
+
+    // A background reload with WIP still selected must not re-open the previous
+    // commit (nothing/WIP resolves to `null`, distinct from the old oid).
+    emitFsChanged();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fs.variant()).toBe('local');
+  });
+
+  it('gives the changed-file list the dominant share of the commit column, not the details panel', async () => {
+    const { fixture, fs } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    const details = host.querySelector('st-commit-details-panel');
+    const summary = query(fixture, 'file-status-summary');
+    const list = host.querySelector('st-file-diff-list');
+    expect(details).not.toBeNull();
+    expect(summary).not.toBeNull();
+    expect(list).not.toBeNull();
+
+    // The three stack as siblings in the variant body, in reading order.
+    expect(details!.parentElement).toBe(list!.parentElement);
+    expect(summary!.parentElement).toBe(list!.parentElement);
+    expect(
+      details!.compareDocumentPosition(summary!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      summary!.compareDocumentPosition(list!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    // The list is the flex-growing child; the details head is not.
+    expect(getComputedStyle(list as Element).flexGrow).toBe('1');
+    expect(getComputedStyle(details as Element).flexGrow).toBe('0');
+  });
+
   it('switches variant from the variant bar', async () => {
     const { fixture, fs } = await setup({ selection: HEAD_HEX });
     await waitForDiff(fixture, fs);
 
-    all(fixture, 'variant-pr')[0].click();
+    all(fixture, 'toggle-segment-pr')[0].click();
     await vi.waitFor(() => expect(fs.variant()).toBe('pr'));
     await vi.waitFor(() => expect(fs.baseRef()).toBe('main'));
     fixture.detectChanges();
     expect(fs.targetRef()).toBe('develop');
 
-    all(fixture, 'variant-local')[0].click();
+    all(fixture, 'toggle-segment-local')[0].click();
     await vi.waitFor(() => expect(fs.variant()).toBe('local'));
   });
 
@@ -354,20 +532,66 @@ describe('FileStatusPage', () => {
     expect(rows[1].getAttribute('data-selected')).toBe('true');
   });
 
+  it('mounts the diff-mode toggle in the diff (primary) pane once a file is selected', async () => {
+    const { fixture, fs } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+
+    fs.selectFile('a.ts');
+    await settle(fixture);
+
+    const primary = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="workspace-primary"]',
+    );
+    const toggle = query(fixture, 'diff-mode-toggle');
+    expect(primary).not.toBeNull();
+    expect(toggle).not.toBeNull();
+    expect(primary!.contains(toggle!)).toBe(true);
+    assertDiffOnRight(fixture);
+  });
+
+  it('flips the diff-mode preference from the pane toggle', async () => {
+    const { fixture, fs } = await setup({ selection: HEAD_HEX });
+    const diffMode = TestBed.inject(DiffModeService);
+    await waitForDiff(fixture, fs);
+
+    fs.selectFile('a.ts');
+    await settle(fixture);
+
+    // Unified is the default: the viewer starts without side-by-side.
+    expect(diffMode.mode()).toBe('unified');
+    expect(viewer(fixture).renderSideBySide()).toBe(false);
+
+    all(fixture, 'toggle-segment-side-by-side')[0].click();
+    await settle(fixture);
+
+    expect(diffMode.mode()).toBe('side-by-side');
+    // The viewer reads the shared preference through the diff-mode service.
+    expect(viewer(fixture).renderSideBySide()).toBe(true);
+
+    all(fixture, 'toggle-segment-unified')[0].click();
+    await settle(fixture);
+
+    expect(diffMode.mode()).toBe('unified');
+    expect(viewer(fixture).renderSideBySide()).toBe(false);
+  });
+
   it('populates the PR base/target controls from the loaded branches', async () => {
     const { fixture, fs } = await setup({ selection: HEAD_HEX });
     await waitForDiff(fixture, fs);
 
-    all(fixture, 'variant-pr')[0].click();
+    all(fixture, 'toggle-segment-pr')[0].click();
     await vi.waitFor(() => expect(fs.variant()).toBe('pr'));
     await vi.waitFor(() => expect(fs.branches().length).toBe(3));
     fixture.detectChanges();
 
     expect(fs.branches().map((branch) => branch.name)).toEqual(['origin/main', 'main', 'develop']);
-    const target = query<HTMLSelectElement>(fixture, 'pr-target-select');
+    // The target is the st-select primitive: query its inner `<select>`.
+    const target = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(
+      '.st-select',
+    );
     expect(target).not.toBeNull();
     const options = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLOptionElement>(
-      'select[data-testid="pr-target-select"] option',
+      '.st-select option',
     );
     expect(Array.from(options).map((option) => option.value)).toEqual([
       'origin/main',
@@ -414,7 +638,7 @@ describe('FileStatusPage', () => {
     expect(getDiff.mock.calls.length).toBe(before);
 
     // The local variant is the one the working-tree refresh invalidates.
-    all(fixture, 'variant-local')[0].click();
+    all(fixture, 'toggle-segment-local')[0].click();
     await vi.waitFor(() => expect(fs.variant()).toBe('local'));
     const localCalls = getDiff.mock.calls.length;
 
@@ -472,21 +696,21 @@ describe('FileStatusPage', () => {
     assertDiffOnRight(fixture);
 
     // PR variant.
-    all(fixture, 'variant-pr')[0].click();
+    all(fixture, 'toggle-segment-pr')[0].click();
     await vi.waitFor(() => expect(fs.variant()).toBe('pr'));
     await vi.waitFor(() => expect(fs.baseRef()).toBe('main'));
     fixture.detectChanges();
     assertDiffOnRight(fixture);
 
     // Local variant.
-    all(fixture, 'variant-local')[0].click();
+    all(fixture, 'toggle-segment-local')[0].click();
     await vi.waitFor(() => expect(fs.variant()).toBe('local'));
     await vi.waitFor(() => expect(fs.wholeDiff()).not.toBeNull());
     fixture.detectChanges();
     assertDiffOnRight(fixture);
 
     // Switching back to the commit variant keeps the diff on the right too.
-    all(fixture, 'variant-commit')[0].click();
+    all(fixture, 'toggle-segment-commit')[0].click();
     await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
     fixture.detectChanges();
     assertDiffOnRight(fixture);
@@ -498,7 +722,7 @@ describe('FileStatusPage', () => {
 
     // No active commit and no graph selection: onVariantChange('commit') resolves
     // to nothing and must fall back to the working tree, not open an empty screen.
-    all(fixture, 'variant-commit')[0].click();
+    all(fixture, 'toggle-segment-commit')[0].click();
     fixture.detectChanges();
     await fixture.whenStable();
 
@@ -527,7 +751,7 @@ describe('FileStatusPage', () => {
     const { fixture, fs } = await setup({ selection: HEAD_HEX });
     await waitForDiff(fixture, fs);
 
-    all(fixture, 'variant-pr')[0].click();
+    all(fixture, 'toggle-segment-pr')[0].click();
     await vi.waitFor(() => expect(fs.variant()).toBe('pr'));
     await vi.waitFor(() => expect(fs.commitDiff()).not.toBeNull());
     fixture.detectChanges();
@@ -793,5 +1017,79 @@ describe('FileStatusPage', () => {
 
     expect(viewer(fixture).truncated()).toBe(true);
     expect(query(fixture, 'diff-truncated')).not.toBeNull();
+  });
+});
+
+// -- persisted preferences reach the mounted surfaces (plan 4.9) -------------
+
+describe('FileStatusPage persisted preferences', () => {
+  let restoreStorage: () => void;
+
+  beforeEach(() => {
+    // Root preferences are read in PreferencesService's constructor, so the
+    // memory storage must exist before the page (and its viewer) mount.
+    restoreStorage = installStorage({});
+  });
+
+  afterEach(() => {
+    restoreStorage();
+    TestBed.resetTestingModule();
+  });
+
+  it('applies a persisted st:paneWidth to the rendered detail pane', async () => {
+    localStorage.setItem('st:paneWidth', '420');
+    const { fixture, fs } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    fixture.detectChanges();
+
+    const detail = query(fixture, 'workspace-detail');
+    expect(detail).not.toBeNull();
+    expect(detail!.style.width).toBe('420px');
+  });
+
+  it('persists st:paneWidth when the split divider is dragged', async () => {
+    localStorage.setItem('st:paneWidth', '420');
+    const { fixture, fs } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    fixture.detectChanges();
+
+    // The split is opt-in resizable, so the divider is really mounted.
+    const divider = query(fixture, 'workspace-divider');
+    expect(divider).not.toBeNull();
+
+    divider!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    fixture.detectChanges();
+
+    // The page only rounds the emitted pixels and forwards them to the service.
+    expect(localStorage.getItem('st:paneWidth')).toBe('320');
+  });
+
+  it('defaults the mounted viewer to 12px with wrap off', async () => {
+    const { fixture, fs } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    fixture.detectChanges();
+
+    expect(viewer(fixture).fontSize()).toBe(12);
+    expect(viewer(fixture).wordWrap()).toBe(false);
+  });
+
+  it('passes the persisted diff typography to the mounted viewer', async () => {
+    localStorage.setItem('st:diffFontSize', '13');
+    localStorage.setItem('st:diffWordWrap', 'on');
+    const { fixture, fs } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    fixture.detectChanges();
+
+    expect(viewer(fixture).fontSize()).toBe(13);
+    expect(viewer(fixture).wordWrap()).toBe(true);
+    // The same preferences drive the fallback grid's inline typography.
+    fs.selectFile('a.ts');
+    await vi.waitFor(() => expect(fs.selectedPath()).toBe('a.ts'));
+    await settle(fixture);
+    const fallback = query(fixture, 'diff-fallback');
+    expect(fallback).not.toBeNull();
+    expect(fallback!.getAttribute('data-wrap')).toBe('on');
+    expect(fallback!.style.fontSize).toBe('13px');
+    expect(fallback!.style.lineHeight).toBe('26px');
   });
 });

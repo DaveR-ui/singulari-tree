@@ -8,6 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { ModalComponent } from '@shared/ui/modal/modal';
+import { ButtonComponent } from '@singularitree/ui-kit';
 
 /**
  * Mode of the branch-switch confirmation:
@@ -36,7 +37,7 @@ export type SwitchBranchMode = 'confirm' | 'dirty' | 'untracked';
 @Component({
   selector: 'st-switch-branch-confirm-dialog',
   standalone: true,
-  imports: [ModalComponent],
+  imports: [ModalComponent, ButtonComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <st-modal [open]="open()" [title]="title()" (closed)="cancel.emit()">
@@ -76,50 +77,33 @@ export type SwitchBranchMode = 'confirm' | 'dirty' | 'untracked';
       }
 
       <div class="st-switch__footer" st-modal-footer>
-        <button
-          type="button"
-          class="st-switch__btn"
-          data-testid="switch-branch-cancel"
-          (click)="cancel.emit()"
-        >
+        <st-button variant="default" data-testid="switch-branch-cancel" (click)="cancel.emit()">
           Cancel
-        </button>
+        </st-button>
         @if (mode() === 'dirty') {
-          <button
-            type="button"
-            class="st-switch__btn"
-            data-testid="switch-branch-save"
-            (click)="saveChanges.emit()"
-          >
+          <st-button variant="default" data-testid="switch-branch-save" (click)="saveChanges.emit()">
             Save changes (stash)
-          </button>
-          <button
-            type="button"
-            class="st-switch__btn st-switch__btn--danger"
+          </st-button>
+          <st-button
+            variant="danger"
             data-testid="switch-branch-force"
             [disabled]="!forceArmed()"
             (click)="forceCheckout.emit()"
           >
             Force checkout
-          </button>
+          </st-button>
         } @else if (mode() === 'confirm') {
-          <button
-            type="button"
-            class="st-switch__btn st-switch__btn--primary"
+          <st-button
+            variant="primary"
             data-testid="switch-branch-confirm"
             (click)="confirmed.emit(forceArmed())"
           >
             Switch
-          </button>
+          </st-button>
         } @else {
-          <button
-            type="button"
-            class="st-switch__btn st-switch__btn--danger"
-            data-testid="switch-branch-force"
-            (click)="forceCheckout.emit()"
-          >
+          <st-button variant="danger" data-testid="switch-branch-force" (click)="forceCheckout.emit()">
             Delete untracked files and checkout
-          </button>
+          </st-button>
         }
       </div>
     </st-modal>
@@ -131,74 +115,36 @@ export type SwitchBranchMode = 'confirm' | 'dirty' | 'untracked';
 
     .st-switch__message {
       margin: 0;
-      font-size: 13px;
-      line-height: 1.5;
-      color: var(--st-color-text, #d6d6de);
+      font-size: var(--st-font-13);
+      line-height: var(--st-leading-ui);
+      color: var(--st-color-text);
     }
 
-    .st-switch__hint,
+    .st-switch__hint {
+      margin: 10px 0 0;
+      font-size: var(--st-font-12);
+      line-height: var(--st-leading-ui);
+      color: var(--st-color-muted);
+    }
+
     .st-switch__warning {
       margin: 10px 0 0;
-      font-size: 12px;
-      line-height: 1.5;
-      opacity: 0.8;
-    }
-
-    .st-switch__warning {
-      color: #ff8a80;
-      opacity: 1;
+      font-size: var(--st-font-12);
+      line-height: var(--st-leading-ui);
+      color: var(--st-color-danger);
     }
 
     .st-switch__check {
       display: flex;
       align-items: center;
       gap: 6px;
-      margin-top: 12px;
-      font-size: 12px;
+      margin-top: var(--st-space-3);
+      font-size: var(--st-font-12);
     }
 
     .st-switch__footer {
       display: flex;
-      gap: 8px;
-    }
-
-    .st-switch__btn {
-      padding: 6px 14px;
-      border-radius: 6px;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      background: transparent;
-      color: var(--st-color-text, #d6d6de);
-      font-size: 12px;
-      cursor: pointer;
-    }
-
-    .st-switch__btn:hover:not(:disabled) {
-      background: rgba(255, 255, 255, 0.07);
-    }
-
-    .st-switch__btn:disabled {
-      opacity: 0.5;
-      cursor: default;
-    }
-
-    .st-switch__btn--danger {
-      background: rgba(255, 69, 58, 0.16);
-      border-color: rgba(255, 69, 58, 0.55);
-      color: #ff8a80;
-    }
-
-    .st-switch__btn--danger:hover:not(:disabled) {
-      background: rgba(255, 69, 58, 0.26);
-    }
-
-    .st-switch__btn--primary {
-      background: rgba(90, 140, 255, 0.2);
-      border-color: rgba(90, 140, 255, 0.6);
-      color: #9db8ff;
-    }
-
-    .st-switch__btn--primary:hover:not(:disabled) {
-      background: rgba(90, 140, 255, 0.3);
+      gap: var(--st-space-2);
     }
   `,
 })

@@ -8,9 +8,19 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
 import { Router } from '@angular/router';
-import { GRAPH_ROW_HEIGHT, GraphRow } from '@singularitree/ui-kit';
+import {
+  BadgeComponent,
+  ButtonComponent,
+  EmptyStateComponent,
+  GRAPH_ROW_HEIGHT,
+  GraphRow,
+  IconComponent,
+  InputComponent,
+  LANE_COLUMN_WIDTH,
+} from '@singularitree/ui-kit';
 import { BranchCreateDialog } from '@shared/ui/ref-dialogs/branch-create-dialog';
 import type { BranchCreateValue, TagCreateValue } from '@shared/ui/ref-dialogs/ref-dialog.models';
 import { TagCreateDialog } from '@shared/ui/ref-dialogs/tag-create-dialog';
@@ -23,15 +33,17 @@ import type {
   GraphContextMenuTarget,
   ResetModeName,
 } from '../graph-menu.models';
-import { CommitDetailsPanel } from '../ui/commit-details-panel';
 import { GraphContextMenu } from '../ui/graph-context-menu';
 import { ResetConfirmDialog } from '../ui/reset-confirm-dialog';
 import { WipRow } from '../ui/wip-row';
 
 /**
- * Commit graph feature page: virtualized graph rows (CDK) + pinned WIP node +
- * details panel + local filter. Data comes exclusively from `GraphStore`
- * (`getCommits` via `IpcBridge`); the page never talks to Git.
+ * Commit graph feature page: the primary History pane (plan §4.5). It owns the
+ * pane header (title + branch badge + search/clear), the sticky column header and
+ * commit-count footer, the virtualized graph rows (CDK) and the pinned WIP node.
+ * The commit-detail pane now lives in `repo-page`'s `st-workspace-split`, so this
+ * page renders neither a split nor an `<aside>`. Data comes exclusively from
+ * `GraphStore` (`getCommits` via `IpcBridge`); the page never talks to Git.
  */
 @Component({
   selector: 'st-graph-page',
@@ -40,85 +52,143 @@ import { WipRow } from '../ui/wip-row';
     ScrollingModule,
     GraphRow,
     WipRow,
-    CommitDetailsPanel,
     GraphContextMenu,
     ResetConfirmDialog,
     BranchCreateDialog,
     TagCreateDialog,
+    BadgeComponent,
+    ButtonComponent,
+    EmptyStateComponent,
+    IconComponent,
+    InputComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="st-graph-page">
-      <header class="st-graph-page__toolbar">
-        <h2 class="st-graph-page__title">History</h2>
-        <input
-          type="search"
-          class="st-graph-page__filter"
-          placeholder="Filter by message, author or oid"
-          aria-label="Filter commits"
-          data-testid="graph-filter"
-          [value]="store.filter()"
-          (input)="onFilter($event)"
-        />
-        <button
-          type="button"
+      <header class="st-graph-page__header">
+        <div class="st-graph-page__heading">
+          <span class="st-eyebrow st-graph-page__eyebrow" i18n>Workspace</span>
+          <h2 class="st-graph-page__title" i18n>History</h2>
+        </div>
+
+        @if (currentBranch()) {
+          <st-badge variant="branch" data-testid="graph-branch">{{ currentBranch() }}</st-badge>
+        }
+
+        <div class="st-graph-page__search">
+          <st-input
+            type="search"
+            class="st-graph-page__filter"
+            data-testid="graph-filter"
+            [value]="store.filter()"
+            [placeholder]="filterPlaceholder"
+            [ariaLabel]="filterPlaceholder"
+            (valueChange)="onFilterValue($event)"
+          />
+          @if (store.filter()) {
+            <st-button
+              variant="icon"
+              size="sm"
+              class="st-graph-page__filter-clear"
+              data-testid="graph-filter-clear"
+              [ariaLabel]="clearFilterTitle"
+              (click)="clearFilter()"
+            >
+              <st-icon name="close" />
+            </st-button>
+          }
+        </div>
+
+        <st-button
+          variant="default"
+          size="sm"
           class="st-graph-page__changes"
           data-testid="graph-open-changes"
-          i18n
           (click)="openChanges()"
         >
-          Changes
-        </button>
-        @if (store.isLoading()) {
-          <span class="st-graph-page__status" data-testid="graph-loading">Loading…</span>
-        }
-        @if (store.offline()) {
-          <span class="st-graph-page__status" data-testid="graph-offline">
-            Git core offline — open a repository inside the desktop app to load history.
-          </span>
-        }
+          <st-icon name="changes" />
+          <span i18n>Changes</span>
+        </st-button>
       </header>
 
       @if (store.error(); as error) {
         <p class="st-graph-page__error" data-testid="graph-error">{{ error.message }}</p>
       }
 
-      <div class="st-graph-page__body">
-        <div class="st-graph-page__graph">
-          <!-- Pinned outside the virtual viewport so it never affects lane math. -->
-          <st-wip-row [selected]="store.isWipSelected()" (picked)="selectWip()" data-testid="graph-wip" />
+      @if (store.isLoading()) {
+        <st-empty-state
+          data-testid="graph-loading"
+          icon="⏳"
+          title="Loading"
+          i18n-title
+          message="Fetching the commit history."
+          i18n-message
+          tone="muted"
+        />
+      }
 
-          <cdk-virtual-scroll-viewport
-            class="st-graph-page__viewport"
-            [itemSize]="rowHeight"
-            (scrolledIndexChange)="onScrolledIndexChange($event)"
-          >
-            <st-graph-row
-              *cdkVirtualFor="let row of store.filteredRows(); trackBy: trackByRow"
-              [commit]="row.commit"
-              [lane]="row.lane"
-              [maxLane]="maxLane()"
-              [selected]="store.selectedOid() === row.commit.oid?.hex"
-              [stats]="store.statsFor(row.commit.oid?.hex)"
-              (picked)="store.select(row.commit.oid?.hex ?? null)"
-              (contextmenu)="onRowContextMenu($event, row)"
-            />
-          </cdk-virtual-scroll-viewport>
+      @if (store.offline()) {
+        <st-empty-state
+          data-testid="graph-offline"
+          icon="🔌"
+          title="Git core offline"
+          i18n-title
+          message="Open a repository inside the desktop app to load history."
+          i18n-message
+          tone="muted"
+        />
+      }
 
-          @if (store.filteredRows().length === 0) {
-            <p class="st-graph-page__empty" data-testid="graph-empty">
-              {{ store.commits().length === 0 ? 'No commits to display.' : 'No commits match the filter.' }}
-            </p>
-          }
-        </div>
-
-        <aside class="st-graph-page__details" data-testid="graph-details">
-          <st-commit-details-panel
-            [commit]="store.selectedRow()?.commit ?? null"
-            [isWip]="store.isWipSelected()"
-          />
-        </aside>
+      <!--
+        Sticky column header aligned to the row columns (plan §4.5). It carries
+        the visible column labels while the rows below stay role="button"
+        (no row-header/table semantics are invented here).
+      -->
+      <div
+        class="st-eyebrow st-graph-page__columns"
+        data-testid="graph-column-headers"
+      >
+        <span class="st-graph-page__col-graph" [style.width.px]="graphWidth()" i18n>Graph</span>
+        <span class="st-graph-page__col-message" i18n>Commit / author</span>
+        <span class="st-graph-page__col-date st-hide-at-1600" i18n>Date</span>
       </div>
+
+      <div class="st-graph-page__list">
+        <!-- Pinned outside the virtual viewport so it never affects lane math. -->
+        <st-wip-row
+          [selected]="store.isWipSelected()"
+          (picked)="selectWip()"
+          data-testid="graph-wip"
+        />
+
+        <cdk-virtual-scroll-viewport
+          class="st-graph-page__viewport"
+          [itemSize]="rowHeight"
+          (scrolledIndexChange)="onScrolledIndexChange($event)"
+        >
+          <st-graph-row
+            *cdkVirtualFor="let row of store.filteredRows(); trackBy: trackByRow"
+            [commit]="row.commit"
+            [lane]="row.lane"
+            [maxLane]="maxLane()"
+            [selected]="store.selectedOid() === row.commit.oid?.hex"
+            [stats]="store.statsFor(row.commit.oid?.hex)"
+            (picked)="store.select(row.commit.oid?.hex ?? null)"
+            (contextmenu)="onRowContextMenu($event, row)"
+          />
+        </cdk-virtual-scroll-viewport>
+
+        @if (store.filteredRows().length === 0) {
+          <st-empty-state
+            data-testid="graph-empty"
+            [icon]="emptyIcon()"
+            [title]="emptyTitle()"
+            [message]="emptyMessage()"
+          />
+        }
+      </div>
+
+      <footer class="st-graph-page__footer" data-testid="graph-count">{{ countLabel() }}</footer>
 
       <!-- Right-click action shell (ADR-0022): dumb, emits; the page owns the RPC. -->
       <st-graph-context-menu
@@ -171,7 +241,7 @@ import { WipRow } from '../ui/wip-row';
       display: block;
       height: 100%;
       min-height: 0;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
     }
 
     .st-graph-page {
@@ -179,73 +249,106 @@ import { WipRow } from '../ui/wip-row';
       flex-direction: column;
       height: 100%;
       min-height: 0;
+      background: var(--st-color-surface);
     }
 
-    .st-graph-page__toolbar {
+    .st-graph-page__header {
       display: flex;
       align-items: center;
-      gap: 10px;
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--st-color-border, #2f2f44);
+      gap: var(--st-space-2);
+      padding: var(--st-space-2) var(--st-space-3);
+      border-bottom: var(--st-hairline) solid var(--st-color-border);
+    }
+
+    .st-graph-page__heading {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex: none;
+      min-width: 0;
+    }
+
+    .st-graph-page__eyebrow {
+      line-height: 1;
     }
 
     .st-graph-page__title {
       margin: 0;
-      font-size: 13px;
+      font-size: var(--st-font-13);
       font-weight: 600;
+      line-height: var(--st-leading-tight);
     }
 
-    .st-graph-page__filter {
+    .st-graph-page__search {
+      display: flex;
+      align-items: center;
+      gap: var(--st-space-1);
       flex: 0 1 320px;
       min-width: 120px;
-      padding: 4px 8px;
-      border-radius: 4px;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      background: var(--st-color-surface, #252536);
-      color: inherit;
-      font-size: 12px;
     }
 
-    .st-graph-page__status,
-    .st-graph-page__empty {
-      opacity: 0.6;
-      font-size: 12px;
+    .st-graph-page__search st-input {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .st-graph-page__filter-clear {
+      flex: none;
     }
 
     .st-graph-page__changes {
       flex: none;
-      padding: 4px 10px;
-      border-radius: 4px;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      background: var(--st-color-surface, #252536);
-      color: inherit;
-      font-size: 12px;
-      cursor: pointer;
-    }
-
-    .st-graph-page__changes:hover {
-      border-color: var(--st-color-accent, #0a84ff);
-      color: var(--st-color-accent, #0a84ff);
+      margin-left: auto;
     }
 
     .st-graph-page__error {
       margin: 0;
-      padding: 6px 12px;
-      font-size: 12px;
-      color: #ff6b6b;
+      padding: 6px var(--st-space-3);
+      font-size: var(--st-font-12);
+      color: var(--st-color-danger);
     }
 
-    .st-graph-page__body {
+    /* Sticky 24px column header aligned to the virtualized row columns. */
+    .st-graph-page__columns {
       display: flex;
-      flex: 1 1 auto;
-      min-height: 0;
+      align-items: center;
+      gap: 6px;
+      flex: none;
+      height: var(--st-size-row-tree-dense);
+      padding: 0 8px;
+      position: sticky;
+      top: 0;
+      z-index: var(--st-z-sticky);
+      background: var(--st-color-surface-2);
+      border-bottom: var(--st-hairline) solid var(--st-color-border);
+      line-height: 1;
     }
 
-    .st-graph-page__graph {
+    .st-graph-page__col-graph {
+      flex: none;
+    }
+
+    .st-graph-page__col-message {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Right-aligned to the row dates: the row date column is flex: none
+       (natural width), so the header must be pushed to the same right edge. */
+    .st-graph-page__col-date {
+      flex: 0 0 auto;
+      margin-left: auto;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .st-graph-page__list {
       display: flex;
       flex-direction: column;
       flex: 1 1 auto;
-      min-width: 0;
       min-height: 0;
     }
 
@@ -255,11 +358,13 @@ import { WipRow } from '../ui/wip-row';
       width: 100%;
     }
 
-    .st-graph-page__details {
-      flex: 0 0 320px;
-      min-width: 0;
-      border-left: 1px solid var(--st-color-border, #2f2f44);
-      overflow: hidden;
+    .st-graph-page__footer {
+      flex: none;
+      padding: var(--st-space-1) var(--st-space-3);
+      border-top: var(--st-hairline) solid var(--st-color-border);
+      color: var(--st-color-muted);
+      font-size: var(--st-font-11);
+      font-variant-numeric: tabular-nums;
     }
   `,
 })
@@ -280,6 +385,36 @@ export class GraphPage {
   /** Must match `GRAPH_ROW_HEIGHT` so CDK virtualization delegates row height. */
   readonly rowHeight = GRAPH_ROW_HEIGHT;
   readonly maxLane = computed(() => this.store.maxLane());
+  /** Pixel width of the graph column: `(maxLane + 1) * LANE_COLUMN_WIDTH`, shared by the header. */
+  readonly graphWidth = computed(() => (this.maxLane() + 1) * LANE_COLUMN_WIDTH);
+  /** Current branch of the active repository, shown as the pane-title badge. */
+  readonly currentBranch = computed(() => this.repoState.currentBranch());
+
+  readonly filterPlaceholder = $localize`Filter by message, author or oid`;
+  readonly clearFilterTitle = $localize`Clear filter`;
+
+  /** Footer counter, e.g. `120 of 2000 commits`. */
+  readonly countLabel = computed(() =>
+    $localize`${this.store.filteredRows().length} of ${this.store.total()} commits`,
+  );
+  /** Empty-state heading: distinguishes "no history" from "no filter match". */
+  readonly emptyTitle = computed(() =>
+    this.store.commits().length === 0
+      ? $localize`No commits to display`
+      : $localize`No commits match the filter`,
+  );
+  /** Empty-state supporting line, paired with {@link emptyTitle}. */
+  readonly emptyMessage = computed(() =>
+    this.store.commits().length === 0
+      ? $localize`This repository has no commit history yet.`
+      : $localize`Adjust or clear the search to see more commits.`,
+  );
+  /**
+   * Empty-state glyph (the primitive renders `icon()` as text): a mailbox for an
+   * empty repository and a distinct search glyph for a filter with no matches.
+   * Never a bare word — `st-empty-state` prints its icon value literally.
+   */
+  readonly emptyIcon = computed(() => (this.store.commits().length === 0 ? '📭' : '🔍'));
 
   // -- context menu / reset confirmation state -----------------------------
   /** Open context menu anchored at viewport coordinates, or null when closed. */
@@ -326,6 +461,9 @@ export class GraphPage {
   /** Bound to the CDK viewport so keyboard navigation can reveal the selection. */
   readonly viewport = viewChild(CdkVirtualScrollViewport);
 
+  /** Guard so a viewport-signal re-run cannot stack `elementScrolled` subscriptions. */
+  private scrollBound = false;
+
   constructor() {
     const store = this.store;
     const unregister = [
@@ -334,17 +472,72 @@ export class GraphPage {
     ];
     this.destroyRef.onDestroy(() => unregister.forEach((off) => off()));
 
-    // Keep the selected row in view as keyboard navigation moves it.
+    // Centralized scroll-restore queue: `GraphPage` only exists while a
+    // repository is open, so tearing it down covers *every* exit path — the
+    // detail CTA, the rail WORKSPACE entry, tab switch, deep link and browser
+    // navigation. Relying on the explicit calls alone let some paths land at the
+    // top of the list.
+    this.destroyRef.onDestroy(() => this.queueScrollRestore());
+
+    // Keep the selected row in view as keyboard navigation moves it. `-1` means
+    // nothing is selected or the WIP row is (it is pinned outside the viewport),
+    // so that path never scrolls.
     effect(() => {
       const index = this.store.selectedIndex();
       if (index >= 0) {
         this.viewport()?.scrollToIndex(index, 'smooth');
       }
     });
+
+    // Bind the viewport's scroll stream once it exists and restore a pending
+    // offset on (re)mount. Declared after the selection effect so a restore wins
+    // over a same-flush `scrollToIndex` — the whole point of restoring the view.
+    effect(() => {
+      const viewport = this.viewport();
+      this.bindViewportScroll(viewport);
+      if (viewport) this.restoreScroll();
+    });
+  }
+
+  /**
+   * Bind `elementScrolled` → `store.rememberScrollOffset` exactly once. The
+   * viewport is a signal, so this re-runs when CDK (re)creates it; the guard
+   * keeps a re-run from stacking a second subscription.
+   */
+  private bindViewportScroll(viewport: CdkVirtualScrollViewport | undefined): void {
+    if (!viewport || this.scrollBound) return;
+    this.scrollBound = true;
+    viewport
+      .elementScrolled()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.store.rememberScrollOffset(viewport.measureScrollOffset()));
+  }
+
+  /**
+   * Restore the store's pending scroll offset (px) into the viewport once and
+   * consume it. Named and public so the unit spec — which constructs the page
+   * with no template — can exercise it directly. Without a viewport (unit spec)
+   * the pending value is still consumed so it can never leak into a later mount.
+   */
+  restoreScroll(): number | null {
+    const pending = this.store.pendingScrollOffset();
+    if (pending === null) return null;
+    this.viewport()?.scrollToOffset(pending);
+    return this.store.consumeScrollRestore();
+  }
+
+  /** Template entry point for the `st-input` primitive's `valueChange` output. */
+  onFilterValue(value: string): void {
+    this.store.setFilter(value);
   }
 
   onFilter(event: Event): void {
     this.store.setFilter((event.target as HTMLInputElement).value);
+  }
+
+  /** Clear affordance: reset the search field and the store filter. */
+  clearFilter(): void {
+    this.store.setFilter('');
   }
 
   /**
@@ -360,11 +553,22 @@ export class GraphPage {
   }
 
   /**
+   * Queue the remembered viewport offset for restore on the next mount. Public
+   * and named so the unit spec — which constructs the page with no template —
+   * can exercise it directly; the destroy hook calls it on every exit path.
+   */
+  queueScrollRestore(): void {
+    this.store.requestScrollRestore();
+  }
+
+  /**
    * Always-visible toolbar entry: route to the File status screen with no commit
    * selection, so it opens the `local` (working tree) variant — the same target
    * as the sidebar WORKSPACE "File status" entry.
    */
   openChanges(): void {
+    // Leaving the graph: remember the viewport so returning restores it (plan §4.6).
+    this.queueScrollRestore();
     void this.router?.navigate(['/repo', 'file-status']);
   }
 
@@ -420,6 +624,8 @@ export class GraphPage {
     this.closeContextMenu();
     if (!oid || oid === WIP_OID) return;
     this.store.select(oid);
+    // Leaving the graph: hand the viewport offset to the next mount (plan §4.6).
+    this.queueScrollRestore();
     void this.router?.navigate(['/repo', 'file-status']);
   }
 

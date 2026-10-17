@@ -267,6 +267,57 @@ export class RepoState {
     }
   }
 
+  /**
+   * Repoint a registered repository at a differing filesystem path
+   * (`relocateRepository`, P4.1 polish).
+   *
+   * Mirrors `removeRepository`'s error handling: `IPC_UNAVAILABLE` records
+   * `reposOffline`, any other failure (including `REPO_PATH_MISSING`,
+   * `NOT_A_GIT_REPO` and `REPO_PATH_IN_USE`) is recorded verbatim on
+   * `reposError` so the user is never left guessing why the save failed.
+   *
+   * On success the core repoints the *same* repository id, so the record is
+   * upserted in place and `created_at` is preserved. When the repo was active it
+   * stays active (the id is unchanged); the authoritative list is then reloaded
+   * so the drawer/nav-rail observe the new path. Returns the relocated record, or
+   * null on failure.
+   */
+  async relocateRepository(id: RepositoryId, fsPath: string): Promise<Repository | null> {
+    const trimmed = fsPath.trim();
+    if (!trimmed) return null;
+
+    this.reposError.set(null);
+    try {
+      const repo = await this.bridge.invoke('relocateRepository', { repoId: id, fsPath: trimmed });
+      this.reposOffline.set(false);
+      // Upsert the repointed record under its (unchanged) id; `created_at` is the
+      // core's, so a same-id replace keeps the original registration history.
+      this.repos.update((prev) => {
+        const index = prev.findIndex((r) => r.id === repo.id);
+        if (index === -1) return [...prev, repo];
+        const next = [...prev];
+        next[index] = repo;
+        return next;
+      });
+      // `activeId` is already `repo.id` when this was the active repo, so it
+      // "stays active" for free; re-activating also reloads its refs/stashes for
+      // the new path. When it was not active the selection is left untouched.
+      if (this.activeId() === repo.id) this.setActive(repo);
+      // Refresh the authoritative list so the repos page / nav-rail show the new
+      // path without a manual reload (the record is upserted optimistically above
+      // so the UI never briefly shows the stale path).
+      await this.loadRepositories();
+      return repo;
+    } catch (err) {
+      if (isIpcUnavailable(err)) {
+        this.reposOffline.set(true);
+      } else {
+        this.reposError.set(toAppError(err));
+      }
+      return null;
+    }
+  }
+
   /** Upsert `repo`, make it active and (re)load its ref lists. */
   setActive(repo: Repository): void {
     this.repos.update((prev) => {

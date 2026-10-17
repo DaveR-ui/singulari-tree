@@ -45,14 +45,14 @@ import { BadgeComponent, EmptyStateComponent } from '@singularitree/ui-kit';
   styles: `
     :host {
       display: block;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
     }
 
     .st-account-profile__profile {
       display: flex;
       align-items: center;
-      gap: 12px;
-      margin-top: 14px;
+      gap: var(--st-space-3);
+      margin-top: var(--st-space-3);
     }
 
     .st-account-profile__avatar {
@@ -68,14 +68,15 @@ import { BadgeComponent, EmptyStateComponent } from '@singularitree/ui-kit';
     .st-account-profile__login {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: var(--st-space-2);
+      font-size: var(--st-font-13);
       font-weight: 600;
     }
 
     .st-account-profile__name,
     .st-account-profile__email {
-      font-size: 12px;
-      opacity: 0.8;
+      font-size: var(--st-font-12);
+      color: var(--st-color-muted);
     }
   `,
 })

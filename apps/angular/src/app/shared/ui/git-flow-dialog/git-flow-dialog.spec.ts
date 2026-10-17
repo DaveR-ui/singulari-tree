@@ -34,6 +34,11 @@ function query(fixture: ReturnType<typeof render>, testId: string): HTMLElement 
   );
 }
 
+/** The `st-button` primitive renders one inner native `<button>`. */
+function innerButton(fixture: ReturnType<typeof render>, testId: string): HTMLButtonElement {
+  return query(fixture, testId)!.querySelector('button') as HTMLButtonElement;
+}
+
 describe('GitFlowDialog', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -69,14 +74,14 @@ describe('GitFlowDialog', () => {
 
   it('disables Start until a name is entered', () => {
     const fixture = render();
-    expect(query(fixture, 'git-flow-start-submit')?.hasAttribute('disabled')).toBe(true);
+    expect(innerButton(fixture, 'git-flow-start-submit').disabled).toBe(true);
 
     const name = query(fixture, 'git-flow-start-name') as HTMLInputElement;
     name.value = 'login';
     name.dispatchEvent(new Event('input'));
     fixture.detectChanges();
 
-    expect(query(fixture, 'git-flow-start-submit')?.hasAttribute('disabled')).toBe(false);
+    expect(innerButton(fixture, 'git-flow-start-submit').disabled).toBe(false);
   });
 
   it('opens on the Finish tab and emits the finish payload', () => {
@@ -189,8 +194,8 @@ describe('GitFlowDialog', () => {
     const fixture = render({ running: true, error: { code: 'GIT_FLOW_FAILED', message: 'boom' } });
 
     expect(query(fixture, 'git-flow-error')?.textContent).toContain('boom');
-    expect(query(fixture, 'git-flow-start-submit')?.hasAttribute('disabled')).toBe(true);
-    expect(query(fixture, 'git-flow-cancel')?.hasAttribute('disabled')).toBe(true);
+    expect(innerButton(fixture, 'git-flow-start-submit').disabled).toBe(true);
+    expect(innerButton(fixture, 'git-flow-cancel').disabled).toBe(true);
   });
 
   it('emits cancelled on dismiss', () => {

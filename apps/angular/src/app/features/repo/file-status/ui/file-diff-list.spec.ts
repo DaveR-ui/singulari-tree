@@ -99,6 +99,9 @@ describe('FileDiffList', () => {
     expect(rows[1].classList.contains('st-file-diff-list__row--selected')).toBe(true);
     expect(rows[0].getAttribute('data-selected')).toBe('false');
     expect(rows[1].getAttribute('data-selected')).toBe('true');
+    // The selectable-row directive supplies the shared 3px inset selection bar.
+    expect(rows[0].classList.contains('st-selection-bar')).toBe(false);
+    expect(rows[1].classList.contains('st-selection-bar')).toBe(true);
   });
 
   it('emits the path of the clicked row', () => {
@@ -140,5 +143,138 @@ describe('FileDiffList', () => {
 
     expect(query(fixture, 'file-list-empty')?.textContent?.trim()).toBe('No changed files.');
     expect(all(fixture, 'file-diff-row')).toHaveLength(0);
+    // No files means no statuses to offer: the filter row is not rendered.
+    expect(query(fixture, 'file-status-filters')).toBeNull();
+  });
+
+  function chip(fixture: ComponentFixture<FileDiffList>, status: string): HTMLElement {
+    return all(fixture, 'file-status-filter').find(
+      (element) => element.getAttribute('data-status') === status,
+    ) as HTMLElement;
+  }
+
+  function rowPaths(fixture: ComponentFixture<FileDiffList>): (string | null)[] {
+    return all(fixture, 'file-diff-row').map((row) => row.getAttribute('data-path'));
+  }
+
+  it('derives one filter chip per distinct status, ordered A, M, D, R then the rest', () => {
+    const fixture = render({
+      files: [
+        fileDiff('one.ts', { status: 'T' }),
+        fileDiff('two.ts', { status: 'M' }),
+        fileDiff('three.ts', { status: 'A' }),
+        fileDiff('four.ts', { status: 'R', oldPath: 'old.ts' }),
+        fileDiff('five.ts', { status: 'D' }),
+        fileDiff('six.ts', { status: 'C' }),
+        // A duplicate status must not yield a second chip.
+        fileDiff('seven.ts', { status: 'M' }),
+      ],
+    });
+
+    const chips = all(fixture, 'file-status-filter');
+    expect(chips.map((element) => element.getAttribute('data-status'))).toEqual([
+      'A',
+      'M',
+      'D',
+      'R',
+      'C',
+      'T',
+    ]);
+    // Each chip renders the status letter itself.
+    expect(chips.map((element) => element.textContent?.trim())).toEqual([
+      'A',
+      'M',
+      'D',
+      'R',
+      'C',
+      'T',
+    ]);
+    // The letter carries the status so it inherits the badge colour mapping.
+    expect(
+      chips[0].querySelector('.st-file-diff-list__chip-letter')?.getAttribute('data-status'),
+    ).toBe('A');
+    // Chips start off; no filter is active until the user turns one on. The
+    // pressed state reaches AT through the inner native button (the host carries
+    // no aria-pressed of its own).
+    expect(
+      chips.every(
+        (element) => element.querySelector('button')?.getAttribute('aria-pressed') === 'false',
+      ),
+    ).toBe(true);
+    expect(all(fixture, 'file-diff-row')).toHaveLength(7);
+  });
+
+  it('filters the rows to the status a chip turns on', () => {
+    const fixture = render({
+      files: [fileDiff('a.ts', { status: 'A' }), fileDiff('m.ts'), fileDiff('d.ts', { status: 'D' })],
+    });
+
+    chip(fixture, 'D').click();
+    fixture.detectChanges();
+
+    expect(rowPaths(fixture)).toEqual(['d.ts']);
+    expect(chip(fixture, 'D').querySelector('button')?.getAttribute('aria-pressed')).toBe('true');
+    expect(chip(fixture, 'D').classList.contains('st-file-diff-list__chip--active')).toBe(true);
+    expect(chip(fixture, 'A').classList.contains('st-file-diff-list__chip--active')).toBe(false);
+  });
+
+  it('unions multiple chip selections and clears back to every file', () => {
+    const fixture = render({
+      files: [fileDiff('a.ts', { status: 'A' }), fileDiff('m.ts'), fileDiff('d.ts', { status: 'D' })],
+    });
+
+    // Off -> on adds; a second chip is a union, not a replacement.
+    chip(fixture, 'A').click();
+    chip(fixture, 'D').click();
+    fixture.detectChanges();
+    expect(rowPaths(fixture)).toEqual(['a.ts', 'd.ts']);
+    expect(query(fixture, 'file-status-filters-clear')).not.toBeNull();
+
+    // On -> off removes that status from the union.
+    chip(fixture, 'A').click();
+    fixture.detectChanges();
+    expect(rowPaths(fixture)).toEqual(['d.ts']);
+
+    // Clear drops every active chip and restores the unfiltered list.
+    (query(fixture, 'file-status-filters-clear') as HTMLElement).click();
+    fixture.detectChanges();
+    expect(rowPaths(fixture)).toEqual(['a.ts', 'm.ts', 'd.ts']);
+    expect(query(fixture, 'file-status-filters-clear')).toBeNull();
+  });
+
+  it('shows the zero-match state only when the active filters hide every file', () => {
+    const fixture = render({ files: [fileDiff('a.ts', { status: 'A' }), fileDiff('m.ts')] });
+
+    chip(fixture, 'A').click();
+    fixture.detectChanges();
+    expect(query(fixture, 'file-list-filter-empty')).toBeNull();
+    expect(rowPaths(fixture)).toEqual(['a.ts']);
+    // The genuinely-empty state is not confused with a filtered-out list.
+    expect(query(fixture, 'file-list-empty')).toBeNull();
+
+    // The diff refreshes to files that no longer include A: the still-active A
+    // filter now matches nothing, so the zero-match state replaces the list.
+    fixture.componentRef.setInput('files', [fileDiff('m.ts')]);
+    fixture.detectChanges();
+    expect(query(fixture, 'file-list-filter-empty')?.textContent).toContain('No files match');
+    expect(all(fixture, 'file-diff-row')).toHaveLength(0);
+  });
+
+  it('keeps the selection when a filter hides the selected row', () => {
+    const fixture = render({
+      files: [fileDiff('a.ts', { status: 'A' }), fileDiff('m.ts')],
+      selectedPath: 'a.ts',
+    });
+    const emitted: string[] = [];
+    fixture.componentInstance.fileSelect.subscribe((path) => emitted.push(path));
+
+    chip(fixture, 'M').click();
+    fixture.detectChanges();
+
+    // a.ts is filtered out of the DOM, but the list must not silently emit a new
+    // selection: the store keeps the user's selection, only the row is hidden.
+    expect(rowPaths(fixture)).toEqual(['m.ts']);
+    expect(emitted).toEqual([]);
+    expect(fixture.componentInstance.isActive('M')).toBe(true);
   });
 });

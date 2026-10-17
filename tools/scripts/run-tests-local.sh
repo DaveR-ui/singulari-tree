@@ -99,6 +99,17 @@ run_ts() {
 # display (or when xvfb-run exists), a plain run otherwise. E2E_REQUIRE_PREREQS
 # is intentionally NOT set locally (see header).
 run_e2e() {
+  # The smoke spawns the PREBUILT dist/go-core (main.ts -> Supervisor.spawn,
+  # which prefers it and only falls back to `go run` when it is ABSENT). A
+  # stale artifact serves an outdated RPC set while every unit suite stays
+  # green — the relocate-panel defect — so assert its freshness before the
+  # smoke instead of letting a stale binary look like a core bug.
+  # --allow-missing keeps this honest-skip script's contract: a developer
+  # without a build still gets the e2e suite's own prereq skip, not a hard
+  # failure, because the shell then runs current source via `go run`.
+  step "go-core freshness guard"
+  node tools/scripts/verify-go-core-fresh.js --allow-missing
+
   step "playwright electron smoke ($ELECTRON_PKG)"
   (
     cd "$ELECTRON_PKG"

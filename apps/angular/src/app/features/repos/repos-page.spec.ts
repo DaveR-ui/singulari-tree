@@ -103,6 +103,15 @@ function queryAll<T extends Element>(fixture: { nativeElement: unknown }, testId
   );
 }
 
+/**
+ * The `data-testid` now sits on the `st-button` host, so native button
+ * properties (`disabled`) and clicks go through the inner `<button>` —
+ * mirrors `innerButton()` in `repo-relocate-panel.spec.ts`.
+ */
+function innerButton(fixture: { nativeElement: unknown }, testId: string): HTMLButtonElement {
+  return query(fixture, testId)!.querySelector('button') as HTMLButtonElement;
+}
+
 describe('ReposPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -172,7 +181,7 @@ describe('ReposPage', () => {
     input.dispatchEvent(new Event('input'));
     fixture.detectChanges();
 
-    query<HTMLButtonElement>(fixture, 'repos-add')!.click();
+    innerButton(fixture, 'repos-add').click();
 
     await vi.waitFor(() =>
       expect(bridge.invoke).toHaveBeenCalledWith('openRepository', { fsPath: '/tmp/a' }),
@@ -190,7 +199,7 @@ describe('ReposPage', () => {
     input.dispatchEvent(new Event('input'));
     fixture.detectChanges();
 
-    query<HTMLButtonElement>(fixture, 'repos-add')!.click();
+    innerButton(fixture, 'repos-add').click();
     await Promise.resolve();
 
     expect(bridge.invoke).not.toHaveBeenCalled();
@@ -206,7 +215,7 @@ describe('ReposPage', () => {
     input.dispatchEvent(new Event('input'));
     fixture.detectChanges();
 
-    query<HTMLButtonElement>(fixture, 'repos-add')!.click();
+    innerButton(fixture, 'repos-add').click();
     await vi.waitFor(() => expect(bridge.invoke).toHaveBeenCalled());
     await Promise.resolve();
     fixture.detectChanges();
@@ -224,7 +233,7 @@ describe('ReposPage', () => {
     input.dispatchEvent(new Event('input'));
     fixture.detectChanges();
 
-    query<HTMLButtonElement>(fixture, 'repos-add')!.click();
+    innerButton(fixture, 'repos-add').click();
     await vi.waitFor(() => expect(bridge.invoke).toHaveBeenCalled());
     await Promise.resolve();
     fixture.detectChanges();
@@ -236,10 +245,10 @@ describe('ReposPage', () => {
     const { fixture, bridge } = await setup({ repos: [] });
     bridge.invoke.mockResolvedValue({ canceled: false, path: '/tmp/picked' });
 
-    const addBefore = query<HTMLButtonElement>(fixture, 'repos-add')!;
+    const addBefore = innerButton(fixture, 'repos-add');
     expect(addBefore.disabled).toBe(true);
 
-    query<HTMLButtonElement>(fixture, 'repos-browse')!.click();
+    innerButton(fixture, 'repos-browse').click();
 
     await vi.waitFor(() =>
       expect(bridge.invoke).toHaveBeenCalledWith('chooseDirectory', {}),
@@ -247,26 +256,26 @@ describe('ReposPage', () => {
     await vi.waitFor(() => expect(query<HTMLInputElement>(fixture, 'repos-add-input')!.value).toBe('/tmp/picked'));
     fixture.detectChanges();
 
-    expect(query<HTMLButtonElement>(fixture, 'repos-add')!.disabled).toBe(false);
+    expect(innerButton(fixture, 'repos-add').disabled).toBe(false);
   });
 
   it('leaves the path unchanged when Browse is canceled', async () => {
     const { fixture, bridge } = await setup({ repos: [] });
     bridge.invoke.mockResolvedValue({ canceled: true, path: '' });
 
-    query<HTMLButtonElement>(fixture, 'repos-browse')!.click();
+    innerButton(fixture, 'repos-browse').click();
     await vi.waitFor(() => expect(bridge.invoke).toHaveBeenCalledWith('chooseDirectory', {}));
     fixture.detectChanges();
 
     expect(query<HTMLInputElement>(fixture, 'repos-add-input')!.value).toBe('');
-    expect(query<HTMLButtonElement>(fixture, 'repos-add')!.disabled).toBe(true);
+    expect(innerButton(fixture, 'repos-add').disabled).toBe(true);
   });
 
   it('degrades gracefully when Browse hits IPC_UNAVAILABLE', async () => {
     const { fixture, bridge } = await setup({ repos: [] });
     bridge.invoke.mockRejectedValue({ code: 'IPC_UNAVAILABLE', message: 'no bridge' });
 
-    const browse = query<HTMLButtonElement>(fixture, 'repos-browse')!;
+    const browse = innerButton(fixture, 'repos-browse');
     browse.click();
     await vi.waitFor(() => expect(bridge.invoke).toHaveBeenCalledWith('chooseDirectory', {}));
     fixture.detectChanges();
@@ -287,6 +296,6 @@ describe('ReposPage', () => {
   it('disables the remove action for the repository being removed', async () => {
     const { fixture } = await setup({ repos: [REPO_A], removingId: REPO_A.id });
 
-    expect(query<HTMLButtonElement>(fixture, 'repos-remove')?.disabled).toBe(true);
+    expect(innerButton(fixture, 'repos-remove').disabled).toBe(true);
   });
 });

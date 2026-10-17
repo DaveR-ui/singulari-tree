@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import type { CommitSearchHit } from '@contracts/gitcore';
 import { WorkspacesStore } from '@core/services/workspaces.store';
+import { EmptyStateComponent, InputComponent, SelectableRowDirective } from '@singularitree/ui-kit';
 import { CommitSearchStore } from '../commit-search.store';
 
 /**
@@ -15,27 +16,31 @@ import { CommitSearchStore } from '../commit-search.store';
  *
  * Renders a debounced search box plus results grouped by repository. The query
  * is scoped to the open tabs' repositories (ADR-024): search never invents a
- * core "workspace" entity and the core still owns the query itself. Clicking a
+ * core "workspace" entity and the core still owns the query itself. Activating a
  * hit emits `hitSelected`; the shell switches tab/repo and focuses the commit.
+ *
+ * Presentation follows the P5 language (plan §4.10): the search box is the
+ * shared `st-input`, repo group headings are `.st-eyebrow`, hits ride the shared
+ * `[stSelectableRow]` treatment (click, Enter and Space all activate), and the
+ * four states are `st-empty-state`. It stays an in-shell workspace, not a route.
  */
 @Component({
   selector: 'st-search-workspace',
   standalone: true,
+  imports: [EmptyStateComponent, InputComponent, SelectableRowDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="st-search" data-testid="search-workspace">
       <header class="st-search__head">
         <h2 class="st-search__title" i18n>Search commits</h2>
-        <input
+        <st-input
           type="search"
           class="st-search__input"
-          data-testid="search-input"
-          placeholder="Search commits across open repositories"
-          aria-label="Search commits"
-          i18n-placeholder
-          i18n-aria-label
+          [testId]="'search-input'"
+          [placeholder]="searchPlaceholder"
+          [ariaLabel]="searchAriaLabel"
           [value]="store.query()"
-          (input)="onInput($event)"
+          (valueChange)="onInput($event)"
           (keydown.enter)="onSubmit($event)"
         />
         @if (store.loading()) {
@@ -44,30 +49,42 @@ import { CommitSearchStore } from '../commit-search.store';
       </header>
 
       @if (repoIds().length === 0) {
-        <p class="st-search__empty" data-testid="search-no-repos" i18n>
-          Open a repository to search its commits.
-        </p>
+        <st-empty-state
+          data-testid="search-no-repos"
+          tone="muted"
+          message="Open a repository to search its commits."
+          i18n-message
+        />
       } @else if (store.offline()) {
-        <p class="st-search__empty" data-testid="search-offline" i18n>
-          Git core offline — search needs the desktop app.
-        </p>
+        <st-empty-state
+          data-testid="search-offline"
+          tone="muted"
+          message="Git core offline — search needs the desktop app."
+          i18n-message
+        />
       } @else if (store.error(); as err) {
-        <p class="st-search__error" data-testid="search-error">{{ err.message }}</p>
+        <st-empty-state data-testid="search-error" tone="error" [message]="err.message" />
       } @else if (store.hasSearched() && store.hits().length === 0 && !store.loading()) {
-        <p class="st-search__empty" data-testid="search-empty" i18n>No commits match your search.</p>
+        <st-empty-state
+          data-testid="search-empty"
+          tone="muted"
+          message="No commits match your search."
+          i18n-message
+        />
       } @else {
         @for (group of store.groups(); track group.repoId) {
           <div class="st-search__group" data-testid="search-group">
-            <h3 class="st-search__repo">{{ group.repoName }}</h3>
+            <h3 class="st-search__repo st-eyebrow">{{ group.repoName }}</h3>
             <ul class="st-search__list">
               @for (hit of group.hits; track hit.repoId + ':' + hit.oid) {
                 <li>
                   <button
                     type="button"
+                    stSelectableRow
                     class="st-search__hit"
                     data-testid="search-hit"
                     [title]="hit.oid"
-                    (click)="hitSelected.emit(hit)"
+                    (rowActivated)="hitSelected.emit(hit)"
                   >
                     <span class="st-search__oid">{{ shortOid(hit.oid) }}</span>
                     <span class="st-search__msg">{{ firstLine(hit.message) }}</span>
@@ -87,51 +104,37 @@ import { CommitSearchStore } from '../commit-search.store';
       height: 100%;
       min-height: 0;
       overflow: auto;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
     }
 
     .st-search {
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      padding: 10px 12px;
+      gap: var(--st-space-2);
+      padding: var(--st-space-2) var(--st-space-3);
     }
 
     .st-search__head {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: var(--st-space-2);
     }
 
     .st-search__title {
       margin: 0;
-      font-size: 13px;
+      font-size: var(--st-font-13);
       font-weight: 600;
       white-space: nowrap;
     }
 
-    .st-search__input {
+    .st-search__head st-input {
       flex: 1 1 auto;
       min-width: 120px;
-      padding: 4px 8px;
-      border-radius: 4px;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      background: var(--st-color-surface, #252536);
-      color: inherit;
-      font-size: 12px;
     }
 
-    .st-search__status,
-    .st-search__empty {
-      margin: 0;
-      font-size: 12px;
-      opacity: 0.6;
-    }
-
-    .st-search__error {
-      margin: 0;
-      font-size: 12px;
-      color: #ff6b6b;
+    .st-search__status {
+      font-size: var(--st-font-12);
+      color: var(--st-color-muted);
     }
 
     .st-search__group {
@@ -141,12 +144,7 @@ import { CommitSearchStore } from '../commit-search.store';
     }
 
     .st-search__repo {
-      margin: 4px 0 2px;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      opacity: 0.6;
+      margin: var(--st-space-1) 0 0;
     }
 
     .st-search__list {
@@ -155,32 +153,28 @@ import { CommitSearchStore } from '../commit-search.store';
       padding: 0;
     }
 
+    /* Geometry only — the shared [stSelectableRow] treatment owns the hover
+       wash, selection fill and focus ring; the transparent background keeps the
+       native button from painting its default face over the row. */
     .st-search__hit {
       display: flex;
       align-items: baseline;
-      gap: 8px;
+      gap: var(--st-space-2);
       width: 100%;
-      padding: 4px 6px;
+      padding: var(--st-space-1) var(--st-space-2);
       border: 0;
-      border-radius: 4px;
+      border-radius: var(--st-radius-2);
       background: transparent;
       color: inherit;
       font: inherit;
       text-align: left;
-      cursor: pointer;
-    }
-
-    .st-search__hit:hover,
-    .st-search__hit:focus-visible {
-      background: color-mix(in srgb, var(--st-color-accent, #0a84ff) 18%, transparent);
-      outline: none;
     }
 
     .st-search__oid {
       flex: none;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 11px;
-      color: var(--st-color-accent, #0a84ff);
+      font-family: var(--st-font-mono);
+      font-size: var(--st-font-11);
+      color: var(--st-color-accent);
     }
 
     .st-search__msg {
@@ -189,13 +183,13 @@ import { CommitSearchStore } from '../commit-search.store';
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      font-size: 12.5px;
+      font-size: var(--st-font-12);
     }
 
     .st-search__meta {
       flex: none;
-      font-size: 11px;
-      opacity: 0.6;
+      font-size: var(--st-font-11);
+      color: var(--st-color-muted);
     }
   `,
 })
@@ -205,6 +199,9 @@ export class SearchWorkspace implements OnDestroy {
 
   /** Emitted when the user picks a result; the shell owns navigation. */
   readonly hitSelected = output<CommitSearchHit>();
+
+  readonly searchPlaceholder = $localize`Search commits across open repositories`;
+  readonly searchAriaLabel = $localize`Search commits`;
 
   /** Debounce for the search box (mutable so tests can shorten it). */
   debounceMs = 300;
@@ -221,8 +218,8 @@ export class SearchWorkspace implements OnDestroy {
     this.clearTimer();
   }
 
-  onInput(event: Event): void {
-    const value = (event.target as HTMLInputElement).value;
+  /** Template entry point for the `st-input` primitive's `valueChange` output. */
+  onInput(value: string): void {
     this.clearTimer();
     this.timer = setTimeout(() => {
       this.timer = null;

@@ -28,6 +28,11 @@ function query(fixture: ReturnType<typeof render>, testId: string): HTMLElement 
   );
 }
 
+/** `st-button` forwards disabled/click to its inner native `<button>` (repo-relocate-panel convention). */
+function innerButton(fixture: ReturnType<typeof render>, testId: string): HTMLButtonElement {
+  return query(fixture, testId)!.querySelector('button') as HTMLButtonElement;
+}
+
 describe('StashDropConfirmDialog', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -57,7 +62,7 @@ describe('StashDropConfirmDialog', () => {
     let confirmed = 0;
     fixture.componentInstance.confirmed.subscribe(() => (confirmed += 1));
 
-    query(fixture, 'stash-drop-confirm')?.click();
+    innerButton(fixture, 'stash-drop-confirm').click();
 
     expect(confirmed).toBe(1);
   });
@@ -66,8 +71,8 @@ describe('StashDropConfirmDialog', () => {
     const fixture = render({ running: true, error: { code: 'STASH_FAILED', message: 'boom' } });
 
     expect(query(fixture, 'stash-drop-error')?.textContent).toContain('boom');
-    expect(query(fixture, 'stash-drop-confirm')?.hasAttribute('disabled')).toBe(true);
-    expect(query(fixture, 'stash-drop-cancel')?.hasAttribute('disabled')).toBe(true);
+    expect(innerButton(fixture, 'stash-drop-confirm').disabled).toBe(true);
+    expect(innerButton(fixture, 'stash-drop-cancel').disabled).toBe(true);
   });
 
   it('does not confirm while running', () => {
@@ -75,7 +80,7 @@ describe('StashDropConfirmDialog', () => {
     let confirmed = 0;
     fixture.componentInstance.confirmed.subscribe(() => (confirmed += 1));
 
-    query(fixture, 'stash-drop-confirm')?.click();
+    innerButton(fixture, 'stash-drop-confirm').click();
 
     expect(confirmed).toBe(0);
   });
@@ -85,7 +90,7 @@ describe('StashDropConfirmDialog', () => {
     let cancelled = 0;
     fixture.componentInstance.cancelled.subscribe(() => (cancelled += 1));
 
-    query(fixture, 'stash-drop-cancel')?.click();
+    innerButton(fixture, 'stash-drop-cancel').click();
 
     expect(cancelled).toBe(1);
   });

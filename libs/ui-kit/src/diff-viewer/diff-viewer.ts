@@ -13,7 +13,8 @@ import {
   viewChild,
 } from '@angular/core';
 import type { Diff } from '@contracts/domain';
-import { hunksToTexts } from './hunks-to-texts';
+import { diffToGridRows, hunksToTexts } from './hunks-to-texts';
+import { singularitreeThemeName } from './monaco-theme';
 
 type MonacoDiffEditor = import('monaco-editor').editor.IStandaloneDiffEditor;
 type MonacoTextModel = import('monaco-editor').editor.ITextModel;
@@ -51,6 +52,15 @@ export function monacoEnvironmentAvailable(): boolean {
 }
 
 /**
+ * Code grid line height: exactly 2× the font size. The Settings presets are
+ * 11→22, 12→24 (the shipped pair) and 13→26, so the mono code stays on a 2×
+ * grid in both the Monaco editor and the CSS fallback.
+ */
+export function diffLineHeight(fontSize: number): number {
+  return fontSize * 2;
+}
+
+/**
  * Environment probe used before the dynamic import. The default checks the
  * browser worker environment; tests override it to exercise the init path in
  * jsdom without booting Monaco.
@@ -71,7 +81,7 @@ export const MONACO_LOADER = new InjectionToken<MonacoLoader>('MONACO_LOADER', {
 
 /**
  * Read-only diff viewer. Renders a lazily-loaded Monaco `DiffEditor` when
- * possible and a plain unified `<pre>` fallback otherwise (before the chunk
+ * possible and a 4-column grid fallback otherwise (before the chunk
  * loads, in tests, or if initialization fails). Binary/conflicted/empty diffs
  * short-circuit to distinct messages.
  *
@@ -79,6 +89,12 @@ export const MONACO_LOADER = new InjectionToken<MonacoLoader>('MONACO_LOADER', {
  * arrives asynchronously, so a single post-render attempt is not enough. An
  * effect keyed on the diff + guards + container query mounts the editor as soon
  * as a real diff is available (idempotent, no-op when already mounted).
+ *
+ * The `fontSize` (11 | 12 | 13) and `wordWrap` inputs are pure pass-throughs of
+ * the persisted diff preferences; the host app reads them from `PreferencesService`
+ * and binds them here (this dumb component never reads preferences itself). Both
+ * drive the Monaco editor and the fallback grid live, and the code line height is
+ * always exactly 2× the font size (see `diffLineHeight`).
  */
 @Component({
   selector: 'st-diff-viewer',
@@ -111,7 +127,31 @@ export const MONACO_LOADER = new InjectionToken<MonacoLoader>('MONACO_LOADER', {
     } @else {
       <div class="st-diff-viewer__editor" #container></div>
       @if (!monacoReady()) {
-        <pre class="st-diff-viewer__fallback" data-testid="diff-fallback">{{ unified() }}</pre>
+        <div
+          class="st-diff-viewer__fallback"
+          data-testid="diff-fallback"
+          [attr.data-wrap]="wordWrap() ? 'on' : 'off'"
+          [style.font-size.px]="fontSize()"
+          [style.line-height.px]="diffLineHeight(fontSize())"
+        >
+          @for (row of fallbackRows(); track $index) {
+            @if (row.kind === 'hunk' || row.kind === 'meta') {
+              <div
+                class="st-diff-viewer__fallback-hunk st-tabular-nums"
+                data-testid="diff-fallback-hunk"
+              >
+                {{ row.text }}
+              </div>
+            } @else {
+              <div class="st-diff-viewer__fallback-row" [attr.data-kind]="row.kind">
+                <span class="st-diff-viewer__gnum st-tabular-nums">{{ row.oldNum ?? '' }}</span>
+                <span class="st-diff-viewer__gnum st-tabular-nums">{{ row.newNum ?? '' }}</span>
+                <span class="st-diff-viewer__gsign">{{ row.sign }}</span>
+                <span class="st-diff-viewer__gtext">{{ row.text }}</span>
+              </div>
+            }
+          }
+        </div>
       }
     }
   `,
@@ -121,25 +161,26 @@ export const MONACO_LOADER = new InjectionToken<MonacoLoader>('MONACO_LOADER', {
       height: 100%;
       min-height: 0;
       overflow: auto;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
     }
 
     .st-diff-viewer__notice {
       margin: 0;
-      padding: 12px;
-      font-size: 12px;
+      padding: var(--st-space-3);
+      font-size: var(--st-font-12);
       opacity: 0.65;
     }
 
     .st-diff-viewer__notice--error {
-      color: #ff6b6b;
+      color: var(--st-color-danger);
       opacity: 1;
     }
 
     .st-diff-viewer__notice--truncated {
-      color: #e0a458;
+      color: var(--st-color-warn);
       opacity: 1;
-      border-bottom: 1px solid color-mix(in srgb, #e0a458 40%, transparent);
+      border-bottom: var(--st-hairline) solid
+        color-mix(in srgb, var(--st-color-warn) 40%, transparent);
     }
 
     .st-diff-viewer__editor {
@@ -148,12 +189,67 @@ export const MONACO_LOADER = new InjectionToken<MonacoLoader>('MONACO_LOADER', {
     }
 
     .st-diff-viewer__fallback {
-      margin: 0;
-      padding: 8px 12px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 12px;
-      white-space: pre;
+      font-family: var(--st-font-mono);
+      font-size: var(--st-font-12);
+      line-height: var(--st-leading-code);
       overflow: auto;
+    }
+
+    .st-diff-viewer__fallback-row {
+      display: grid;
+      grid-template-columns: 36px 36px 20px 1fr;
+    }
+
+    .st-diff-viewer__fallback-hunk {
+      background: var(--st-color-diff-hunk-bg);
+      color: var(--st-color-diff-hunk-fg);
+      padding: 0 var(--st-space-2);
+      font-size: var(--st-font-11);
+    }
+
+    .st-diff-viewer__gnum {
+      color: var(--st-color-diff-gutter-fg);
+      text-align: right;
+      padding: 0 var(--st-space-1) 0 var(--st-space-2);
+    }
+
+    .st-diff-viewer__gsign {
+      text-align: center;
+    }
+
+    /* Wrap contract: the container carries a data-wrap attribute; 'on'
+       soft-wraps long lines inside the code column, 'off' keeps
+       white-space: pre and lets the row's last grid track grow to max-content
+       so long lines overflow and scroll horizontally (the host already has
+       overflow: auto). */
+    .st-diff-viewer__fallback[data-wrap='on'] .st-diff-viewer__gtext {
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .st-diff-viewer__fallback[data-wrap='off'] .st-diff-viewer__gtext {
+      white-space: pre;
+      word-break: normal;
+    }
+
+    .st-diff-viewer__fallback[data-wrap='off'] .st-diff-viewer__fallback-row {
+      /* The last track grows to max-content so long lines overflow and scroll
+         horizontally; the row box must grow with it (min-width keeps it full
+         width for short lines) or the add/remove tints would paint only the
+         border box and vanish as soon as the reader scrolls right. */
+      grid-template-columns: 36px 36px 20px max-content;
+      width: max-content;
+      min-width: 100%;
+    }
+
+    .st-diff-viewer__fallback-row[data-kind='added'] {
+      background: var(--st-color-diff-insert-bg);
+      color: var(--st-color-diff-insert-fg);
+    }
+
+    .st-diff-viewer__fallback-row[data-kind='removed'] {
+      background: var(--st-color-diff-delete-bg);
+      color: var(--st-color-diff-delete-fg);
     }
   `,
 })
@@ -163,6 +259,18 @@ export class DiffViewer {
   readonly errorMsg = input<string | null>(null);
   /** True when the core capped the diff (ADR-0020 (c)); renders a notice. */
   readonly truncated = input(false);
+  /**
+   * Side-by-side vs unified layout. Unified is the shipped default (plan §4.6);
+   * the Settings toggle flips it live.
+   */
+  readonly renderSideBySide = input(false);
+  /** Diff code font size in CSS pixels (Settings: 11 | 12 | 13). Default 12. */
+  readonly fontSize = input(12);
+  /** Diff soft wrap (Settings on/off). Default false. */
+  readonly wordWrap = input(false);
+
+  /** Exposed to the template for the fallback grid's inline line height (2×). */
+  protected readonly diffLineHeight = diffLineHeight;
 
   private readonly loader = inject(MONACO_LOADER);
   private readonly environmentAvailable = inject(MONACO_ENVIRONMENT_AVAILABLE);
@@ -181,7 +289,8 @@ export class DiffViewer {
   protected readonly monacoReady = signal(false);
 
   protected readonly texts = computed(() => hunksToTexts(this.diff()));
-  protected readonly unified = computed(() => this.texts().unified);
+  /** Rows for the non-Monaco 4-column grid fallback. */
+  protected readonly fallbackRows = computed(() => diffToGridRows(this.diff()));
   protected readonly isBinary = computed(() => this.diff()?.isBinary === true);
   protected readonly hasConflict = computed(() => this.diff()?.hasConflictMarkers === true);
   protected readonly isEmpty = computed(() => {
@@ -208,6 +317,29 @@ export class DiffViewer {
     // `maybeInitializeMonaco` (idempotent, no-op when already mounted).
     effect(() => {
       void this.maybeInitializeMonaco();
+    });
+
+    // Live layout toggle: keep a mounted editor in sync when `renderSideBySide`
+    // changes (no-op on init, when the editor is still null). The input is read
+    // unconditionally so the effect tracks it even before the editor mounts.
+    effect(() => {
+      const renderSideBySide = this.renderSideBySide();
+      this.editor?.updateOptions({ renderSideBySide });
+    });
+
+    // Live typography/wrap: keep a mounted editor in sync when `fontSize` or
+    // `wordWrap` change (no-op on init, when the editor is still null). Both
+    // inputs are read unconditionally so the effect tracks them even before the
+    // editor mounts. Options go through `updateOptions` only — never a remount,
+    // so the change applies without a flash.
+    effect(() => {
+      const fontSize = this.fontSize();
+      const wordWrap = this.wordWrap();
+      this.editor?.updateOptions({
+        fontSize,
+        lineHeight: diffLineHeight(fontSize),
+        wordWrap: wordWrap ? 'on' : 'off',
+      });
     });
 
     // Safety net for the first render (`#container` present on the first pass).
@@ -254,23 +386,36 @@ export class DiffViewer {
       // touching the DOM, and discard a stale load.
       if (!this.shouldInitialize() || this.container()?.nativeElement !== container) return;
 
+      // Apply the token-derived theme for the current appearance before the
+      // editor mounts, so it never flashes the default theme.
+      monaco.editor.setTheme(
+        singularitreeThemeName(document.documentElement.getAttribute('data-theme')),
+      );
+
       const { original, modified } = this.texts();
       this.originalModel = monaco.editor.createModel(original, 'plaintext');
       this.modifiedModel = monaco.editor.createModel(modified, 'plaintext');
       this.editor = monaco.editor.createDiffEditor(container, {
         readOnly: true,
         originalEditable: false,
-        renderSideBySide: true,
+        renderSideBySide: this.renderSideBySide(),
         automaticLayout: true,
         minimap: { enabled: false },
         scrollBeyondLastLine: false,
-        fontSize: 12,
+        // Mono font family mirrors `--st-font-mono`; the font size comes from the
+        // persisted preference (Settings: 11 | 12 | 13) and the code grid line
+        // height is exactly 2× that value (11→22, 12→24, 13→26, matching the CSS
+        // fallback's `--st-leading-code`), so both surfaces stay aligned.
+        fontFamily: "Consolas, 'Liberation Mono', ui-monospace, monospace",
+        fontSize: this.fontSize(),
+        lineHeight: diffLineHeight(this.fontSize()),
+        wordWrap: this.wordWrap() ? 'on' : 'off',
       });
       this.editor.setModel({ original: this.originalModel, modified: this.modifiedModel });
       this.mountedContainer = container;
       this.monacoReady.set(true);
     } catch {
-      // Initialization failed: keep the plain fallback visible.
+      // Initialization failed: keep the grid fallback visible.
       this.monacoReady.set(false);
     } finally {
       this.initializing = false;

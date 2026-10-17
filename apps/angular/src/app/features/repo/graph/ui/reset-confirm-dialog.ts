@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { ButtonComponent } from '@singularitree/ui-kit';
 import { ModalComponent } from '@shared/ui/modal/modal';
 
 /**
@@ -11,7 +12,7 @@ import { ModalComponent } from '@shared/ui/modal/modal';
 @Component({
   selector: 'st-reset-confirm-dialog',
   standalone: true,
-  imports: [ModalComponent],
+  imports: [ModalComponent, ButtonComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <st-modal
@@ -27,47 +28,40 @@ import { ModalComponent } from '@shared/ui/modal/modal';
       <p class="st-reset-confirm__target" data-testid="reset-confirm-oid">
         Target commit: <code>{{ oid() }}</code>
       </p>
-      <button
+      <st-button
         st-modal-footer
-        type="button"
+        variant="default"
         data-testid="reset-confirm-cancel"
         [disabled]="busy()"
         (click)="cancelled.emit()"
       >
         Cancel
-      </button>
-      <button
+      </st-button>
+      <st-button
         st-modal-footer
-        type="button"
-        class="st-reset-confirm__danger"
+        variant="danger"
         data-testid="reset-confirm-confirm"
         [disabled]="busy()"
         (click)="confirmed.emit()"
       >
         Reset hard
-      </button>
+      </st-button>
     </st-modal>
   `,
   styles: `
     .st-reset-confirm__warning {
       margin: 0 0 10px;
-      line-height: 1.5;
+      line-height: var(--st-leading-ui);
     }
 
     .st-reset-confirm__target {
       margin: 0;
-      opacity: 0.7;
+      color: var(--st-color-muted);
     }
 
     .st-reset-confirm__target code {
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-family: var(--st-font-mono);
       word-break: break-all;
-    }
-
-    .st-reset-confirm__danger {
-      background: #ff453a;
-      border-color: #ff453a;
-      color: #fff;
     }
   `,
 })

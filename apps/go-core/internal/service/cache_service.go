@@ -29,6 +29,11 @@ type CacheService struct {
 	entries  map[string]cacheEntry
 	order    []string
 	store    domain.CachePort
+	// generation is the invalidation generation: a monotonic counter bumped on
+	// every Invalidate. A reader can capture it before a Git read and compare it
+	// afterwards to detect that an invalidation raced that read (see
+	// GraphService.Commits). Guarded by mu.
+	generation uint64
 }
 
 // NewCacheService creates a CacheService with given LRU capacity and no L2 store.
@@ -118,6 +123,10 @@ func (s *CacheService) PutCommitStats(ctx context.Context, repoID domain.Reposit
 // Invalidate removes entries for a repo from L1 and, when present, from L2.
 func (s *CacheService) Invalidate(repoID domain.RepositoryId) {
 	s.mu.Lock()
+	// Bump the invalidation generation under the same lock that performs the
+	// removal, so a read that captured Generation() before may observe the bump
+	// (and skip its write-through) whenever this invalidation raced it.
+	s.generation++
 	prefix := string(repoID) + ":"
 	for k := range s.entries {
 		if len(k) >= len(prefix) && k[:len(prefix)] == prefix {
@@ -138,4 +147,16 @@ func (s *CacheService) Invalidate(repoID domain.RepositoryId) {
 	if s.store != nil {
 		s.store.Invalidate(repoID)
 	}
+}
+
+// Generation returns the invalidation generation. It is a monotonic counter,
+// bumped on every Invalidate and unchanged otherwise. A reader captures it
+// before a Git read and compares it afterwards: a changed value proves an
+// invalidation raced that read, so the read's window may predate the mutation
+// that invalidated and must not be written back through (see
+// GraphService.Commits).
+func (s *CacheService) Generation() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.generation
 }

@@ -98,6 +98,17 @@ npm run start:mock --workspace=@singularitree/electron   # mock core, opt-in via
 
 `MOCK_GO_CORE=1` is **strictly opt-in** — the real `go-core` is the default. The dev scripts build the shell, then launch Electron pointed at the Angular dev server (`http://localhost:4200`).
 
+> **Stale-binary guard.** `npm start` rebuilds the renderer and the shell but
+> never `dist/go-core`, so a core RPC added after step 2 would be missing from
+> the running app while every unit suite stays green. The root `prestart` hook
+> therefore runs `node tools/scripts/verify-go-core-fresh.js`, which compares
+> the binary's mtime against the newest mtime of the Go core sources (plus the
+> generated Go contract stubs and `go.work`) and **fails loudly** with the
+> rebuild command instead of letting a stale binary be used. Rebuild with
+> `./tools/scripts/build-go-core.sh` (and `./tools/scripts/gen-contracts.sh`
+> first if a proto changed). `Supervisor.spawn`'s prefer-existing-binary policy
+> is unchanged on purpose — the guard, not a policy change, closes the hole.
+
 Tests (run from the **package directory**, never the repo root):
 
 ```bash

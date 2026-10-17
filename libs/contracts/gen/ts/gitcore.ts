@@ -87,6 +87,17 @@ export interface RemoveRepositoryRequest {
 export interface RemoveRepositoryResponse {
 }
 
+/**
+ * Repoint a tracked repository at a different filesystem path (P4.1 polish):
+ * the folder was moved/renamed and the registration must follow it instead of
+ * being deleted and re-created (which would mint a new repository id and drop
+ * the cached rows). Validates the new path exactly like OpenRepository.
+ */
+export interface RelocateRepositoryRequest {
+  repoId: string;
+  fsPath: string;
+}
+
 /** Commits (windowed + streaming) */
 export interface GetCommitsRequest {
   repoId: string;

@@ -141,7 +141,9 @@ describe('ChangesPanel', () => {
     const changes: string[] = [];
     fixture.componentInstance.messageChange.subscribe((value) => changes.push(value));
 
-    const textarea = query(fixture, 'commit-message-input') as HTMLTextAreaElement;
+    const textarea = (query(fixture, 'commit-message-input')?.querySelector(
+      'textarea',
+    )) as HTMLTextAreaElement;
     textarea.value = 'feat: graph';
     textarea.dispatchEvent(new Event('input'));
 
@@ -150,16 +152,25 @@ describe('ChangesPanel', () => {
 
   it('keeps Commit disabled until there is a staged file and a non-blank message', () => {
     const noStaged = render({ stagedFiles: [], message: 'feat' });
-    expect(button(noStaged, 'commit-button').disabled).toBe(true);
+    expect(
+      ((query(noStaged, 'commit-button')?.querySelector('button')) as HTMLButtonElement).disabled,
+    ).toBe(true);
 
     const blankMessage = render({ stagedFiles: [file('a.ts', true)], message: '   ' });
-    expect(button(blankMessage, 'commit-button').disabled).toBe(true);
+    expect(
+      ((query(blankMessage, 'commit-button')?.querySelector('button')) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
 
     const ready = render({ stagedFiles: [file('a.ts', true)], message: 'feat' });
-    expect(button(ready, 'commit-button').disabled).toBe(false);
+    expect(
+      ((query(ready, 'commit-button')?.querySelector('button')) as HTMLButtonElement).disabled,
+    ).toBe(false);
 
     const busy = render({ stagedFiles: [file('a.ts', true)], message: 'feat', busy: true });
-    expect(button(busy, 'commit-button').disabled).toBe(true);
+    expect(
+      ((query(busy, 'commit-button')?.querySelector('button')) as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 
   it('emits commit when the button is enabled', () => {
@@ -196,6 +207,55 @@ describe('ChangesPanel', () => {
     expect(all(fixture, 'status-discard')).toHaveLength(1);
     expect(all(fixture, 'status-stage')).toHaveLength(1);
     expect(all(fixture, 'status-unstage')).toHaveLength(1);
+  });
+
+  it("groups each row's action buttons into one right-pinned actions group", () => {
+    const fixture = render({
+      stagedFiles: [file('staged.ts', true)],
+      unstagedFiles: [file('dirty.ts', false)],
+    });
+
+    const rows = all(fixture, 'status-file');
+    expect(rows).toHaveLength(2);
+
+    for (const row of rows) {
+      const groups = Array.from(row.querySelectorAll<HTMLElement>('.st-changes__actions'));
+      expect(groups).toHaveLength(1);
+      // The group owns the row's trailing edge, so the buttons cannot drift
+      // toward the centre the way a `space-between` trio would push them.
+      expect(groups[0]).toBe(row.lastElementChild);
+    }
+
+    const stagedGroup = rows[0].querySelector('.st-changes__actions') as HTMLElement;
+    expect(stagedGroup.querySelectorAll('st-button')).toHaveLength(1);
+
+    // Stage (+) and discard (trash) share the same group, so they sit adjacent.
+    const unstagedActions = Array.from(
+      (rows[1].querySelector('.st-changes__actions') as HTMLElement).querySelectorAll('st-button'),
+    );
+    expect(unstagedActions).toHaveLength(2);
+    expect(unstagedActions[0].getAttribute('data-testid')).toBe('status-stage');
+    expect(unstagedActions[1].getAttribute('data-testid')).toBe('status-discard');
+  });
+
+  it('keeps the actions pinned right when the path is long enough to wrap', () => {
+    const longPath =
+      'src/app/features/repo/very/deeply/nested/directory/with/a/very/long/file-name.ts';
+    const fixture = render({ unstagedFiles: [file(longPath, false)] });
+
+    const row = all(fixture, 'status-file')[0];
+    const path = row.querySelector('.st-changes__path') as HTMLElement;
+    const actions = row.querySelector('.st-changes__actions') as HTMLElement;
+
+    // The path stays intact and is the row's ONLY flexible child; the actions
+    // group never grows, so a wrapping path cannot displace it.
+    expect(path.textContent).toBe(longPath);
+    expect(row.children).toHaveLength(2);
+    expect(row.children[0]).toBe(path);
+    expect(row.children[1]).toBe(actions);
+    expect(row.lastElementChild).toBe(actions);
+    expect(getComputedStyle(path).flexGrow).toBe('1');
+    expect(getComputedStyle(actions).flexGrow).toBe('0');
   });
 
   it('confirms and emits a file-level discard', () => {
@@ -264,5 +324,78 @@ describe('ChangesPanel', () => {
     });
 
     expect(query(fixture, 'hunk-actions-truncated')?.textContent).toContain('truncated');
+  });
+
+  it('anchors the commit box as the fixed last child of the panel column', () => {
+    const fixture = render({ unstagedFiles: [file('dirty.ts', false)] });
+    const host = fixture.nativeElement as HTMLElement;
+    const panel = host.querySelector('.st-changes') as HTMLElement;
+    const sections = host.querySelector('.st-changes__sections') as HTMLElement;
+    const commit = host.querySelector('.st-changes__commit') as HTMLElement;
+
+    expect(panel).not.toBeNull();
+    expect(sections).not.toBeNull();
+    expect(commit).not.toBeNull();
+
+    // The footer closes the panel column...
+    expect(panel.lastElementChild).toBe(commit);
+    // ...and owns none of the flexible slack: the sections take and can give it.
+    expect(getComputedStyle(sections).flexGrow).toBe('1');
+    expect(getComputedStyle(sections).flexShrink).toBe('1');
+    expect(getComputedStyle(commit).flexGrow).toBe('0');
+    expect(getComputedStyle(commit).flexShrink).toBe('0');
+  });
+
+  it('makes the file sections the scrollable region', () => {
+    const fixture = render({ unstagedFiles: [file('a.ts', false)] });
+    const sections = fixture.nativeElement.querySelector('.st-changes__sections') as HTMLElement;
+
+    expect(getComputedStyle(sections).overflowY).toBe('auto');
+  });
+
+  it('keeps the hunk-actions section fixed so it never squeezes the lists', () => {
+    const fixture = render({
+      unstagedFiles: [file('a.ts', false)],
+      selectedPath: 'a.ts',
+      unstagedFile: fileDiff('a.ts'),
+    });
+    const hunks = fixture.nativeElement.querySelector('.st-changes__hunks') as HTMLElement;
+
+    expect(hunks).not.toBeNull();
+    expect(getComputedStyle(hunks).flexGrow).toBe('0');
+    expect(getComputedStyle(hunks).flexShrink).toBe('0');
+  });
+
+  it('keeps every contract data-testid in a full render', () => {
+    const fixture = render({
+      stagedFiles: [file('staged.ts', true)],
+      unstagedFiles: [file('dirty.ts', false)],
+      message: 'feat',
+      selectedPath: 'dirty.ts',
+      statusError: 'status failed',
+      commitError: 'commit failed',
+      unstagedFile: fileDiff('dirty.ts'),
+      stagedFile: fileDiff('staged.ts'),
+    });
+
+    for (const id of [
+      'status-error',
+      'status-file',
+      'status-stage',
+      'status-unstage',
+      'status-discard',
+      'changes-hunks',
+      'commit-message-input',
+      'commit-button',
+      'commit-error',
+    ]) {
+      expect(query(fixture, id), id).not.toBeNull();
+    }
+  });
+
+  it('keeps the empty-state testid while no files are present', () => {
+    const fixture = render({ stagedFiles: [], unstagedFiles: [] });
+
+    expect(query(fixture, 'status-empty')).not.toBeNull();
   });
 });

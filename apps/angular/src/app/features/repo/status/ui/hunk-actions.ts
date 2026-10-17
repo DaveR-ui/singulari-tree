@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 import type { FileDiff, Hunk } from '@contracts/domain';
+import { ButtonComponent, IconComponent } from '@singularitree/ui-kit';
 
 /** A hunk/line action addressed by indices (the renderer never builds patches). */
 export interface HunkActionEvent {
@@ -58,6 +59,7 @@ function confirmFileDiscard(path: string): boolean {
 @Component({
   selector: 'st-hunk-actions',
   standalone: true,
+  imports: [ButtonComponent, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { 'data-testid': 'hunk-actions' },
   template: `
@@ -121,37 +123,37 @@ function confirmFileDiscard(path: string): boolean {
 
               <div class="st-hunk-actions__buttons">
                 @if (group.staged) {
-                  <button
-                    type="button"
-                    class="st-hunk-actions__button"
+                  <st-button
+                    variant="icon"
+                    size="sm"
                     data-testid="hunk-unstage"
+                    [ariaLabel]="a11yUnstageHunk"
                     [disabled]="busy()"
                     (click)="onUnstageHunk(i)"
-                    i18n
                   >
-                    Unstage hunk
-                  </button>
+                    <st-icon name="minus"></st-icon>
+                  </st-button>
                 } @else {
-                  <button
-                    type="button"
-                    class="st-hunk-actions__button"
+                  <st-button
+                    variant="icon"
+                    size="sm"
                     data-testid="hunk-stage"
+                    [ariaLabel]="a11yStageHunk"
                     [disabled]="busy()"
                     (click)="onStageHunk(i)"
-                    i18n
                   >
-                    Stage hunk
-                  </button>
-                  <button
-                    type="button"
-                    class="st-hunk-actions__button st-hunk-actions__button--danger"
+                    <st-icon name="plus"></st-icon>
+                  </st-button>
+                  <st-button
+                    variant="icon"
+                    size="sm"
                     data-testid="hunk-discard"
+                    [ariaLabel]="a11yDiscardHunk"
                     [disabled]="busy()"
                     (click)="onDiscardHunk(i)"
-                    i18n
                   >
-                    Discard hunk
-                  </button>
+                    <st-icon name="discard"></st-icon>
+                  </st-button>
                 }
               </div>
 
@@ -170,16 +172,16 @@ function confirmFileDiscard(path: string): boolean {
 
         @if (!group.staged) {
           <div class="st-hunk-actions__file-buttons">
-            <button
-              type="button"
-              class="st-hunk-actions__button st-hunk-actions__button--danger"
+            <st-button
+              variant="icon"
+              size="sm"
               data-testid="hunk-file-discard"
+              [ariaLabel]="a11yDiscardFile"
               [disabled]="busy()"
               (click)="onDiscardFile(group.file.path)"
-              i18n
             >
-              Discard file
-            </button>
+              <st-icon name="discard"></st-icon>
+            </st-button>
           </div>
         }
       </section>
@@ -188,17 +190,17 @@ function confirmFileDiscard(path: string): boolean {
   styles: `
     :host {
       display: block;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
       font-size: 12px;
     }
 
     .st-hunk-actions__truncated {
       margin: 0 0 6px;
-      color: #e0a458;
+      color: var(--st-color-warn);
     }
 
     .st-hunk-actions__group {
-      border-top: 1px solid var(--st-color-border, #2f2f44);
+      border-top: 1px solid var(--st-color-border);
       padding: 6px 0;
     }
 
@@ -220,19 +222,19 @@ function confirmFileDiscard(path: string): boolean {
     }
 
     .st-hunk-actions__add {
-      color: #4ec9b0;
+      color: var(--st-color-add);
     }
 
     .st-hunk-actions__del {
-      color: #ff6b6b;
+      color: var(--st-color-remove);
     }
 
     .st-hunk-actions__hunk {
       margin: 4px 0;
       padding: 4px 6px;
-      border: 1px solid var(--st-color-border, #2f2f44);
+      border: 1px solid var(--st-color-border);
       border-radius: 4px;
-      background: color-mix(in srgb, var(--st-color-surface, #252536) 70%, transparent);
+      background: var(--st-color-surface-2);
     }
 
     .st-hunk-actions__hunk-header {
@@ -240,9 +242,9 @@ function confirmFileDiscard(path: string): boolean {
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-family: var(--st-font-mono);
       font-size: 11px;
-      opacity: 0.85;
+      color: var(--st-color-muted);
     }
 
     .st-hunk-actions__lines {
@@ -261,18 +263,18 @@ function confirmFileDiscard(path: string): boolean {
     }
 
     .st-hunk-actions__line-text {
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-family: var(--st-font-mono);
       font-size: 11px;
       white-space: pre-wrap;
       word-break: break-all;
     }
 
     .st-hunk-actions__line-text--add {
-      color: #4ec9b0;
+      color: var(--st-color-add);
     }
 
     .st-hunk-actions__line-text--del {
-      color: #ff6b6b;
+      color: var(--st-color-remove);
     }
 
     .st-hunk-actions__buttons,
@@ -285,30 +287,10 @@ function confirmFileDiscard(path: string): boolean {
       margin-top: 6px;
     }
 
-    .st-hunk-actions__button {
-      border: 1px solid var(--st-color-border, #2f2f44);
-      border-radius: 4px;
-      background: var(--st-color-surface, #252536);
-      color: inherit;
-      font-size: 11px;
-      padding: 1px 6px;
-      cursor: pointer;
-    }
-
-    .st-hunk-actions__button:disabled {
-      opacity: 0.5;
-      cursor: default;
-    }
-
-    .st-hunk-actions__button--danger {
-      border-color: color-mix(in srgb, #ff6b6b 55%, var(--st-color-border, #2f2f44));
-      color: #ff8f8f;
-    }
-
     .st-hunk-actions__selection,
     .st-hunk-actions__file-only {
       margin: 4px 0 0;
-      opacity: 0.6;
+      color: var(--st-color-muted);
     }
   `,
 })
@@ -319,6 +301,11 @@ export class HunkActions {
   readonly stagedFile = input<FileDiff | null>(null);
   readonly busy = input(false);
   readonly truncated = input(false);
+
+  readonly a11yStageHunk = $localize`Stage hunk`;
+  readonly a11yUnstageHunk = $localize`Unstage hunk`;
+  readonly a11yDiscardHunk = $localize`Discard hunk`;
+  readonly a11yDiscardFile = $localize`Discard file`;
 
   readonly stageHunk = output<HunkActionEvent>();
   readonly unstageHunk = output<HunkActionEvent>();

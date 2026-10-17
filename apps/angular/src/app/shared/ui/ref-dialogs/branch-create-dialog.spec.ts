@@ -33,6 +33,11 @@ function setInput(el: HTMLInputElement, value: string): void {
   el.dispatchEvent(new Event('input'));
 }
 
+/** The native button inside the `<st-button>` host carrying `testId`. */
+function innerButton(fixture: ReturnType<typeof render>, testId: string): HTMLButtonElement {
+  return query(fixture, testId)!.querySelector('button') as HTMLButtonElement;
+}
+
 describe('BranchCreateDialog', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -54,12 +59,12 @@ describe('BranchCreateDialog', () => {
 
   it('keeps the submit disabled until a name is entered', () => {
     const fixture = render();
-    expect(query(fixture, 'branch-create-submit')?.hasAttribute('disabled')).toBe(true);
+    expect(innerButton(fixture, 'branch-create-submit').disabled).toBe(true);
 
     setInput(query(fixture, 'branch-create-name')!, 'feature/x');
     fixture.detectChanges();
 
-    expect(query(fixture, 'branch-create-submit')?.hasAttribute('disabled')).toBe(false);
+    expect(innerButton(fixture, 'branch-create-submit').disabled).toBe(false);
   });
 
   it('emits the trimmed name, start point and checkout flag', () => {
@@ -122,7 +127,7 @@ describe('BranchCreateDialog', () => {
   it('disables both actions while running', () => {
     const fixture = render({ running: true });
 
-    expect(query(fixture, 'branch-create-submit')?.hasAttribute('disabled')).toBe(true);
-    expect(query(fixture, 'branch-create-cancel')?.hasAttribute('disabled')).toBe(true);
+    expect(innerButton(fixture, 'branch-create-submit').disabled).toBe(true);
+    expect(innerButton(fixture, 'branch-create-cancel').disabled).toBe(true);
   });
 });

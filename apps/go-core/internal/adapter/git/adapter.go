@@ -156,6 +156,18 @@ func (a *Adapter) List(ctx context.Context, repoID domain.RepositoryId, offset, 
 	// failing the read path.
 	a.attachRefs(ctx, fsPath, commits)
 
+	// (items, total) must describe ONE snapshot. A walk that returned fewer
+	// commits than the effective limit reached the end of history, so that walk
+	// IS its own count: total = offset + len(commits). Deriving it here instead
+	// of from a separate countCommits read closes the TOCTOU window in which a
+	// commit landing between the walk and the count produced a stale window
+	// paired with a fresh total (e.g. {[second, initial], total: 3}). Only a
+	// window that came back full needs the separate count, where it is a pure
+	// paging hint (hasMore = len < total).
+	if len(commits) < limit {
+		return commits, offset + len(commits), nil
+	}
+
 	total, err := a.countCommits(ctx, fsPath)
 	if err != nil {
 		return nil, 0, err

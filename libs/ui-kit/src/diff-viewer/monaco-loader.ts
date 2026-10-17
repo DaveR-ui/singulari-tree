@@ -1,4 +1,10 @@
 import * as monaco from 'monaco-editor';
+import {
+  SINGULARITREE_DARK,
+  SINGULARITREE_LIGHT,
+  singularitreeDarkTheme,
+  singularitreeLightTheme,
+} from './monaco-theme';
 
 /**
  * Monaco worker factory. The worker entries are separate bundles; the Angular
@@ -29,5 +35,10 @@ function getWorker(_workerId: string, label: string): Worker {
 (globalThis as unknown as { MonacoEnvironment: { getWorker: typeof getWorker } }).MonacoEnvironment = {
   getWorker,
 };
+
+// Register the custom themes before handing the module back, so
+// `monaco.editor.setTheme` never references an unregistered theme name.
+monaco.editor.defineTheme(SINGULARITREE_DARK, singularitreeDarkTheme());
+monaco.editor.defineTheme(SINGULARITREE_LIGHT, singularitreeLightTheme());
 
 export default monaco;

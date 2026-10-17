@@ -77,6 +77,14 @@ describe('ButtonComponent (ui-kit)', () => {
     expect(button.className).toContain('st-button--sm');
   });
 
+  it('renders the info variant class on the inner button', () => {
+    const fixture = TestBed.createComponent(ButtonTestHost);
+    fixture.componentRef.setInput('variant', 'info');
+    fixture.detectChanges();
+
+    expect(innerButton(fixture).className).toContain('st-button--info');
+  });
+
   it('disables the inner button when disabled', () => {
     const fixture = TestBed.createComponent(ButtonTestHost);
     fixture.componentRef.setInput('disabled', true);

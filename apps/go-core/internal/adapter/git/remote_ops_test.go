@@ -384,18 +384,22 @@ func TestFetchContextCancellationClosesChannel(t *testing.T) {
 	src := initRepo(t)
 	gitRun(t, src, "branch", "-M", "main")
 	gitRun(t, src, "remote", "add", "origin", "ssh://git@example.invalid/repo.git")
-	// Git runs this instead of ssh; sleep keeps the fetch in flight until the
-	// context deadline kills the process. The shim changes out of the
-	// repository before sleeping: on cancellation exec.CommandContext kills
-	// only git, while the sleep child survives with the working directory git
-	// gave it (the repo, because the fetch runs as `git -C <repo>`). On Windows
-	// a live process whose current directory is a directory blocks that
-	// directory's removal, so t.TempDir's RemoveAll would fail with "being used
-	// by another process" for as long as the child lives; moving the child off
-	// the repo first avoids that. sleep outlasts the 300ms deadline, so the
-	// operation is still in flight when the context is cancelled and the
-	// assertion is unchanged.
-	t.Setenv("GIT_SSH_COMMAND", "sh -c 'cd / && exec sleep 5' --")
+	// Git runs this shim in place of ssh, through its own transport shell
+	// wrapper (`sh -c '<shim> "$@"' <shim> <host> <upload-pack cmd>`, the form
+	// GIT_TRACE shows) that inherits the cwd git was given — the repo, via
+	// `git -C <repo>`. `sleep 5` keeps the fetch in flight past the 300ms
+	// deadline, so cancellation happens mid-transport. On cancellation
+	// exec.CommandContext kills only git itself; the transport tree outlives it
+	// as an orphan and keeps the repo as its cwd. A shim-side `cd /` cannot move
+	// the surviving wrapper's own cwd — the `cd` runs in a forked subshell, so
+	// only the leaf chain reaches the msys root — and Windows refuses to delete
+	// a directory that is any live process's cwd, so t.TempDir's RemoveAll would
+	// fail with "being used by another process". The shim's `cd /` prefix is
+	// retained deliberately as defense-in-depth (it does move the leaf chain off
+	// the repo), but the cleanup guarantee is the adapter tearing down the
+	// spawned process tree on cancellation (process_tree_windows.go). The R12
+	// assertion — the progress channel must close on cancellation — is unchanged.
+	t.Setenv("GIT_SSH_COMMAND", "cd / && exec sh -c 'exec sleep 5' --")
 
 	repoID := domain.RepositoryId("repo-1")
 	a := NewAdapter(&fakeRepoPort{fsPath: src})

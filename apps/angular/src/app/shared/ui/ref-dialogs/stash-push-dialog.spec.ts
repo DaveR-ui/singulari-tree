@@ -24,6 +24,11 @@ function query(fixture: ReturnType<typeof render>, testId: string): HTMLElement 
   );
 }
 
+/** `st-button` forwards disabled/click to its inner native `<button>` (repo-relocate-panel convention). */
+function innerButton(fixture: ReturnType<typeof render>, testId: string): HTMLButtonElement {
+  return query(fixture, testId)!.querySelector('button') as HTMLButtonElement;
+}
+
 describe('StashPushDialog', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -46,7 +51,7 @@ describe('StashPushDialog', () => {
     input.dispatchEvent(new Event('input'));
     fixture.detectChanges();
 
-    query(fixture, 'stash-push-submit')?.click();
+    innerButton(fixture, 'stash-push-submit').click();
 
     expect(emitted).toEqual(['WIP']);
   });
@@ -56,7 +61,7 @@ describe('StashPushDialog', () => {
     const emitted: string[] = [];
     fixture.componentInstance.submitted.subscribe((v) => emitted.push(v));
 
-    query(fixture, 'stash-push-submit')?.click();
+    innerButton(fixture, 'stash-push-submit').click();
 
     expect(emitted).toEqual(['']);
   });
@@ -65,8 +70,8 @@ describe('StashPushDialog', () => {
     const fixture = render({ running: true, error: { code: 'STASH_FAILED', message: 'boom' } });
 
     expect(query(fixture, 'stash-push-error')?.textContent).toContain('boom');
-    expect(query(fixture, 'stash-push-submit')?.hasAttribute('disabled')).toBe(true);
-    expect(query(fixture, 'stash-push-cancel')?.hasAttribute('disabled')).toBe(true);
+    expect(innerButton(fixture, 'stash-push-submit').disabled).toBe(true);
+    expect(innerButton(fixture, 'stash-push-cancel').disabled).toBe(true);
   });
 
   it('does not submit while running', () => {
@@ -74,7 +79,7 @@ describe('StashPushDialog', () => {
     const emitted: string[] = [];
     fixture.componentInstance.submitted.subscribe((v) => emitted.push(v));
 
-    query(fixture, 'stash-push-submit')?.click();
+    innerButton(fixture, 'stash-push-submit').click();
 
     expect(emitted).toEqual([]);
   });
@@ -84,7 +89,7 @@ describe('StashPushDialog', () => {
     let cancelled = 0;
     fixture.componentInstance.cancelled.subscribe(() => (cancelled += 1));
 
-    query(fixture, 'stash-push-cancel')?.click();
+    innerButton(fixture, 'stash-push-cancel').click();
 
     expect(cancelled).toBe(1);
   });

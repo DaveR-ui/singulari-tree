@@ -34,6 +34,11 @@ function query(fixture: ReturnType<typeof render>, testId: string): HTMLElement 
   );
 }
 
+/** The native button inside the `<st-button>` host carrying `testId`. */
+function innerButton(fixture: ReturnType<typeof render>, testId: string): HTMLButtonElement {
+  return query(fixture, testId)!.querySelector('button') as HTMLButtonElement;
+}
+
 describe('MergeDialog', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -112,7 +117,7 @@ describe('MergeDialog', () => {
   it('disables submit when there is no mergeable ref', () => {
     const fixture = render({ branches: ['main'], currentBranch: 'main' });
 
-    expect(query(fixture, 'merge-submit')?.hasAttribute('disabled')).toBe(true);
+    expect(innerButton(fixture, 'merge-submit').disabled).toBe(true);
     expect((query(fixture, 'merge-ref') as HTMLSelectElement).options[0].textContent).toContain(
       'No other branch',
     );
@@ -127,8 +132,8 @@ describe('MergeDialog', () => {
     const fixture = render({ running: true, error: { code: 'MERGE_FAILED', message: 'boom' } });
 
     expect(query(fixture, 'merge-error')?.textContent).toContain('boom');
-    expect(query(fixture, 'merge-submit')?.hasAttribute('disabled')).toBe(true);
-    expect(query(fixture, 'merge-cancel')?.hasAttribute('disabled')).toBe(true);
+    expect(innerButton(fixture, 'merge-submit').disabled).toBe(true);
+    expect(innerButton(fixture, 'merge-cancel').disabled).toBe(true);
   });
 
   it('emits cancelled on dismiss', () => {

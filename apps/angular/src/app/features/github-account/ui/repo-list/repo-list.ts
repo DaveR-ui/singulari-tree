@@ -75,7 +75,7 @@ import { toRepoCardView } from '../../repo-card-view';
   styles: `
     :host {
       display: block;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
     }
 
     .st-repo-list__repos {
@@ -84,7 +84,7 @@ import { toRepoCardView } from '../../repo-card-view';
       padding: 0;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: var(--st-space-1);
       max-width: 640px;
     }
 
@@ -93,13 +93,13 @@ import { toRepoCardView } from '../../repo-card-view';
     }
 
     .st-repo-list__repos + st-button {
-      margin-top: 10px;
+      margin-top: var(--st-space-2);
     }
 
     .st-repo-list__error {
-      margin: 8px 0 0;
-      font-size: 12px;
-      color: #ff6b6b;
+      margin: var(--st-space-2) 0 0;
+      font-size: var(--st-font-12);
+      color: var(--st-color-danger);
     }
   `,
 })

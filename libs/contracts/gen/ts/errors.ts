@@ -53,6 +53,13 @@ export enum ErrorCode {
   TAG_NOT_FOUND = 31,
   /** GIT_FLOW_FAILED - Additive: git-flow presets (ADR-027), next free number after 31. */
   GIT_FLOW_FAILED = 32,
+  /**
+   * REPO_PATH_MISSING - Additive: repository relocation (P4.1 polish — a registered folder that was
+   * moved/renamed). The recorded fs path is gone, and a target path is already
+   * tracked by another repository. Next free numbers after 32.
+   */
+  REPO_PATH_MISSING = 33,
+  REPO_PATH_IN_USE = 34,
   UNRECOGNIZED = -1,
 }
 

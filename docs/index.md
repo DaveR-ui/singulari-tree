@@ -4,13 +4,13 @@
 # SingulariTree — Documentation index
 
 <!-- BEGIN GENERATED: index -->
-<!-- snapshot: 2026-10-11 -->
+<!-- snapshot: 2026-10-15 -->
 ## Generated index
 
 ### Overview
 
-- Markdown files: 34
-- Context docs: 4 | Notes: 6 | Hubs: 2 | adrs: 17 | templates: 0 | protocols: 3
+- Markdown files: 39
+- Context docs: 6 | Notes: 6 | Hubs: 2 | adrs: 20 | templates: 0 | protocols: 3
 
 ### Tree
 
@@ -29,6 +29,9 @@
   - adr-0023-commit-change-size-gauge.md — adr, id: `adr-0023-commit-change-size-gauge`
   - adr-0029-file-status-screen.md — adr, id: `adr-0029-file-status-screen`
   - adr-0030-history-screen-is-compare-free.md — adr, id: `adr-0030-history-screen-is-compare-free`
+  - adr-0031-repository-relocation-and-missing-folder-recovery.md — adr, id: `adr-0031-repository-relocation-and-missing-folder-recovery`
+  - adr-0032-history-commit-file-list-tooltip.md — adr, id: `adr-0032-history-commit-file-list-tooltip`
+  - adr-0033-commit-details-files-expandable-panel.md — adr, id: `adr-0033-commit-details-files-expandable-panel`
   - adr-024-multi-repo-workspaces.md — adr, id: `adr-024-multi-repo-workspaces`
   - adr-025-deep-links-and-clipboard-clone.md — adr, id: `adr-025-deep-links-and-clipboard-clone`
   - adr-026-cross-repo-commit-search.md — adr, id: `adr-026-cross-repo-commit-search`
@@ -37,8 +40,10 @@
   - adr-index.md — hub, id: `adr-index`
 - context/
   - accepted-debt.md — context-doc
+  - design-system.md — context-doc
   - documentation-system.md — context-doc
   - feature-gap-analysis.md — context-doc
+  - renderer-redesign-plan.md — context-doc
 - protocols/
   - bootstrap-protocol.md — protocol, id: `bootstrap-protocol`
   - docs-review-protocol.md — protocol, id: `docs-review-protocol`

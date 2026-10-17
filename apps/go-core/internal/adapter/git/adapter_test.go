@@ -23,6 +23,9 @@ func (f *fakeRepoPort) Remove(context.Context, domain.RepositoryId) error { retu
 func (f *fakeRepoPort) Get(_ context.Context, id domain.RepositoryId) (*domain.Repository, error) {
 	return &domain.Repository{ID: id, FsPath: f.fsPath}, nil
 }
+func (f *fakeRepoPort) Relocate(_ context.Context, id domain.RepositoryId, fsPath string) (*domain.Repository, error) {
+	return &domain.Repository{ID: id, FsPath: fsPath}, nil
+}
 
 // gitRun runs `git -C dir args...` and fails the test on error.
 //
@@ -153,6 +156,27 @@ func TestListPagination(t *testing.T) {
 	}
 	if page[0].Oid.Hex != parent {
 		t.Errorf("page[0].Oid = %s, want %s", page[0].Oid.Hex, parent)
+	}
+}
+
+// TestListShortWindowDerivesTotal pins the consistent (items, total) pair:
+// a window that came back shorter than the requested limit reached the end of
+// history, so total is derived as offset+len(commits) without a separate count
+// read. The offset term is what makes it a total rather than a window length.
+func TestListShortWindowDerivesTotal(t *testing.T) {
+	dir := initRepo(t)
+	parent := gitRun(t, dir, "rev-parse", "HEAD~1")
+
+	a := NewAdapter(&fakeRepoPort{fsPath: dir})
+	page, total, err := a.List(context.Background(), domain.RepositoryId("repo-1"), 1, 10)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if total != 2 {
+		t.Fatalf("total = %d, want 2 (offset+len)", total)
+	}
+	if len(page) != 1 || page[0].Oid.Hex != parent {
+		t.Fatalf("page len = %d, want 1 (the parent)", len(page))
 	}
 }
 

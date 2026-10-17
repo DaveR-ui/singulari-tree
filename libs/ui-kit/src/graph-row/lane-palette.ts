@@ -1,15 +1,16 @@
 // The Go core emits a numeric `Lane.color` palette slot (domain.proto); the
 // renderer owns the slot → CSS color mapping so theming can change without a
-// contract change.
+// contract change. Slots map onto the semantic graph-lane tokens, so the lane
+// palette follows the theme with no code change.
 export const LANE_PALETTE: readonly string[] = [
-  '#0a84ff',
-  '#ff9f0a',
-  '#30d158',
-  '#ff375f',
-  '#bf5af2',
-  '#64d2ff',
-  '#ffd60a',
-  '#5e5ce6',
+  'var(--st-color-graph-lane-1)',
+  'var(--st-color-graph-lane-2)',
+  'var(--st-color-graph-lane-3)',
+  'var(--st-color-graph-lane-4)',
+  'var(--st-color-graph-lane-5)',
+  'var(--st-color-graph-lane-6)',
+  'var(--st-color-graph-lane-7)',
+  'var(--st-color-graph-lane-8)',
 ];
 
 /** Map a lane palette slot to a concrete color (wraps around, tolerant of junk). */

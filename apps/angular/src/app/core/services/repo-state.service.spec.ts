@@ -1503,4 +1503,126 @@ describe('RepoState', () => {
     await first;
     expect(store.gitFlowRunning()).toBe(false);
   });
+
+  // -- relocateRepository (P4.1) -------------------------------------------
+
+  it('relocateRepository repoints the record, keeps it active and refreshes the list', async () => {
+    store.repos.set([REPO_A, REPO_B]);
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    const moved: Repository = { ...REPO_A, fsPath: '/tmp/a-moved' };
+    bridge.invoke.mockImplementation(async (method: string) => {
+      if (method === 'relocateRepository') return moved;
+      if (method === 'listRepositories') return { repositories: [moved, REPO_B] };
+      switch (method) {
+        case 'getBranches':
+          return { branches: [] };
+        case 'getRemotes':
+          return { remotes: [] };
+        case 'getTags':
+          return { tags: [] };
+        case 'getStashes':
+          return { stashes: [] };
+        default:
+          throw new Error(`unexpected method ${method}`);
+      }
+    });
+
+    const result = await store.relocateRepository(REPO_A.id, '  /tmp/a-moved  ');
+
+    expect(result).toEqual(moved);
+    expect(bridge.invoke).toHaveBeenCalledWith('relocateRepository', {
+      repoId: REPO_A.id,
+      fsPath: '/tmp/a-moved',
+    });
+    // Same id: still active, `created_at` untouched.
+    expect(store.activeId()).toBe(REPO_A.id);
+    expect(store.repos().find((r) => r.id === REPO_A.id)).toEqual(moved);
+    expect(store.repos()).toEqual([moved, REPO_B]);
+    expect(store.reposError()).toBeNull();
+    expect(store.reposOffline()).toBe(false);
+  });
+
+  it('relocateRepository keeps the active selection when a different repo is moved', async () => {
+    store.repos.set([REPO_A, REPO_B]);
+    store.setActive(REPO_A);
+    await vi.waitFor(() => expect(store.branches()).toEqual(['main-a', 'feature-a']));
+    const movedB: Repository = { ...REPO_B, fsPath: '/tmp/b-moved' };
+    bridge.invoke.mockImplementation(async (method: string) => {
+      if (method === 'relocateRepository') return movedB;
+      if (method === 'listRepositories') return { repositories: [REPO_A, movedB] };
+      switch (method) {
+        case 'getBranches':
+          return { branches: [] };
+        case 'getRemotes':
+          return { remotes: [] };
+        case 'getTags':
+          return { tags: [] };
+        case 'getStashes':
+          return { stashes: [] };
+        default:
+          throw new Error(`unexpected method ${method}`);
+      }
+    });
+
+    const result = await store.relocateRepository(REPO_B.id, '/tmp/b-moved');
+
+    expect(result).toEqual(movedB);
+    expect(store.activeId()).toBe(REPO_A.id);
+    expect(store.repos().find((r) => r.id === REPO_B.id)?.fsPath).toBe('/tmp/b-moved');
+  });
+
+  it('relocateRepository records REPO_PATH_MISSING and returns null', async () => {
+    store.repos.set([REPO_A]);
+    store.activeId.set(REPO_A.id);
+    bridge.invoke.mockRejectedValue({ code: 'REPO_PATH_MISSING', message: 'missing' } as AppError);
+
+    const result = await store.relocateRepository(REPO_A.id, '/tmp/nowhere');
+
+    expect(result).toBeNull();
+    expect(store.reposError()).toEqual({ code: 'REPO_PATH_MISSING', message: 'missing', details: {} });
+    expect(store.repos()).toEqual([REPO_A]);
+    expect(store.reposOffline()).toBe(false);
+  });
+
+  it('relocateRepository records NOT_A_GIT_REPO and returns null', async () => {
+    store.repos.set([REPO_A]);
+    bridge.invoke.mockRejectedValue({ code: 'NOT_A_GIT_REPO', message: 'not a repo' } as AppError);
+
+    const result = await store.relocateRepository(REPO_A.id, '/tmp/plain');
+
+    expect(result).toBeNull();
+    expect(store.reposError()).toEqual({ code: 'NOT_A_GIT_REPO', message: 'not a repo', details: {} });
+  });
+
+  it('relocateRepository records REPO_PATH_IN_USE and returns null', async () => {
+    store.repos.set([REPO_A, REPO_B]);
+    bridge.invoke.mockRejectedValue({ code: 'REPO_PATH_IN_USE', message: 'already tracked' } as AppError);
+
+    const result = await store.relocateRepository(REPO_A.id, REPO_B.fsPath);
+
+    expect(result).toBeNull();
+    expect(store.reposError()).toEqual({
+      code: 'REPO_PATH_IN_USE',
+      message: 'already tracked',
+      details: {},
+    });
+  });
+
+  it('relocateRepository maps IPC_UNAVAILABLE to reposOffline', async () => {
+    bridge.invoke.mockRejectedValue({ code: 'IPC_UNAVAILABLE', message: 'no bridge' } as AppError);
+
+    const result = await store.relocateRepository(REPO_A.id, '/tmp/a');
+
+    expect(result).toBeNull();
+    expect(store.reposOffline()).toBe(true);
+    expect(store.reposError()).toBeNull();
+  });
+
+  it('relocateRepository ignores a blank path without touching the bridge', async () => {
+    const result = await store.relocateRepository(REPO_A.id, '   ');
+
+    expect(result).toBeNull();
+    expect(bridge.invoke).not.toHaveBeenCalled();
+  });
 });

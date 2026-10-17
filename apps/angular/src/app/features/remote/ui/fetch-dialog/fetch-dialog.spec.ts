@@ -42,6 +42,11 @@ function query<T extends Element>(fixture: ComponentFixture<FetchDialog>, testId
   return (fixture.nativeElement as HTMLElement).querySelector<T>(`[data-testid="${testId}"]`);
 }
 
+/** `st-button` forwards the control to its inner native `<button>` (repo-relocate-panel convention). */
+function innerButton(fixture: ComponentFixture<FetchDialog>, testId: string): HTMLButtonElement {
+  return query(fixture, testId)!.querySelector('button') as HTMLButtonElement;
+}
+
 function toggle(fixture: ComponentFixture<FetchDialog>, testId: string, checked: boolean): void {
   const input = query<HTMLInputElement>(fixture, testId)!;
   input.checked = checked;
@@ -180,13 +185,13 @@ describe('FetchDialog', () => {
   it('disables submit while running', async () => {
     const fixture = await setup({ running: true });
 
-    expect(query<HTMLButtonElement>(fixture, 'fetch-submit')!.disabled).toBe(true);
+    expect(innerButton(fixture, 'fetch-submit').disabled).toBe(true);
   });
 
   it('disables submit when offline', async () => {
     const fixture = await setup({ offline: true });
 
-    expect(query<HTMLButtonElement>(fixture, 'fetch-submit')!.disabled).toBe(true);
+    expect(innerButton(fixture, 'fetch-submit').disabled).toBe(true);
   });
 
   it('disables submit when a specific remote is required but none is selected', async () => {
@@ -194,6 +199,6 @@ describe('FetchDialog', () => {
 
     toggle(fixture, 'fetch-all-remotes', false);
 
-    expect(query<HTMLButtonElement>(fixture, 'fetch-submit')!.disabled).toBe(true);
+    expect(innerButton(fixture, 'fetch-submit').disabled).toBe(true);
   });
 });

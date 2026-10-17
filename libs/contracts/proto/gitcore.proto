@@ -13,6 +13,7 @@ service GitCore {
   rpc GetRepository(GetRepositoryRequest) returns (Repository);
   rpc ListRepositories(ListRepositoriesRequest) returns (ListRepositoriesResponse);
   rpc RemoveRepository(RemoveRepositoryRequest) returns (RemoveRepositoryResponse);
+  rpc RelocateRepository(RelocateRepositoryRequest) returns (Repository);
   rpc GetCommits(GetCommitsRequest) returns (GetCommitsResponse);
   // Root-qualified to disambiguate from the `Commit` service method (which would
   // otherwise shadow the message of the same name in this service's scope).
@@ -87,6 +88,15 @@ message ListRepositoriesRequest {}
 message ListRepositoriesResponse { repeated Repository repositories = 1; }
 message RemoveRepositoryRequest { string repo_id = 1; }
 message RemoveRepositoryResponse {}
+
+// Repoint a tracked repository at a different filesystem path (P4.1 polish):
+// the folder was moved/renamed and the registration must follow it instead of
+// being deleted and re-created (which would mint a new repository id and drop
+// the cached rows). Validates the new path exactly like OpenRepository.
+message RelocateRepositoryRequest {
+  string repo_id = 1;
+  string fs_path = 2;
+}
 
 // Commits (windowed + streaming)
 message GetCommitsRequest {

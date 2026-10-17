@@ -55,6 +55,7 @@ import type {
   PushRequest,
   RemoveRepositoryRequest,
   RemoveRepositoryResponse,
+  RelocateRepositoryRequest,
   RenameBranchRequest,
   ResetRequest,
   ResetResponse,
@@ -124,6 +125,13 @@ export interface GitClientApi {
   openRepository: (req: OpenRepositoryRequest) => Promise<Repository>;
   listRepositories: (req: ListRepositoriesRequest) => Promise<ListRepositoriesResponse>;
   removeRepository: (req: RemoveRepositoryRequest) => Promise<RemoveRepositoryResponse>;
+  /**
+   * Repoint a tracked repository at a new filesystem path (P4.1 polish). Same
+   * repository id (`created_at` preserved); the core validates the target like
+   * `openRepository` and rejects with `REPO_PATH_MISSING` / `NOT_A_GIT_REPO` /
+   * `REPO_PATH_IN_USE`.
+   */
+  relocateRepository: (req: RelocateRepositoryRequest) => Promise<Repository>;
   getBranches: (req: GetBranchesRequest) => Promise<GetBranchesResponse>;
   getRemotes: (req: GetRemotesRequest) => Promise<GetRemotesResponse>;
   getTags: (req: GetTagsRequest) => Promise<GetTagsResponse>;

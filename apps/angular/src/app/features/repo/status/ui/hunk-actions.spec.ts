@@ -134,8 +134,28 @@ describe('HunkActions', () => {
   it('disables hunk buttons while busy', () => {
     const fixture = render({ unstagedFile: file(), busy: true });
 
-    expect(button(fixture, 'hunk-stage').disabled).toBe(true);
-    expect(button(fixture, 'hunk-discard').disabled).toBe(true);
+    const stage = (query(fixture, 'hunk-stage')?.querySelector('button')) as HTMLButtonElement;
+    const discard = (query(fixture, 'hunk-discard')?.querySelector('button')) as HTMLButtonElement;
+    expect(stage.disabled).toBe(true);
+    expect(discard.disabled).toBe(true);
+  });
+
+  it('exposes an accessible name on every hunk action button', () => {
+    const unstaged = render({ unstagedFile: file() });
+    expect(
+      query(unstaged, 'hunk-stage')?.querySelector('button')?.getAttribute('aria-label'),
+    ).toBeTruthy();
+    expect(
+      query(unstaged, 'hunk-discard')?.querySelector('button')?.getAttribute('aria-label'),
+    ).toBeTruthy();
+    expect(
+      query(unstaged, 'hunk-file-discard')?.querySelector('button')?.getAttribute('aria-label'),
+    ).toBeTruthy();
+
+    const staged = render({ stagedFile: file() });
+    expect(
+      query(staged, 'hunk-unstage')?.querySelector('button')?.getAttribute('aria-label'),
+    ).toBeTruthy();
   });
 
   it('emits stageHunk with empty lineIndices for a whole hunk', () => {

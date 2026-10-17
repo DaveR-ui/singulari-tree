@@ -20,6 +20,11 @@ function query<T extends Element>(fixture: ComponentFixture<CloneDialog>, testId
   return (fixture.nativeElement as HTMLElement).querySelector<T>(`[data-testid="${testId}"]`);
 }
 
+/** The `st-button` primitive renders one inner native `<button>`. */
+function innerButton(fixture: ComponentFixture<CloneDialog>, testId: string): HTMLButtonElement {
+  return query(fixture, testId)!.querySelector('button') as HTMLButtonElement;
+}
+
 /**
  * Guards the clone dialog stub (ADR-025): it only prefills the URL, the primary
  * action is inert (V1.4), and it surfaces a clipboard validation message.
@@ -47,7 +52,7 @@ describe('CloneDialog', () => {
   it('keeps the clone action inert (V1.4 stub)', async () => {
     const fixture = await setup(true, 'https://example.com/x.git');
 
-    expect(query<HTMLButtonElement>(fixture, 'clone-submit')?.disabled).toBe(true);
+    expect(innerButton(fixture, 'clone-submit').disabled).toBe(true);
   });
 
   it('shows the validation error instead of the note', async () => {

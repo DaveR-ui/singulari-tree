@@ -127,6 +127,30 @@ func (s *Server) RemoveRepository(ctx context.Context, req *singularitreev1.Remo
 	return &singularitreev1.RemoveRepositoryResponse{}, nil
 }
 
+// RelocateRepository repoints an existing repository registration at a new
+// filesystem path, preserving its id (a delete + re-create would mint a new id
+// and lose the registration). The path changed, so any in-memory state keyed by
+// the repository id — cached lane layouts/commit windows — is dropped
+// best-effort exactly like RemoveRepository, so the previous location's state is
+// never served for the relocated id.
+func (s *Server) RelocateRepository(ctx context.Context, req *singularitreev1.RelocateRepositoryRequest) (*singularitreev1.Repository, error) {
+	if s.repoSvc == nil {
+		return nil, status.Error(codes.FailedPrecondition, "repo service not configured")
+	}
+	id := domain.RepositoryId(req.GetRepoId())
+	repo, err := s.repoSvc.Relocate(ctx, id, req.GetFsPath())
+	if err != nil {
+		return nil, appErrorToStatus(ctx, err)
+	}
+	if s.graphSvc != nil {
+		s.graphSvc.Invalidate(id)
+	}
+	if s.cacheSvc != nil {
+		s.cacheSvc.Invalidate(id)
+	}
+	return repositoryToProto(repo), nil
+}
+
 // GetCommits returns a window of commits plus the total reachable count.
 func (s *Server) GetCommits(ctx context.Context, req *singularitreev1.GetCommitsRequest) (*singularitreev1.GetCommitsResponse, error) {
 	if s.graphSvc == nil {

@@ -46,6 +46,11 @@ function makeRepoState(repos: Repository[] = []) {
     activeId,
     setActive: vi.fn((repo: Repository) => activeId.set(repo.id)),
     clearActive: vi.fn(() => activeId.set(null)),
+    openRepositoryPath: vi.fn((fsPath: string) => {
+      const repo = reposSignal().find((candidate) => candidate.fsPath === fsPath);
+      if (repo) activeId.set(repo.id);
+      return Promise.resolve(repo ?? null);
+    }),
   };
 }
 
@@ -100,6 +105,63 @@ describe('WorkspacesStore', () => {
 
     expect(store.activeTabId()).toBe('a');
     expect(repoState.setActive).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }));
+  });
+
+  it('opens a tab by path when its repo is missing from RepoState', () => {
+    // Only `other` is in the core list; `a` is an open tab whose record has not
+    // landed yet.
+    const repoState = makeRepoState([makeRepo('other')]);
+    const store = makeStore(repoState);
+    store.openTab(makeRepo('other'));
+    store.openTab(makeRepo('a'));
+    store.openTab(makeRepo('b'));
+
+    store.selectTab('a');
+
+    expect(store.activeTabId()).toBe('a');
+    // The active-repo source of truth follows the tab by path...
+    expect(repoState.openRepositoryPath).toHaveBeenCalledWith('/tmp/a');
+    // ...instead of leaving the previous repo mirrored via `setActive`.
+    expect(repoState.setActive).not.toHaveBeenCalled();
+  });
+
+  it('drops the tab and activates the neighbour when the fallback open fails', async () => {
+    // `b` is an open tab whose record is gone from the core; its neighbour `a`
+    // is still registered, so it can be mirrored into RepoState.
+    const repoState = makeRepoState([makeRepo('other'), makeRepo('a')]);
+    const store = makeStore(repoState);
+    store.openTab(makeRepo('other'));
+    store.openTab(makeRepo('a'));
+    store.openTab(makeRepo('b'));
+
+    store.selectTab('b');
+    // The fallback open resolves null (registration gone / unopenable path)...
+    await vi.waitFor(() => expect(store.tabs()).toHaveLength(2));
+
+    // ...so the dead tab is dropped exactly like `reconcile`, and the neighbour
+    // is activated and mirrored: the top bar, RepoState and the graph never
+    // diverge.
+    expect(repoState.openRepositoryPath).toHaveBeenCalledWith('/tmp/b');
+    expect(store.tabs().map((t) => t.repoId)).toEqual(['other', 'a']);
+    expect(store.activeTabId()).toBe('a');
+    expect(repoState.setActive).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'a' }));
+  });
+
+  it('re-selecting the already-active tab performs no redundant mirror/open', () => {
+    const repoState = makeRepoState([makeRepo('a')]);
+    const store = makeStore(repoState);
+    store.openTab(makeRepo('a'));
+
+    store.selectTab('a'); // first: mirrors the tab into RepoState
+    expect(repoState.setActive).toHaveBeenCalledTimes(1);
+
+    repoState.setActive.mockClear();
+    repoState.openRepositoryPath.mockClear();
+    store.selectTab('a'); // re-click: no-op
+
+    expect(store.activeTabId()).toBe('a');
+    expect(repoState.setActive).not.toHaveBeenCalled();
+    expect(repoState.openRepositoryPath).not.toHaveBeenCalled();
   });
 
   it('ignores selecting an unknown tab', () => {

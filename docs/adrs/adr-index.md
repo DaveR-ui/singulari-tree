@@ -3,8 +3,8 @@ id: adr-index
 category: adrs
 tags: [adr, hub, index]
 aliases: [ADR Index, ADR List]
-related: [adr-0014-docs-corpus-layout, adr-0015-docs-validator-generated-index, adr-0016-lane-state-and-graph-dod, adr-0017-docs-language-en, adr-0018-renderer-i18n-locale-switch, adr-0019-adr-translation-authorization, adr-0020-diff-per-file-and-hunk-staging, adr-0021-reset-modes, adr-0022-graph-context-menu-shell, adr-0023-commit-change-size-gauge, adr-024-multi-repo-workspaces, adr-025-deep-links-and-clipboard-clone, adr-026-cross-repo-commit-search, adr-027-git-flow-presets, adr-028-advanced-git-rpcs, adr-0029-file-status-screen, adr-0030-history-screen-is-compare-free]
-version: 1.5.0
+related: [adr-0014-docs-corpus-layout, adr-0015-docs-validator-generated-index, adr-0016-lane-state-and-graph-dod, adr-0017-docs-language-en, adr-0018-renderer-i18n-locale-switch, adr-0019-adr-translation-authorization, adr-0020-diff-per-file-and-hunk-staging, adr-0021-reset-modes, adr-0022-graph-context-menu-shell, adr-0023-commit-change-size-gauge, adr-024-multi-repo-workspaces, adr-025-deep-links-and-clipboard-clone, adr-026-cross-repo-commit-search, adr-027-git-flow-presets, adr-028-advanced-git-rpcs, adr-0029-file-status-screen, adr-0030-history-screen-is-compare-free, adr-0031-repository-relocation-and-missing-folder-recovery, adr-0032-history-commit-file-list-tooltip, adr-0033-commit-details-files-expandable-panel]
+version: 1.8.0
 status: active
 ---
 
@@ -33,7 +33,10 @@ status: active
 - [[adr-028-advanced-git-rpcs]] — V1.1 branch CRUD, merge, tag CRUD and stash apply/pop/drop as append-only RPCs (M3).
 - [[adr-0029-file-status-screen]] — renderer-only File Status screen (local / commit / PR variants) reusing GetDiff, GetBranches and the existing StatusStore; the diff is always on the right.
 - [[adr-0030-history-screen-is-compare-free]] — History is a read-only commit overview (no panel below the graph); Compare becomes a navigation action to File status (refines ADR-0022's presentation, extends ADR-0029).
+- [[adr-0031-repository-relocation-and-missing-folder-recovery]] — a moved/renamed repository folder is a named, recoverable state: `REPO_PATH_MISSING` vs `NOT_A_GIT_REPO` plus an additive `RelocateRepository` RPC that repoints the existing registration (no silent delete).
+- [[adr-0032-history-commit-file-list-tooltip]] — the History aside gains a changed-file list tooltip next to "Review changes" — a **narrow** supersession of ADR-0030 that lifts only its "no file list" lock and repeals ADR-0031's item 7b refusal; compare stays in File status.
+- [[adr-0033-commit-details-files-expandable-panel]] — the History aside's changed-file list becomes an **inline expandable panel** inside the commit-details body, superseding only ADR-0032's `st-popover` tooltip surface; the data source (`StatusStore` + `getDiff`) and the compare-free boundaries are unchanged.
 
 ## Elsewhere
 
-ADR-001..ADR-013 live embedded in `docs/context/git-client/decisions.md` (legacy — see `accepted-debt.md`). Numbering continues at **ADR-031** (last used: ADR-0030). Existing filenames are mixed: the older `adr-024`…`adr-028` are unpadded, `adr-0029` and later are padded; new files follow the padded form and **existing files are never renamed**.
+ADR-001..ADR-013 live embedded in `docs/context/git-client/decisions.md` (legacy — see `accepted-debt.md`). Numbering continues at **ADR-034** (last used: ADR-0033). Existing filenames are mixed: the older `adr-024`…`adr-028` are unpadded, `adr-0029` and later are padded; new files follow the padded form and **existing files are never renamed**.

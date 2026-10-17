@@ -2,13 +2,13 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
-  HostListener,
   computed,
   effect,
   inject,
   input,
   output,
 } from '@angular/core';
+import { PopoverComponent } from '@singularitree/ui-kit';
 import {
   checkoutTargetFor,
   type CheckoutTarget,
@@ -28,138 +28,147 @@ import { WIP_OID } from '../graph.store';
  * remain out of scope and are never rendered: no dead actions ship.
  *
  * The component performs no RPC and touches no Git: it emits the chosen action
- * and the owning store/page decides what to do. It is dismissable via Escape,
- * an outside click, or a second context-menu gesture, and supports Arrow
- * Up/Down focus movement for keyboard use.
+ * and the owning store/page decides what to do. It mounts on `st-popover`, which
+ * owns Escape / outside-click / focus-out / backdrop dismissal; a second
+ * context-menu gesture also dismisses it. It supports Arrow Up/Down focus
+ * movement for keyboard use.
  */
 @Component({
   selector: 'st-graph-context-menu',
   standalone: true,
+  imports: [PopoverComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (open() && target(); as ctx) {
+      <!-- Internal full-viewport anchor: the viewport x/y coordinates resolve
+           against it. It never becomes the pointer target itself -- the popover
+           backdrop and the menu render above it. -->
       <div
-        class="st-graph-context-menu__backdrop"
+        class="st-graph-context-menu__anchor"
         data-testid="ctx-backdrop"
-        (click)="closed.emit()"
+        (click)="onBackdropClick($event)"
         (contextmenu)="onBackdropContextMenu($event)"
-      ></div>
-      <div
-        class="st-graph-context-menu"
-        role="menu"
-        aria-label="Commit actions"
-        data-testid="graph-context-menu"
-        [style.left.px]="x()"
-        [style.top.px]="y()"
-        (keydown)="onKeydown($event)"
       >
-        <button
-          type="button"
-          role="menuitem"
-          class="st-graph-context-menu__item"
-          data-testid="ctx-checkout"
-          [disabled]="busy()"
-          (click)="onCheckout(ctx)"
-        >
-          <span>Checkout</span>
-          <span class="st-graph-context-menu__hint" data-testid="ctx-checkout-target">{{
-            checkoutTarget(ctx).label
-          }}</span>
-        </button>
+        <st-popover [open]="open()" (closed)="closed.emit()">
+          <div
+            class="st-graph-context-menu"
+            role="menu"
+            aria-label="Commit actions"
+            i18n-aria-label
+            data-testid="graph-context-menu"
+            [style.left.px]="x()"
+            [style.top.px]="y()"
+            (keydown)="onKeydown($event)"
+          >
+            <button
+              type="button"
+              role="menuitem"
+              class="st-graph-context-menu__item"
+              data-testid="ctx-checkout"
+              [disabled]="busy()"
+              (click)="onCheckout(ctx)"
+            >
+              <span>Checkout</span>
+              <span class="st-graph-context-menu__hint" data-testid="ctx-checkout-target">{{
+                checkoutTarget(ctx).label
+              }}</span>
+            </button>
 
-        <button
-          type="button"
-          role="menuitem"
-          class="st-graph-context-menu__item"
-          data-testid="ctx-compare"
-          [disabled]="!canCompare() || busy()"
-          (click)="onCompare()"
-        >
-          Compare with selected
-        </button>
+            <button
+              type="button"
+              role="menuitem"
+              class="st-graph-context-menu__item"
+              data-testid="ctx-compare"
+              [disabled]="!canCompare() || busy()"
+              (click)="onCompare()"
+            >
+              Compare with selected
+            </button>
 
-        <!-- File status routes to the repo's file-status screen (ADR-0029). The
-             WIP row is a synthetic node with no commit to diff, so the entry is
-             disabled there. -->
-        <button
-          type="button"
-          role="menuitem"
-          class="st-graph-context-menu__item"
-          data-testid="ctx-file-status"
-          [disabled]="!canFileStatus() || busy()"
-          (click)="onFileStatus(ctx)"
-          i18n
-        >
-          File status
-        </button>
+            <!-- File status routes to the repo's file-status screen (ADR-0029). The
+                 WIP row is a synthetic node with no commit to diff, so the entry is
+                 disabled there. -->
+            <button
+              type="button"
+              role="menuitem"
+              class="st-graph-context-menu__item"
+              data-testid="ctx-file-status"
+              [disabled]="!canFileStatus() || busy()"
+              (click)="onFileStatus(ctx)"
+              i18n
+            >
+              File status
+            </button>
 
-        <button
-          type="button"
-          role="menuitem"
-          class="st-graph-context-menu__item"
-          data-testid="ctx-copy-sha"
-          [disabled]="busy()"
-          (click)="copySha.emit(ctx.oid)"
-        >
-          Copy SHA
-        </button>
+            <button
+              type="button"
+              role="menuitem"
+              class="st-graph-context-menu__item"
+              data-testid="ctx-copy-sha"
+              [disabled]="busy()"
+              (click)="copySha.emit(ctx.oid)"
+            >
+              Copy SHA
+            </button>
 
-        <div class="st-graph-context-menu__separator" role="separator"></div>
+            <div class="st-graph-context-menu__separator" role="separator"></div>
 
-        <button
-          type="button"
-          role="menuitem"
-          class="st-graph-context-menu__item"
-          data-testid="ctx-create-branch"
-          [disabled]="busy()"
-          (click)="onCreateBranchHere(ctx)"
-        >
-          Create branch here…
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          class="st-graph-context-menu__item"
-          data-testid="ctx-tag"
-          [disabled]="busy()"
-          (click)="onTagCommit(ctx)"
-        >
-          Tag this commit…
-        </button>
+            <button
+              type="button"
+              role="menuitem"
+              class="st-graph-context-menu__item"
+              data-testid="ctx-create-branch"
+              [disabled]="busy()"
+              (click)="onCreateBranchHere(ctx)"
+            >
+              Create branch here…
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              class="st-graph-context-menu__item"
+              data-testid="ctx-tag"
+              [disabled]="busy()"
+              (click)="onTagCommit(ctx)"
+            >
+              Tag this commit…
+            </button>
 
-        <div class="st-graph-context-menu__separator" role="separator"></div>
-        <div class="st-graph-context-menu__group" aria-hidden="true">Reset</div>
+            <div class="st-graph-context-menu__separator" role="separator"></div>
+            <div class="st-graph-context-menu__group" aria-hidden="true">Reset</div>
 
-        <button
-          type="button"
-          role="menuitem"
-          class="st-graph-context-menu__item"
-          data-testid="ctx-reset-soft"
-          [disabled]="busy()"
-          (click)="reset.emit(SOFT)"
-        >
-          Soft — keep changes staged
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          class="st-graph-context-menu__item"
-          data-testid="ctx-reset-mixed"
-          [disabled]="busy()"
-          (click)="reset.emit(MIXED)"
-        >
-          Mixed — unstage, keep files
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          class="st-graph-context-menu__item st-graph-context-menu__item--danger"
-          data-testid="ctx-reset-hard"
-          [disabled]="busy()"
-          (click)="reset.emit(HARD)"
-        >
-          Hard — discard changes…
-        </button>
+            <button
+              type="button"
+              role="menuitem"
+              class="st-graph-context-menu__item"
+              data-testid="ctx-reset-soft"
+              [disabled]="busy()"
+              (click)="reset.emit(SOFT)"
+            >
+              Soft — keep changes staged
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              class="st-graph-context-menu__item"
+              data-testid="ctx-reset-mixed"
+              [disabled]="busy()"
+              (click)="reset.emit(MIXED)"
+            >
+              Mixed — unstage, keep files
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              class="st-graph-context-menu__item st-graph-context-menu__item--danger"
+              data-testid="ctx-reset-hard"
+              [disabled]="busy()"
+              (click)="reset.emit(HARD)"
+            >
+              Hard — discard changes…
+            </button>
+          </div>
+        </st-popover>
       </div>
     }
   `,
@@ -168,34 +177,57 @@ import { WIP_OID } from '../graph.store';
       display: contents;
     }
 
-    .st-graph-context-menu__backdrop {
+    /*
+     * The anchor fills the viewport so the menu's absolute left/top (which are
+     * viewport coordinates) resolve correctly. It sits below the popover's
+     * backdrop and the menu, so it never swallows their pointer events.
+     */
+    .st-graph-context-menu__anchor {
       position: fixed;
       inset: 0;
-      z-index: 119;
+      z-index: var(--st-z-backdrop);
+    }
+
+    /*
+     * st-popover provides dismissal + z-scale; its panel is only a positioning
+     * shell here. Neutralise the box so the menu paints itself. The anchor class
+     * keeps this override above the primitive's own panel rule.
+     */
+    :host ::ng-deep .st-graph-context-menu__anchor .st-popover {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 0;
+      min-width: 0;
+      padding: 0;
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+      animation: none;
     }
 
     .st-graph-context-menu {
-      position: fixed;
-      z-index: 120;
+      position: absolute;
+      z-index: var(--st-z-menu);
       min-width: 208px;
       padding: 4px;
-      background: var(--st-color-surface, #252536);
-      border: 1px solid var(--st-color-border, #2f2f44);
-      border-radius: 8px;
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
-      color: var(--st-color-text, #d6d6de);
-      font-size: 12px;
+      background: var(--st-color-raised);
+      border: var(--st-hairline) solid var(--st-color-border);
+      border-radius: var(--st-radius-4);
+      color: var(--st-color-text);
+      font-size: var(--st-font-12);
     }
 
     .st-graph-context-menu__item {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: var(--st-space-2);
       width: 100%;
       padding: 6px 10px;
       background: transparent;
       border: 0;
-      border-radius: 5px;
+      border-radius: var(--st-radius-3);
       color: inherit;
       font: inherit;
       text-align: left;
@@ -204,7 +236,7 @@ import { WIP_OID } from '../graph.store';
 
     .st-graph-context-menu__item:hover:not(:disabled),
     .st-graph-context-menu__item:focus-visible {
-      background: color-mix(in srgb, var(--st-color-accent, #0a84ff) 22%, transparent);
+      background: var(--st-color-accent-soft);
       outline: none;
     }
 
@@ -214,7 +246,7 @@ import { WIP_OID } from '../graph.store';
     }
 
     .st-graph-context-menu__item--danger {
-      color: #ff6b6b;
+      color: var(--st-color-danger);
     }
 
     .st-graph-context-menu__hint {
@@ -223,21 +255,21 @@ import { WIP_OID } from '../graph.store';
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      opacity: 0.6;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 11px;
+      color: var(--st-color-muted);
+      font-family: var(--st-font-mono);
+      font-size: var(--st-font-11);
     }
 
     .st-graph-context-menu__separator {
-      height: 1px;
+      height: var(--st-hairline);
       margin: 4px 6px;
-      background: var(--st-color-border, #2f2f44);
+      background: var(--st-color-border);
     }
 
     .st-graph-context-menu__group {
       padding: 4px 10px 2px;
-      opacity: 0.5;
-      font-size: 10px;
+      color: var(--st-color-muted);
+      font-size: var(--st-font-10);
       text-transform: uppercase;
       letter-spacing: 0.06em;
     }
@@ -324,15 +356,25 @@ export class GraphContextMenu {
     this.tagCommit.emit(target.oid);
   }
 
-  /** A right-click on the backdrop dismisses the menu instead of the OS menu. */
-  onBackdropContextMenu(event: MouseEvent): void {
-    event.preventDefault();
+  /**
+   * A direct hit on the anchor shell (outside the popover subtree) dismisses the
+   * menu. A real outside click lands on the popover's own backdrop, which emits
+   * `closed` before bubbling here, so guard against the double emit.
+   */
+  onBackdropClick(event: MouseEvent): void {
+    if (event.target !== event.currentTarget) return;
     this.closed.emit();
   }
 
-  @HostListener('document:keydown.escape')
-  onEscape(): void {
-    if (this.open()) this.closed.emit();
+  /**
+   * A right-click outside the menu dismisses it instead of showing the OS menu;
+   * a right-click on an item is left untouched.
+   */
+  onBackdropContextMenu(event: MouseEvent): void {
+    const target = event.target;
+    if (target instanceof Element && target.closest('.st-graph-context-menu')) return;
+    event.preventDefault();
+    this.closed.emit();
   }
 
   onKeydown(event: KeyboardEvent): void {

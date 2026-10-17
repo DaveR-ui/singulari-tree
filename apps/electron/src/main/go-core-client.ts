@@ -31,6 +31,7 @@ export const GIT_CORE_RPC_METHODS = [
   'GetRepository',
   'ListRepositories',
   'RemoveRepository',
+  'RelocateRepository',
   'GetCommits',
   'StreamCommits',
   'GetBranches',

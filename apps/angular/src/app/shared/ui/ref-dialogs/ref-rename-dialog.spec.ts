@@ -31,6 +31,11 @@ function setInput(el: HTMLInputElement, value: string): void {
   el.dispatchEvent(new Event('input'));
 }
 
+/** The native button inside the `<st-button>` host carrying `testId`. */
+function innerButton(fixture: ReturnType<typeof render>, testId: string): HTMLButtonElement {
+  return query(fixture, testId)!.querySelector('button') as HTMLButtonElement;
+}
+
 describe('RefRenameDialog', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -49,7 +54,7 @@ describe('RefRenameDialog', () => {
     expect(query(fixture, 'ref-rename-current')?.textContent).toContain('feature/x');
     expect(query(fixture, 'ref-rename-input')?.value).toBe('feature/x');
     // No change yet → submit stays disabled.
-    expect(query(fixture, 'ref-rename-submit')?.hasAttribute('disabled')).toBe(true);
+    expect(innerButton(fixture, 'ref-rename-submit').disabled).toBe(true);
   });
 
   it('emits the trimmed new name once it differs', () => {
@@ -72,7 +77,9 @@ describe('RefRenameDialog', () => {
     const input = query(fixture, 'ref-rename-input')!;
     setInput(input, 'trunk');
     fixture.detectChanges();
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    // The Enter binding now lives on the `st-input` host, so the synthetic key
+    // must bubble (a real keydown does) to reach it.
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 
     expect(submitted).toBe(1);
   });
@@ -100,8 +107,8 @@ describe('RefRenameDialog', () => {
     });
 
     expect(query(fixture, 'ref-rename-error')?.textContent).toContain('boom');
-    expect(query(fixture, 'ref-rename-submit')?.hasAttribute('disabled')).toBe(true);
-    expect(query(fixture, 'ref-rename-cancel')?.hasAttribute('disabled')).toBe(true);
+    expect(innerButton(fixture, 'ref-rename-submit').disabled).toBe(true);
+    expect(innerButton(fixture, 'ref-rename-cancel').disabled).toBe(true);
   });
 
   it('emits cancelled on cancel', () => {

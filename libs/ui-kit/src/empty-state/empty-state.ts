@@ -34,12 +34,12 @@ export type EmptyStateTone = 'neutral' | 'muted' | 'error';
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 4px;
+      gap: var(--st-space-1);
       width: 100%;
-      padding: 16px;
-      font-size: 12px;
+      padding: var(--st-space-4);
+      font-size: var(--st-font-12);
       text-align: center;
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
     }
 
     .st-empty-state--muted {
@@ -47,7 +47,7 @@ export type EmptyStateTone = 'neutral' | 'muted' | 'error';
     }
 
     .st-empty-state--error {
-      color: #ff6b6b;
+      color: var(--st-color-danger);
     }
 
     .st-empty-state__icon {

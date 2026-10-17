@@ -26,6 +26,7 @@ import type {
   RepoFetchState,
 } from '@features/remote/remote-models';
 import { LayoutComponent } from './layout';
+import { LiveRegionService } from '@singularitree/ui-kit';
 
 @Component({
   selector: 'st-spec-stub-page',
@@ -381,6 +382,20 @@ function queryAll<T extends Element>(fixture: { nativeElement: unknown }, testId
   );
 }
 
+/**
+ * The native `<button>` inside a `<st-button>` host carrying `testId`. The
+ * top-bar wraps its actions in `st-button`, so the testid lands on the host and
+ * the disabled/click state lives on the inner button.
+ */
+function innerButton<T extends HTMLButtonElement>(
+  fixture: { nativeElement: unknown },
+  testId: string,
+): T | null {
+  return (fixture.nativeElement as HTMLElement).querySelector<T>(
+    `[data-testid="${testId}"] button`,
+  );
+}
+
 describe('LayoutComponent', () => {
   beforeEach(() => {
     Object.defineProperty(globalThis, 'localStorage', {
@@ -451,55 +466,48 @@ describe('LayoutComponent', () => {
     expect(repoState.removeRepository).toHaveBeenCalledWith(repo.id);
   });
 
-  it('persists the right-collapsed state to localStorage', async () => {
+  it('persists the drawer pinned state to localStorage', async () => {
     const { fixture } = await setup();
 
-    expect(localStorage.getItem('st:rightCollapsed')).toBe('false');
+    expect(localStorage.getItem('st:drawerPinned')).toBe('true');
 
-    fixture.componentInstance.toggleRight();
+    fixture.componentInstance.onDrawerToggled();
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(localStorage.getItem('st:rightCollapsed')).toBe('true');
+    expect(fixture.componentInstance.drawerPinned()).toBe(false);
+    expect(localStorage.getItem('st:drawerPinned')).toBe('false');
   });
 
-  it('restores an in-range persisted right width', async () => {
-    localStorage.setItem('st:rightWidth', '400');
+  it('restores a persisted unpinned drawer state on init', async () => {
+    localStorage.setItem('st:drawerPinned', 'false');
 
     const { fixture } = await setup();
 
-    expect(fixture.componentInstance.rightWidth()).toBe(400);
-  });
-
-  it('rejects an out-of-range persisted right width', async () => {
-    localStorage.setItem('st:rightWidth', '9999');
-
-    const { fixture } = await setup();
-
-    expect(fixture.componentInstance.rightWidth()).toBe(320);
+    expect(fixture.componentInstance.drawerPinned()).toBe(false);
   });
 
   it('controls the sidebar workspace selection through the parent signal', async () => {
     const { fixture } = await setup();
     const el = fixture.nativeElement as HTMLElement;
 
-    const items = el.querySelectorAll<HTMLElement>('.st-left__item');
+    const items = el.querySelectorAll<HTMLElement>('.st-rail__item');
     expect(items.length).toBeGreaterThanOrEqual(3);
     items[2].click();
     fixture.detectChanges();
 
     expect(fixture.componentInstance.activeWorkspace()).toBe('search');
-    expect(items[2].classList.contains('st-left__item--active')).toBe(true);
+    expect(items[2].classList.contains('st-rail__item--active')).toBe(true);
   });
 
-  it('routes the WORKSPACE "File status" entry to /repo/file-status', async () => {
+  it('routes the WORKSPACE "Local changes" entry to /repo/file-status', async () => {
     const { fixture } = await setup();
     const el = fixture.nativeElement as HTMLElement;
     const router = TestBed.inject(Router);
     const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
 
-    const items = Array.from(el.querySelectorAll<HTMLElement>('.st-left__item'));
-    const fileStatus = items.find((item) => item.textContent?.includes('File status'));
+    const items = Array.from(el.querySelectorAll<HTMLElement>('.st-rail__item'));
+    const fileStatus = items.find((item) => item.textContent?.includes('Local changes'));
     expect(fileStatus).toBeDefined();
     fileStatus!.click();
     fixture.detectChanges();
@@ -516,8 +524,8 @@ describe('LayoutComponent', () => {
     const router = TestBed.inject(Router);
     const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
 
-    const items = Array.from(el.querySelectorAll<HTMLElement>('.st-left__item'));
-    items.find((item) => item.textContent?.includes('File status'))!.click();
+    const items = Array.from(el.querySelectorAll<HTMLElement>('.st-rail__item'));
+    items.find((item) => item.textContent?.includes('Local changes'))!.click();
     fixture.detectChanges();
     navigate.mockClear();
 
@@ -543,26 +551,66 @@ describe('LayoutComponent', () => {
     fixture.detectChanges();
     expect(fixture.componentInstance.activeWorkspace()).toBe('history');
 
-    // `/repos` also starts with `/repo` but has no WORKSPACE entry: it must clear
-    // the highlight rather than keep a stale one.
+    // `/repos` starts with `/repo` but maps to the Repositories WORKSPACE
+    // entry, so the highlight follows it rather than clearing.
     await router.navigateByUrl('/repos');
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(fixture.componentInstance.activeWorkspace()).toBe('');
+    expect(fixture.componentInstance.activeWorkspace()).toBe('repos');
   });
 
-  it('no longer renders the removed drawer pin/menu controls', async () => {
+  it('routes the WORKSPACE "Repositories" entry to /repos', async () => {
+    const { fixture } = await setup();
+    const el = fixture.nativeElement as HTMLElement;
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    const items = Array.from(el.querySelectorAll<HTMLElement>('.st-rail__item'));
+    const repos = items.find((item) => item.textContent?.includes('Repositories'));
+    expect(repos).toBeDefined();
+    repos!.click();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.activeWorkspace()).toBe('repos');
+    expect(navigate).toHaveBeenCalledWith(['/repos']);
+  });
+
+  it('renders the drawer pin toggle and toggles the pinned state', async () => {
     const { fixture } = await setup({ repos: [makeRepository(1)] });
     const el = fixture.nativeElement as HTMLElement;
     const drawer = el.querySelector<HTMLElement>('[data-testid="repo-drawer"]');
     expect(drawer).not.toBeNull();
 
-    const buttons = Array.from(drawer!.querySelectorAll<HTMLButtonElement>('.st-right__head button'));
-    expect(buttons.some((b) => b.textContent?.includes('☰'))).toBe(false);
-    expect(buttons.some((b) => (b.getAttribute('title') ?? '').includes('Pin'))).toBe(false);
-    expect(buttons.some((b) => b.hasAttribute('aria-pressed'))).toBe(false);
-    // The close control is preserved.
-    expect(buttons.some((b) => b.getAttribute('title') === 'Close')).toBe(true);
+    const pin = el.querySelector<HTMLElement>('[data-testid="repo-drawer-pin"]');
+    expect(pin).not.toBeNull();
+    expect(pin!.getAttribute('aria-pressed')).toBe('true');
+
+    pin!.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.drawerPinned()).toBe(false);
+    expect(localStorage.getItem('st:drawerPinned')).toBe('false');
+  });
+
+  it('closing the unpinned drawer popover restores focus to the toggle', async () => {
+    const { fixture } = await setup({ repos: [makeRepository(1)] });
+    fixture.componentInstance.drawerPinned.set(false);
+    fixture.componentInstance.drawerOpen.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // With the drawer unpinned and open, the floating popover is mounted.
+    expect(query(fixture, 'popover')).not.toBeNull();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.drawerOpen()).toBe(false);
+    const toggle = query<HTMLElement>(fixture, 'top-bar-drawer-toggle');
+    expect(toggle).not.toBeNull();
+    expect(document.activeElement).toBe(toggle);
   });
 
   it('renders the real branch/remote names supplied by RepoState', async () => {
@@ -584,7 +632,7 @@ describe('LayoutComponent', () => {
     });
     const el = fixture.nativeElement as HTMLElement;
 
-    const toolbarBadge = el.querySelector('[data-testid="toolbar-pull-badge"]');
+    const toolbarBadge = el.querySelector('[data-testid="top-bar-pull-badge"]');
     expect(toolbarBadge?.textContent?.trim()).toBe('5');
 
     const sidebarBadges = el.querySelectorAll('[data-testid="st-sidebar-branch-badge"]');
@@ -609,8 +657,8 @@ describe('LayoutComponent', () => {
     const { fixture } = await setup({ tags: ['v0.1.0'] });
     const el = fixture.nativeElement as HTMLElement;
 
-    const tagsHead = Array.from(el.querySelectorAll<HTMLButtonElement>('.st-left__head')).find((b) =>
-      b.textContent?.includes('TAGS'),
+    const tagsHead = Array.from(el.querySelectorAll<HTMLButtonElement>('.st-rail__head')).find((b) =>
+      b.textContent?.includes('Tags'),
     );
     expect(tagsHead).toBeDefined();
     tagsHead!.click();
@@ -628,44 +676,44 @@ describe('LayoutComponent', () => {
     );
   });
 
-  it('disables the remote-op toolbar buttons when no repository is active', async () => {
+  it('disables the remote-op buttons when no repository is active', async () => {
     const { fixture } = await setup({ activeId: null });
 
-    for (const testId of ['toolbar-pull', 'toolbar-push', 'toolbar-fetch']) {
-      expect(query<HTMLButtonElement>(fixture, testId)?.disabled).toBe(true);
+    for (const testId of ['top-bar-pull', 'top-bar-push', 'top-bar-fetch']) {
+      expect(innerButton(fixture, testId)?.disabled).toBe(true);
     }
   });
 
-  it('enables the remote-op toolbar buttons when a repository is active', async () => {
+  it('enables the remote-op buttons when a repository is active', async () => {
     const { fixture } = await setup({ activeId: 'repo-1' });
 
-    for (const testId of ['toolbar-pull', 'toolbar-push', 'toolbar-fetch']) {
-      expect(query<HTMLButtonElement>(fixture, testId)?.disabled).toBe(false);
+    for (const testId of ['top-bar-pull', 'top-bar-push', 'top-bar-fetch']) {
+      expect(innerButton(fixture, testId)?.disabled).toBe(false);
     }
   });
 
-  it('opens the pull dialog from the toolbar', async () => {
+  it('opens the pull dialog from the top bar', async () => {
     const { fixture, remoteOps } = await setup({ activeId: 'repo-1' });
 
-    query<HTMLButtonElement>(fixture, 'toolbar-pull')!.click();
+    innerButton(fixture, 'top-bar-pull')!.click();
 
     expect(remoteOps.openDialog).toHaveBeenCalledTimes(1);
     expect(remoteOps.openDialog).toHaveBeenCalledWith('pull');
   });
 
-  it('opens the push dialog from the toolbar', async () => {
+  it('opens the push dialog from the top bar', async () => {
     const { fixture, remoteOps } = await setup({ activeId: 'repo-1' });
 
-    query<HTMLButtonElement>(fixture, 'toolbar-push')!.click();
+    innerButton(fixture, 'top-bar-push')!.click();
 
     expect(remoteOps.openDialog).toHaveBeenCalledTimes(1);
     expect(remoteOps.openDialog).toHaveBeenCalledWith('push');
   });
 
-  it('opens the fetch dialog from the toolbar', async () => {
+  it('opens the fetch dialog from the top bar', async () => {
     const { fixture, remoteOps } = await setup({ activeId: 'repo-1' });
 
-    query<HTMLButtonElement>(fixture, 'toolbar-fetch')!.click();
+    innerButton(fixture, 'top-bar-fetch')!.click();
 
     expect(remoteOps.openDialog).toHaveBeenCalledTimes(1);
     expect(remoteOps.openDialog).toHaveBeenCalledWith('fetch');
@@ -1249,8 +1297,8 @@ describe('LayoutComponent', () => {
     expect(tagsHead).toHaveLength(0);
     // Expand TAGS first.
     const head = Array.from(
-      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.st-left__head'),
-    ).find((b) => b.textContent?.includes('TAGS'))!;
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.st-rail__head'),
+    ).find((b) => b.textContent?.includes('Tags'))!;
     head.click();
     fixture.detectChanges();
 
@@ -1298,8 +1346,8 @@ describe('LayoutComponent', () => {
 
   function expandStashes(fixture: { nativeElement: unknown; detectChanges: () => void }): void {
     const head = Array.from(
-      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.st-left__head'),
-    ).find((b) => b.textContent?.includes('STASHES'))!;
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.st-rail__head'),
+    ).find((b) => b.textContent?.includes('Stashes'))!;
     head.click();
     fixture.detectChanges();
   }
@@ -1538,9 +1586,9 @@ describe('LayoutComponent', () => {
     ]);
     const { fixture, remoteOps } = await setup({}, {}, workspaces);
 
-    const button = query<HTMLButtonElement>(fixture, 'toolbar-fetch-all')!;
-    expect(button.disabled).toBe(false);
-    button.click();
+    const fetchAll = innerButton(fixture, 'top-bar-fetch-all')!;
+    expect(fetchAll.disabled).toBe(false);
+    fetchAll.click();
 
     expect(remoteOps.runFetchAll).toHaveBeenCalledWith([
       { repoId: 'repo-1', name: 'local-1' },
@@ -1551,7 +1599,24 @@ describe('LayoutComponent', () => {
   it('disables fetch-all when no tab is open', async () => {
     const { fixture } = await setup();
 
-    expect(query<HTMLButtonElement>(fixture, 'toolbar-fetch-all')!.disabled).toBe(true);
+    expect(innerButton(fixture, 'top-bar-fetch-all')!.disabled).toBe(true);
+  });
+
+  it('announces fetch-all progress through the status-bar live region', async () => {
+    const { fixture, remoteOps } = await setup();
+    const liveRegion = TestBed.inject(LiveRegionService);
+
+    remoteOps.fetchAllRunning.set(true);
+    remoteOps.fetchAllProgress.set({ done: 1, total: 2 });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(liveRegion.message()).toContain('1/2');
+    const region = (fixture.nativeElement as HTMLElement).querySelector('[role="status"]');
+    expect(region).not.toBeNull();
+    expect(region!.textContent).toContain('Fetching repositories');
+    expect(region!.textContent).toContain('1/2');
   });
 
   // -- cross-repo search (ADR-026) -----------------------------------------
@@ -1573,7 +1638,7 @@ describe('LayoutComponent', () => {
 
     // Selecting Search is an in-shell action: it must not route, so the new
     // URL-driven effect has no NavigationEnd to re-derive the highlight from.
-    const items = Array.from(el.querySelectorAll<HTMLElement>('.st-left__item'));
+    const items = Array.from(el.querySelectorAll<HTMLElement>('.st-rail__item'));
     items.find((item) => item.textContent?.includes('Search'))!.click();
     fixture.detectChanges();
     await fixture.whenStable();
@@ -1879,7 +1944,7 @@ describe('LayoutComponent', () => {
     stubClipboard('https://example.com/me/app.git');
     const { fixture } = await setup();
 
-    query<HTMLButtonElement>(fixture, 'toolbar-clone-clipboard')!.click();
+    innerButton(fixture, 'top-bar-clone-clipboard')!.click();
     await vi.waitFor(() => expect(query(fixture, 'clone-url')).not.toBeNull());
   });
 
@@ -1891,7 +1956,7 @@ describe('LayoutComponent', () => {
     );
     const { writeText } = stubClipboard();
 
-    query<HTMLButtonElement>(fixture, 'toolbar-copy-repo-url')!.click();
+    innerButton(fixture, 'top-bar-copy-repo-url')!.click();
     await vi.waitFor(() => expect(writeText).toHaveBeenCalledWith('https://example.com/me/app.git'));
   });
 });

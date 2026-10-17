@@ -1,5 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import type { FileDiff, FileStatus } from '@contracts/domain';
+import {
+  ButtonComponent,
+  IconComponent,
+  SelectableRowDirective,
+  TextareaComponent,
+} from '@singularitree/ui-kit';
 import { HunkActions, type HunkActionEvent } from './hunk-actions';
 
 /**
@@ -11,7 +17,7 @@ import { HunkActions, type HunkActionEvent } from './hunk-actions';
 @Component({
   selector: 'st-changes-panel',
   standalone: true,
-  imports: [HunkActions],
+  imports: [ButtonComponent, IconComponent, TextareaComponent, SelectableRowDirective, HunkActions],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="st-changes">
@@ -21,26 +27,30 @@ import { HunkActions, type HunkActionEvent } from './hunk-actions';
 
       <div class="st-changes__sections">
         <section class="st-changes__section">
-          <h3 class="st-changes__heading" i18n>Staged changes</h3>
+          <h3 class="st-changes__heading st-eyebrow" i18n>Staged changes</h3>
           @if (stagedFiles().length) {
             <ul class="st-changes__list">
               @for (file of stagedFiles(); track file.path) {
                 <li
+                  stSelectableRow
+                  [selected]="file.path === selectedPath()"
+                  (rowActivated)="fileSelect.emit(file.path)"
                   class="st-changes__row"
                   data-testid="status-file"
                   [class.st-changes__row--selected]="file.path === selectedPath()"
-                  (click)="fileSelect.emit(file.path)"
                 >
                   <span class="st-changes__path">{{ file.path }}</span>
-                  <button
-                    type="button"
-                    class="st-changes__action"
-                    data-testid="status-unstage"
-                    (click)="onUnstage($event, file.path)"
-                    i18n
-                  >
-                    Unstage
-                  </button>
+                  <span class="st-changes__actions">
+                    <st-button
+                      variant="icon"
+                      size="sm"
+                      data-testid="status-unstage"
+                      [ariaLabel]="a11yUnstage"
+                      (click)="onUnstage($event, file.path)"
+                    >
+                      <st-icon name="minus"></st-icon>
+                    </st-button>
+                  </span>
                 </li>
               }
             </ul>
@@ -50,35 +60,39 @@ import { HunkActions, type HunkActionEvent } from './hunk-actions';
         </section>
 
         <section class="st-changes__section">
-          <h3 class="st-changes__heading" i18n>Unstaged changes</h3>
+          <h3 class="st-changes__heading st-eyebrow" i18n>Unstaged changes</h3>
           @if (unstagedFiles().length) {
             <ul class="st-changes__list">
               @for (file of unstagedFiles(); track file.path) {
                 <li
+                  stSelectableRow
+                  [selected]="file.path === selectedPath()"
+                  (rowActivated)="fileSelect.emit(file.path)"
                   class="st-changes__row"
                   data-testid="status-file"
                   [class.st-changes__row--selected]="file.path === selectedPath()"
-                  (click)="fileSelect.emit(file.path)"
                 >
                   <span class="st-changes__path">{{ file.path }}</span>
-                  <button
-                    type="button"
-                    class="st-changes__action"
-                    data-testid="status-stage"
-                    (click)="onStage($event, file.path)"
-                    i18n
-                  >
-                    Stage
-                  </button>
-                  <button
-                    type="button"
-                    class="st-changes__action st-changes__action--danger"
-                    data-testid="status-discard"
-                    (click)="onDiscard($event, file.path)"
-                    i18n
-                  >
-                    Discard
-                  </button>
+                  <span class="st-changes__actions">
+                    <st-button
+                      variant="icon"
+                      size="sm"
+                      data-testid="status-stage"
+                      [ariaLabel]="a11yStage"
+                      (click)="onStage($event, file.path)"
+                    >
+                      <st-icon name="plus"></st-icon>
+                    </st-button>
+                    <st-button
+                      variant="icon"
+                      size="sm"
+                      data-testid="status-discard"
+                      [ariaLabel]="a11yDiscard"
+                      (click)="onDiscard($event, file.path)"
+                    >
+                      <st-icon name="discard"></st-icon>
+                    </st-button>
+                  </span>
                 </li>
               }
             </ul>
@@ -94,7 +108,7 @@ import { HunkActions, type HunkActionEvent } from './hunk-actions';
 
       @if (selectedPath() && (unstagedFile() || stagedFile())) {
         <div class="st-changes__hunks" data-testid="changes-hunks">
-          <h3 class="st-changes__heading" i18n>Hunk actions</h3>
+          <h3 class="st-changes__heading st-eyebrow" i18n>Hunk actions</h3>
           <st-hunk-actions
             [unstagedFile]="unstagedFile()"
             [stagedFile]="stagedFile()"
@@ -112,57 +126,65 @@ import { HunkActions, type HunkActionEvent } from './hunk-actions';
         @if (commitError(); as error) {
           <p class="st-changes__error" data-testid="commit-error">{{ error }}</p>
         }
-        <textarea
-          class="st-changes__message"
-          rows="2"
+        <st-textarea
           data-testid="commit-message-input"
-          placeholder="Commit message"
-          i18n-placeholder
           [value]="message()"
           [disabled]="busy()"
-          (input)="onMessage($event)"
-        ></textarea>
-        <button
-          type="button"
-          class="st-changes__commit-button"
+          [rows]="2"
+          [placeholder]="commitPlaceholder"
+          (valueChange)="messageChange.emit($event)"
+        />
+        <st-button
+          variant="primary"
+          size="md"
           data-testid="commit-button"
           [disabled]="!canCommit()"
           (click)="commit.emit()"
           i18n
         >
           Commit
-        </button>
+        </st-button>
       </div>
     </section>
   `,
   styles: `
+    /* The host is a bounded flex column: the file-status page hands it the full
+       height of the left pane, so the panel can pin its commit box to the bottom
+       while the file sections scroll in the space that remains. flex (not a
+       percentage height) plus min-height: 0 lets it shrink below its content
+       when the lists overflow instead of growing the pane. */
     :host {
-      display: block;
-      color: var(--st-color-text, #d6d6de);
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 0;
+      color: var(--st-color-text);
     }
 
     .st-changes {
       display: flex;
       flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 0;
       gap: 8px;
       padding: 8px 12px;
       font-size: 12px;
     }
 
+    /* The scrollable region: it takes all the slack, so a short list still
+       pushes the fixed commit box to the bottom rather than leaving it mid-pane. */
     .st-changes__sections {
       display: flex;
       flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 0;
       gap: 10px;
-      overflow: auto;
+      overflow-y: auto;
+      overflow-x: hidden;
     }
 
     .st-changes__heading {
       margin: 0 0 4px;
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      opacity: 0.6;
     }
 
     .st-changes__list {
@@ -174,90 +196,71 @@ import { HunkActions, type HunkActionEvent } from './hunk-actions';
     .st-changes__row {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 8px;
+      gap: var(--st-space-2);
       padding: 2px 4px;
       border-radius: 4px;
       cursor: pointer;
     }
 
-    .st-changes__row:hover {
-      background: color-mix(in srgb, var(--st-color-text, #d6d6de) 8%, transparent);
-    }
-
     .st-changes__row--selected {
-      background: color-mix(in srgb, var(--st-color-accent, #0a84ff) 22%, transparent);
+      background: var(--st-color-selected);
     }
 
+    /* The path is the row's only flexible child: it takes the slack so a long,
+       wrapping path can never push the actions around. No justify-content:
+       space-between here — with three children it would centre the middle
+       action instead of pinning the group to the right edge. */
     .st-changes__path {
+      flex: 1 1 auto;
+      min-width: 0;
       word-break: break-all;
     }
 
-    .st-changes__action,
-    .st-changes__commit-button {
-      border: 1px solid var(--st-color-border, #2f2f44);
-      border-radius: 4px;
-      background: var(--st-color-surface, #252536);
-      color: inherit;
-      font-size: 11px;
-      cursor: pointer;
+    /* One right-pinned actions group per row, identical in both sections, so the
+       stage (+) and the discard (trash) buttons stay adjacent and flush right. */
+    .st-changes__actions {
+      flex: none;
+      display: flex;
+      align-items: center;
+      gap: var(--st-space-1);
     }
 
-    .st-changes__action {
-      padding: 1px 6px;
-    }
-
-    .st-changes__action--danger {
-      border-color: color-mix(in srgb, #ff6b6b 55%, var(--st-color-border, #2f2f44));
-      color: #ff8f8f;
-    }
-
+    /* Sits between the lists and the footer: fixed, so it never eats the
+       scrollable slack and is never squeezed to zero. */
     .st-changes__hunks {
-      border-top: 1px solid var(--st-color-border, #2f2f44);
-      padding-top: 8px;
+      flex: none;
+      border-top: var(--st-hairline) solid var(--st-color-border);
+      padding-top: var(--st-space-2);
     }
 
-    .st-changes__commit-button {
-      padding: 4px 12px;
-      align-self: flex-end;
-    }
-
-    .st-changes__commit-button:disabled {
-      opacity: 0.5;
-      cursor: default;
-    }
-
-    .st-changes__message {
-      width: 100%;
-      box-sizing: border-box;
-      resize: vertical;
-      padding: 4px 8px;
-      border-radius: 4px;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      background: var(--st-color-surface, #252536);
-      color: inherit;
-      font-family: inherit;
-      font-size: 12px;
-    }
-
+    /* Pinned footer: fixed (never grows or shrinks), so the sections keep the
+       scrollable slack; the top hairline reads it as the commit box. */
     .st-changes__commit {
       display: flex;
       flex-direction: column;
+      flex: none;
       gap: 6px;
+      border-top: var(--st-hairline) solid var(--st-color-border);
+      padding-top: var(--st-space-2);
     }
 
     .st-changes__empty {
       margin: 0;
-      opacity: 0.55;
+      color: var(--st-color-muted);
     }
 
     .st-changes__error {
       margin: 0;
-      color: #ff6b6b;
+      color: var(--st-color-danger);
     }
   `,
 })
 export class ChangesPanel {
+  readonly commitPlaceholder = $localize`Commit message`;
+  readonly a11yStage = $localize`Stage file`;
+  readonly a11yUnstage = $localize`Unstage file`;
+  readonly a11yDiscard = $localize`Discard changes`;
+
   readonly stagedFiles = input<FileStatus[]>([]);
   readonly unstagedFiles = input<FileStatus[]>([]);
   readonly message = input('');
@@ -303,10 +306,6 @@ export class ChangesPanel {
     if (this.busy()) return;
     if (!confirmFileDiscard(path)) return;
     this.discardFile.emit(path);
-  }
-
-  onMessage(event: Event): void {
-    this.messageChange.emit((event.target as HTMLTextAreaElement).value);
   }
 }
 

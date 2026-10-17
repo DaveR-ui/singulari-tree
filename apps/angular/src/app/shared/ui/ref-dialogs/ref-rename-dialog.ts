@@ -6,6 +6,7 @@ import {
   output,
   signal,
 } from '@angular/core';
+import { ButtonComponent, InputComponent } from '@singularitree/ui-kit';
 import { ModalComponent } from '@shared/ui/modal/modal';
 import type { AppError } from '@core/services/ipc-bridge.service';
 
@@ -19,7 +20,7 @@ import type { AppError } from '@core/services/ipc-bridge.service';
 @Component({
   selector: 'st-ref-rename-dialog',
   standalone: true,
-  imports: [ModalComponent],
+  imports: [ModalComponent, ButtonComponent, InputComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <st-modal
@@ -33,12 +34,11 @@ import type { AppError } from '@core/services/ipc-bridge.service';
       </p>
       <label class="st-ref-dialog__field">
         <span i18n>New name</span>
-        <input
-          type="text"
-          data-testid="ref-rename-input"
+        <st-input
+          [testId]="'ref-rename-input'"
           [value]="newName()"
-          (input)="onName($event)"
           (keydown.enter)="submit()"
+          (valueChange)="newName.set($event)"
         />
       </label>
 
@@ -46,25 +46,24 @@ import type { AppError } from '@core/services/ipc-bridge.service';
         <p class="st-ref-dialog__error" data-testid="ref-rename-error">{{ err.message }}</p>
       }
 
-      <button
+      <st-button
         st-modal-footer
-        type="button"
+        variant="default"
         data-testid="ref-rename-cancel"
         [disabled]="running()"
         (click)="cancel()"
       >
         Cancel
-      </button>
-      <button
+      </st-button>
+      <st-button
         st-modal-footer
-        type="button"
-        class="st-ref-dialog__primary"
+        variant="primary"
         data-testid="ref-rename-submit"
         [disabled]="!canSubmit() || running()"
         (click)="submit()"
       >
         Rename
-      </button>
+      </st-button>
     </st-modal>
   `,
   styles: `
@@ -73,43 +72,24 @@ import type { AppError } from '@core/services/ipc-bridge.service';
     }
 
     .st-ref-dialog__current {
-      margin: 0 0 10px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 12px;
-      opacity: 0.75;
+      margin: 0 0 var(--st-space-3);
+      font-family: var(--st-font-mono);
+      font-size: var(--st-font-12);
+      color: var(--st-color-muted);
       word-break: break-all;
     }
 
     .st-ref-dialog__field {
       display: flex;
       flex-direction: column;
-      gap: 4px;
-      font-size: 12px;
-    }
-
-    .st-ref-dialog__field input {
-      padding: 6px 8px;
-      border-radius: 5px;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      background: var(--st-color-surface, #252536);
-      color: inherit;
-      font: inherit;
+      gap: var(--st-space-1);
+      font-size: var(--st-font-12);
     }
 
     .st-ref-dialog__error {
-      margin: 12px 0 0;
-      color: #ff8a80;
-      font-size: 12px;
-    }
-
-    .st-ref-dialog__primary {
-      background: rgba(90, 140, 255, 0.2);
-      border-color: rgba(90, 140, 255, 0.6);
-      color: #9db8ff;
-    }
-
-    .st-ref-dialog__primary:disabled {
-      opacity: 0.5;
+      margin: var(--st-space-3) 0 0;
+      color: var(--st-color-danger);
+      font-size: var(--st-font-12);
     }
   `,
 })
@@ -135,10 +115,6 @@ export class RefRenameDialog {
         this.newName.set(this.currentName());
       }
     });
-  }
-
-  onName(event: Event): void {
-    this.newName.set((event.target as HTMLInputElement).value);
   }
 
   submit(): void {

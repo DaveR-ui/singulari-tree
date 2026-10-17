@@ -13,6 +13,7 @@
     "node": "^22.22.3 || ^24.15.0 || >=26.0.0"
   },
   "scripts": {
+    "prestart": "node tools/scripts/verify-go-core-fresh.js",
     "start": "concurrently --kill-others --names \"angular,electron\" \"npm run start --workspace=@singularitree/angular\" \"npm run start:wait --workspace=@singularitree/electron\"",
     "start:electron-only": "npm run start:dev --workspace=@singularitree/electron",
     "build": "npm run build --workspaces --if-present",

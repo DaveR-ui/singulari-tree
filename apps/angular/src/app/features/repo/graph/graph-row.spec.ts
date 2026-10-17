@@ -75,6 +75,42 @@ describe('GraphRow (ui-kit)', () => {
     expect(refs[2]?.className).toContain('st-graph-row__ref--tag');
   });
 
+  it('styles the mainline branch ref with the mint --main role', () => {
+    const commit = makeCommit({
+      refs: [
+        { name: 'main', kind: 'branch' },
+        { name: 'master', kind: 'branch' },
+      ],
+    });
+    const fixture = render(commit, makeLane());
+    const refs = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('[data-testid="graph-row-ref"]'),
+    );
+
+    expect(refs).toHaveLength(2);
+    expect(refs[0]?.className).toContain('st-graph-row__ref--main');
+    expect(refs[1]?.className).toContain('st-graph-row__ref--main');
+  });
+
+  it('styles a non-mainline branch ref with the branch role', () => {
+    const commit = makeCommit({ refs: [{ name: 'feature/tokens', kind: 'branch' }] });
+    const fixture = render(commit, makeLane());
+    const ref = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="graph-row-ref"]',
+    );
+
+    expect(ref?.className).toContain('st-graph-row__ref--branch');
+    expect(ref?.className).not.toContain('st-graph-row__ref--main');
+  });
+
+  it('marks a selected row with the selected fill and the selection bar', () => {
+    const fixture = render(makeCommit(), makeLane(), true);
+    const el = fixture.nativeElement as HTMLElement;
+
+    expect(el.className).toContain('st-graph-row--selected');
+    expect(el.className).toContain('st-selection-bar');
+  });
+
   it('draws the lane vertical line only when the lane continues, using the palette color', () => {
     const continues = render(makeCommit(), makeLane({ color: 1, continues: true }));
     const line = (continues.nativeElement as HTMLElement).querySelector('line');

@@ -1,6 +1,23 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
-export type BadgeVariant = 'neutral' | 'branch' | 'tag' | 'success' | 'warning';
+export type BadgeVariant =
+  | 'neutral'
+  | 'branch'
+  | 'tag'
+  | 'success'
+  | 'warning'
+  | 'add'
+  | 'remove'
+  | 'warn'
+  | 'danger'
+  | 'graph-1'
+  | 'graph-2'
+  | 'graph-3'
+  | 'graph-4'
+  | 'graph-5'
+  | 'graph-6'
+  | 'graph-7'
+  | 'graph-8';
 
 /**
  * Dumb pill badge for branch/tag/status labels. Renders projected text only.
@@ -20,36 +37,100 @@ export type BadgeVariant = 'neutral' | 'branch' | 'tag' | 'success' | 'warning';
       display: inline-flex;
       align-items: center;
       padding: 1px 6px;
-      border-radius: 999px;
+      border-radius: var(--st-radius-pill);
       font-size: 10px;
       line-height: 14px;
       white-space: nowrap;
     }
 
     .st-badge--neutral {
-      background: var(--st-color-surface, #252536);
-      color: var(--st-color-text, #d6d6de);
-      border: 1px solid var(--st-color-border, #2f2f44);
+      background: var(--st-color-surface);
+      color: var(--st-color-text);
+      border: 1px solid var(--st-color-border);
     }
 
     .st-badge--branch {
-      background: #1a3a5a;
-      color: #7ec8ff;
+      background: var(--st-color-badge-branch-bg);
+      color: var(--st-color-badge-branch-fg);
     }
 
     .st-badge--tag {
-      background: #3a2a1a;
-      color: #ffb86a;
+      background: var(--st-color-badge-tag-bg);
+      color: var(--st-color-badge-tag-fg);
     }
 
     .st-badge--success {
-      background: #163a24;
-      color: #4ade80;
+      background: var(--st-color-badge-success-bg);
+      color: var(--st-color-badge-success-fg);
     }
 
     .st-badge--warning {
-      background: #3a321a;
-      color: #ffd60a;
+      background: var(--st-color-badge-warning-bg);
+      color: var(--st-color-badge-warning-fg);
+    }
+
+    .st-badge--add {
+      background: var(--st-color-add-soft);
+      color: var(--st-color-add);
+    }
+
+    .st-badge--remove {
+      background: var(--st-color-remove-soft);
+      color: var(--st-color-remove);
+    }
+
+    .st-badge--warn {
+      background: var(--st-color-warn-soft);
+      color: var(--st-color-warn);
+    }
+
+    .st-badge--danger {
+      background: var(--st-color-danger-soft);
+      color: var(--st-color-danger);
+    }
+
+    /*
+     * Graph lane badges mirror the commit-graph lane palette (plan §4.5):
+     * the lane colour is the foreground, a low-alpha mix of it the fill.
+     */
+    .st-badge--graph-1 {
+      background: color-mix(in srgb, var(--st-color-graph-lane-1) 18%, transparent);
+      color: var(--st-color-graph-lane-1);
+    }
+
+    .st-badge--graph-2 {
+      background: color-mix(in srgb, var(--st-color-graph-lane-2) 18%, transparent);
+      color: var(--st-color-graph-lane-2);
+    }
+
+    .st-badge--graph-3 {
+      background: color-mix(in srgb, var(--st-color-graph-lane-3) 18%, transparent);
+      color: var(--st-color-graph-lane-3);
+    }
+
+    .st-badge--graph-4 {
+      background: color-mix(in srgb, var(--st-color-graph-lane-4) 18%, transparent);
+      color: var(--st-color-graph-lane-4);
+    }
+
+    .st-badge--graph-5 {
+      background: color-mix(in srgb, var(--st-color-graph-lane-5) 18%, transparent);
+      color: var(--st-color-graph-lane-5);
+    }
+
+    .st-badge--graph-6 {
+      background: color-mix(in srgb, var(--st-color-graph-lane-6) 18%, transparent);
+      color: var(--st-color-graph-lane-6);
+    }
+
+    .st-badge--graph-7 {
+      background: color-mix(in srgb, var(--st-color-graph-lane-7) 18%, transparent);
+      color: var(--st-color-graph-lane-7);
+    }
+
+    .st-badge--graph-8 {
+      background: color-mix(in srgb, var(--st-color-graph-lane-8) 18%, transparent);
+      color: var(--st-color-graph-lane-8);
     }
   `,
 })

@@ -1,12 +1,12 @@
 ---
-last_updated: 2026-10-13
+last_updated: 2026-10-16
 status: active
 description: Agent-facing entry point of SingulariTree — Angular + Electron + Go core monorepo; stack, slices, commands and corpus navigation.
 tags:
 - project
 - entry-point
 - singularitree
-version: 1.3.2
+version: 1.5.2
 doc_language: en
 ---
 
@@ -70,6 +70,7 @@ SingulariTree is a **monorepo** for a cross-platform desktop Git client. System 
 | `./tools/ci/verify-contracts.sh` | contracts breaking check |
 | `./tools/ci/verify-migrations.sh` | validates SQLite migrations |
 | `./tools/scripts/build-go-core.sh` | builds the core binary |
+| `node tools/scripts/verify-go-core-fresh.js` | staleness guard: fails loudly when `dist/go-core` predates the Go core sources (runs automatically from root `prestart`, i.e. on every `npm start`) |
 | `./tools/scripts/run-tests-local.sh` | reproduce the CI suites locally (build + go test + Electron vitest + Playwright smoke); `--go-only`/`--ts-only`/`--e2e-only`/`--build-only` narrow it, `--windows-paths` adds a best-effort Wine run |
 | `node tools/docs/validate.js` | validates the corpus (exit 1 on errors) |
 | `node tools/docs/validate.js --write` | regenerates `docs/index.md` + `docs/tag-index.md` |
@@ -113,7 +114,7 @@ SingulariTree/
 - SQLite per user (WAL, `foreign_keys=ON`) and **NEVER** stores Git objects.
 - Necomat `frontend/`/`backend/` remain intact.
 - Tests/builds from the package directory (never the root, except Go via `go.work`).
-- ADRs are append-only; numbering continues at ADR-031 (new files use the padded form, e.g. `adr-0031-…`).
+- ADRs are append-only; numbering continues at ADR-033 (last used: ADR-0032; new files use the padded form, e.g. `adr-0032-…`).
 
 ## Domain Entities
 
@@ -132,6 +133,8 @@ SingulariTree/
 - [`docs/protocols/new-note-protocol.md`](protocols/new-note-protocol.md) — create a new note per the contract.
 - [`docs/protocols/docs-review-protocol.md`](protocols/docs-review-protocol.md) — corpus review and validator errors.
 - [`docs/adrs/adr-index.md`](adrs/adr-index.md) — ADR hub (structural decisions, append-only).
+- [`docs/context/renderer-redesign-plan.md`](context/renderer-redesign-plan.md) — total-facelift design plan for the renderer's visible UI (shell, navigation, workspace panes, commit/diff/graph, settings), derived from the operator's git-client sketch with 16 justified divergences; P0–P6 shipped (P4.2 adds the Dark Neon / Developer Studio palette remap; P5 lands the secondary surfaces, the expanded Settings and the shared-modal focus trap; P6 — responsive, a11y & motion polish — is the final phase of the facelift: the ≤1600 / ≤1100 / ≤800 breakpoint utilities and stacked shell, the nav-rail `aria-expanded` heads, runtime `st:motion` enforcement, and the regenerated en/es message catalogues).
+- [`docs/context/design-system.md`](context/design-system.md) — shipped Dark Neon / Developer Studio design system: two-tier token vocabulary (dark + light), typography, spacing and geometry, the ui-kit component inventory, and copy-paste usage.
 
 ## Common Lookups
 

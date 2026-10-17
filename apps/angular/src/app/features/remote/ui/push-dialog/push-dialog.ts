@@ -10,6 +10,12 @@ import {
 import type { AppError } from '@core/services/ipc-bridge.service';
 import { ModalComponent } from '@shared/ui/modal/modal';
 import {
+  ButtonComponent,
+  IconComponent,
+  InputComponent,
+  SelectComponent,
+} from '@singularitree/ui-kit';
+import {
   type PushIntent,
   type PushRowSelection,
   type PushRowView,
@@ -33,7 +39,7 @@ interface PushRowState {
 @Component({
   selector: 'st-push-dialog',
   standalone: true,
-  imports: [ModalComponent],
+  imports: [ModalComponent, ButtonComponent, IconComponent, InputComponent, SelectComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <st-modal
@@ -42,43 +48,33 @@ interface PushRowState {
       (closed)="closed.emit()"
     >
       <div class="st-push" data-testid="push-dialog">
-        <div class="st-push__field">
-          <label class="st-push__label" for="push-remote">Remote</label>
-          <select
-            id="push-remote"
-            class="st-push__select"
-            data-testid="push-remote-select"
+        <label class="st-push__field">
+          <span class="st-push__label">Remote</span>
+          <st-select
+            [testId]="'push-remote-select'"
             [value]="selectedRemote()"
-            (change)="onRemoteChange($event)"
+            (valueChange)="onRemoteChange($event)"
           >
             @for (remote of remotes(); track remote.name) {
               <option [value]="remote.name" [selected]="remote.name === selectedRemote()">
                 {{ remote.name }}
               </option>
             }
-          </select>
-        </div>
+          </st-select>
+        </label>
 
-        <div class="st-push__field">
-          <label class="st-push__label" for="push-remote-url">URL</label>
-          <input
-            id="push-remote-url"
-            class="st-push__input"
-            type="text"
-            readonly
-            data-testid="push-remote-url"
+        <label class="st-push__field">
+          <span class="st-push__label">URL</span>
+          <st-input
+            [testId]="'push-remote-url'"
             [value]="selectedRemoteUrl()"
+            [readonly]="true"
           />
-        </div>
+        </label>
 
-        <button
-          type="button"
-          class="st-push__refresh"
-          data-testid="push-refresh"
-          (click)="refreshRequested.emit()"
-        >
-          ↻ Refresh
-        </button>
+        <st-button variant="default" data-testid="push-refresh" (click)="refreshRequested.emit()">
+          <st-icon name="sync" />Refresh
+        </st-button>
 
         <h3 class="st-push__heading">Branches to push</h3>
         <table class="st-push__table" data-testid="push-table">
@@ -104,21 +100,18 @@ interface PushRowState {
                 </td>
                 <td data-testid="push-row-local">{{ row.localBranch }}</td>
                 <td>
-                  <div class="st-push__track">
-                    <select
-                      class="st-push__select"
-                      data-testid="push-row-remote-select"
-                      [value]="stateFor(row).remoteBranch"
-                      [attr.aria-label]="'Remote branch for ' + row.localBranch"
-                      (change)="onRowRemoteBranchChange(row, $event)"
-                    >
-                      @for (branch of rowOptions()[row.localBranch]; track branch) {
-                        <option [value]="branch" [selected]="branch === stateFor(row).remoteBranch">
-                          {{ branch }}
-                        </option>
-                      }
-                    </select>
-                  </div>
+                  <st-select
+                    [testId]="'push-row-remote-select'"
+                    [ariaLabel]="'Remote branch for ' + row.localBranch"
+                    [value]="stateFor(row).remoteBranch"
+                    (valueChange)="onRowRemoteBranchChange(row, $event)"
+                  >
+                    @for (branch of rowOptions()[row.localBranch]; track branch) {
+                      <option [value]="branch" [selected]="branch === stateFor(row).remoteBranch">
+                        {{ branch }}
+                      </option>
+                    }
+                  </st-select>
                 </td>
                 <td class="st-push__track">
                   <input
@@ -183,25 +176,23 @@ interface PushRowState {
         }
       </div>
 
-      <div class="st-push__footer" st-modal-footer>
-        <button
-          type="button"
-          class="st-push__btn"
-          data-testid="push-cancel"
-          (click)="closed.emit()"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          class="st-push__btn st-push__btn--primary"
-          data-testid="push-submit"
-          [disabled]="!canSubmit()"
-          (click)="onSubmit()"
-        >
-          Push
-        </button>
-      </div>
+      <st-button
+        st-modal-footer
+        variant="default"
+        data-testid="push-cancel"
+        (click)="closed.emit()"
+      >
+        Cancel
+      </st-button>
+      <st-button
+        st-modal-footer
+        variant="primary"
+        data-testid="push-submit"
+        [disabled]="!canSubmit()"
+        (click)="onSubmit()"
+      >
+        Push
+      </st-button>
     </st-modal>
   `,
   styles: `
@@ -212,149 +203,89 @@ interface PushRowState {
     .st-push {
       display: flex;
       flex-direction: column;
-      gap: 10px;
-      color: var(--st-color-text, #d6d6de);
+      gap: var(--st-space-3);
+      color: var(--st-color-text);
     }
 
     .st-push__field {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: var(--st-space-2);
     }
 
+    /* Two space-7 units keep the short Remote/URL labels aligned. */
     .st-push__label {
-      width: 56px;
-      font-size: 12px;
+      width: calc(var(--st-space-7) * 2);
+      font-size: var(--st-font-12);
       font-weight: 600;
-      opacity: 0.8;
-    }
-
-    .st-push__select,
-    .st-push__input {
-      flex: 1 1 auto;
-      min-width: 0;
-      padding: 4px 8px;
-      border-radius: 4px;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      background: #1a1a2a;
-      color: var(--st-color-text, #d6d6de);
-      font-size: 12px;
-      outline: none;
-    }
-
-    .st-push__select:focus,
-    .st-push__input:focus {
-      border-color: var(--st-color-accent, #0a84ff);
-    }
-
-    .st-push__input[readonly] {
-      opacity: 0.7;
-    }
-
-    .st-push__refresh {
-      align-self: flex-start;
-      padding: 4px 10px;
-      border-radius: 4px;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      background: transparent;
-      color: inherit;
-      font-size: 12px;
-      cursor: pointer;
-    }
-
-    .st-push__refresh:hover {
-      background: rgba(255, 255, 255, 0.07);
+      color: var(--st-color-muted);
     }
 
     .st-push__heading {
-      margin: 4px 0 0;
-      font-size: 12px;
+      margin: var(--st-space-1) 0 0;
+      font-size: var(--st-font-12);
       font-weight: 700;
-      letter-spacing: 0.3px;
+      letter-spacing: 0.03em;
     }
 
     .st-push__table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 12px;
+      font-size: var(--st-font-12);
     }
 
     .st-push__table th,
     .st-push__table td {
-      padding: 6px 8px;
+      padding: var(--st-space-1) var(--st-space-2);
       text-align: left;
-      border-bottom: 1px solid var(--st-color-border, #2f2f44);
+      border-bottom: var(--st-hairline) solid var(--st-color-border);
       vertical-align: middle;
     }
 
     .st-push__table th {
       font-weight: 600;
-      opacity: 0.7;
+      color: var(--st-color-muted);
       text-transform: uppercase;
-      font-size: 10px;
+      font-size: var(--st-font-11);
       letter-spacing: 0.04em;
     }
 
     .st-push__track {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: var(--st-space-1);
     }
 
     .st-push__check {
       display: flex;
       align-items: center;
-      gap: 6px;
-      font-size: 12px;
+      gap: var(--st-space-1);
+      font-size: var(--st-font-12);
+    }
+
+    .st-push__check input[type='checkbox'],
+    .st-push__table input[type='checkbox'] {
+      accent-color: var(--st-color-accent);
+      margin: 0;
     }
 
     .st-push__options {
       display: flex;
       flex-wrap: wrap;
-      gap: 16px;
-      padding-top: 2px;
+      gap: var(--st-space-4);
+      padding-top: var(--st-space-1);
     }
 
     .st-push__status {
       margin: 0;
-      font-size: 12px;
-      opacity: 0.7;
+      font-size: var(--st-font-12);
+      color: var(--st-color-muted);
     }
 
     .st-push__error {
       margin: 0;
-      font-size: 12px;
-      color: #ff6b6b;
-    }
-
-    .st-push__footer {
-      display: flex;
-      gap: 8px;
-    }
-
-    .st-push__btn {
-      padding: 6px 14px;
-      border-radius: 6px;
-      border: 1px solid var(--st-color-border, #2f2f44);
-      background: transparent;
-      color: var(--st-color-text, #d6d6de);
-      font-size: 12px;
-      cursor: pointer;
-    }
-
-    .st-push__btn:hover:not(:disabled) {
-      background: rgba(255, 255, 255, 0.07);
-    }
-
-    .st-push__btn--primary {
-      background: var(--st-color-accent, #0a84ff);
-      border-color: var(--st-color-accent, #0a84ff);
-      color: #fff;
-    }
-
-    .st-push__btn:disabled {
-      opacity: 0.5;
-      cursor: default;
+      font-size: var(--st-font-12);
+      color: var(--st-color-danger);
     }
   `,
 })
@@ -468,8 +399,8 @@ export class PushDialog {
     );
   }
 
-  onRemoteChange(event: Event): void {
-    this.selectedRemote.set((event.target as HTMLSelectElement).value);
+  onRemoteChange(value: string): void {
+    this.selectedRemote.set(value);
   }
 
   onRowChecked(row: PushRowView, event: Event): void {
@@ -480,8 +411,7 @@ export class PushDialog {
     }));
   }
 
-  onRowRemoteBranchChange(row: PushRowView, event: Event): void {
-    const remoteBranch = (event.target as HTMLSelectElement).value;
+  onRowRemoteBranchChange(row: PushRowView, remoteBranch: string): void {
     this.rowState.update((state) => ({
       ...state,
       [row.localBranch]: { ...this.stateFor(row), remoteBranch },

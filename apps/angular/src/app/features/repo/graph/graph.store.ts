@@ -61,6 +61,18 @@ export class GraphStore {
    */
   private loadSeq = 0;
 
+  /**
+   * Monotonic request sequence for `openRepository`.
+   *
+   * Switching repo tabs can issue a new open before the previous one resolved;
+   * without a guard the *last open to resolve* wins rather than the last one
+   * requested, so a slow open from a tab the user already left could re-install
+   * its `repoId`, clear the newer selection and `startWatch` the wrong repo.
+   * Claimed before the `openRepository` invoke and re-checked after it settles:
+   * only the newest open may touch state.
+   */
+  private openSeq = 0;
+
   readonly repoId = signal<string | null>(null);
   readonly commits = signal<Commit[]>([]);
   /** Normalized to one entry per commit (index-aligned with `commits`). */
@@ -75,6 +87,21 @@ export class GraphStore {
   readonly recentRepos = signal<Repository[]>([]);
   /** True when the renderer runs without the Electron preload bridge. */
   readonly offline = signal(false);
+
+  // -- CDK viewport scroll memory ------------------------------------------
+  /**
+   * Remembered CDK viewport scroll offset (px) for the current repository and
+   * filter. In-memory only: the store is provided on the shared `repo.routes.ts`
+   * parent, so its lifetime spans `/repo` ↔ `/repo/file-status` and no
+   * `localStorage` round-trip is needed. The synthetic WIP row is pinned
+   * *outside* the viewport, so this value is always a plain pixel offset and
+   * never encodes the WIP row.
+   */
+  readonly scrollOffset = signal(0);
+  /** Pending offset to restore on the next graph mount, or null when none is queued. */
+  private readonly pendingRestore = signal<number | null>(null);
+  /** Read-only view of the pending restore offset (null when nothing is queued). */
+  readonly pendingScrollOffset = computed(() => this.pendingRestore());
 
   // -- commit change-size gauge (ADR-0023) ---------------------------------
   /** Counts per oid, lazily fetched for the visited window and cached. */
@@ -122,28 +149,77 @@ export class GraphStore {
 
   // -- actions -------------------------------------------------------------
 
-  /** Open a repository by filesystem path and load its first commit window. */
+  /**
+   * Open a repository by filesystem path and load its first commit window.
+   *
+   * Contract: a failed open leaves NO repository open. The graph is reset to the
+   * empty state (`repoId()` null, no commits/selection/filter, viewport offset
+   * and gauge cache reset), so a previous repo's window can never survive —
+   * this is what makes `RepoPage`'s `repoId()` gate route to the relocate
+   * panel / picker instead of keeping the old tree mounted. A superseded open
+   * (the user switched tabs before it resolved) installs nothing and never
+   * starts a watch for the wrong repo.
+   *
+   * Returns the opened repository, or null when it was superseded or failed.
+   */
   async openRepository(fsPath: string): Promise<Repository | null> {
+    // Claim the newest sequence before awaiting: a later open supersedes this
+    // one, and only the newest may install its repo (see `openSeq`).
+    const seq = ++this.openSeq;
     try {
       const repo = await this.bridge.invoke('openRepository', { fsPath });
+      // Superseded while in flight: install nothing, so a late open cannot
+      // clobber the newer repo's identity, selection, window or watch.
+      if (seq !== this.openSeq) return null;
       this.offline.set(false);
       this.repoId.set(repo.id);
       this.selectedOid.set(null);
       this.filter.set('');
+      // A different repository invalidates the remembered graph position: both
+      // the offset and any pending restore are scoped to the old repo.
+      this.scrollOffset.set(0);
+      this.pendingRestore.set(null);
+      // Clear the previous repo's rows synchronously, before the new window
+      // loads: `repoId` already names the new repo, so leaving the old rows in
+      // place would briefly render them under the new repo's identity. The
+      // successful `loadWindow(0)` repopulates immediately after.
+      this.commits.set([]);
+      this.lanes.set([]);
+      this.total.set(0);
       await this.loadWindow(0);
       // Refresh the picker's recents now that this repo is the most recent.
       await this.loadRecentRepos();
+      // A newer open may have superseded this one while loading; it owns the
+      // watch, so this stale open stops here without starting watch/wrong-repo.
+      if (seq !== this.openSeq) return null;
       // Start the repository-scoped background watch: `fs:changed` drives the
       // graph/status refresh both repo screens subscribe to. Fire-and-forget — a
       // missing bridge or a failing watch can never fail the open.
       this.startWatch(repo.id);
       return repo;
     } catch (err) {
+      // Superseded failure: a newer open owns the state, so do not blank its
+      // graph or record a stale error.
+      if (seq !== this.openSeq) return null;
       if (isIpcUnavailable(err)) {
         this.offline.set(true);
       } else {
         this.error.set(toAppError(err));
       }
+      // A failed open leaves NO repository open: reset the graph to the empty
+      // state so no other repo's commits/lanes/selection can survive it.
+      this.repoId.set(null);
+      this.commits.set([]);
+      this.lanes.set([]);
+      this.total.set(0);
+      this.selectedOid.set(null);
+      this.filter.set('');
+      this.scrollOffset.set(0);
+      this.pendingRestore.set(null);
+      // Complete the empty-state reset: the viewport offset and the cached gauge
+      // are scoped to the failed repo too, so neither can survive it.
+      this.offset.set(0);
+      this.commitStats.set(new Map());
       return null;
     }
   }
@@ -357,6 +433,38 @@ export class GraphStore {
 
   setFilter(query: string): void {
     this.filter.set(query);
+    // A changed filter reorders the visible rows, so a remembered offset (and
+    // any pending restore) would land on the wrong row.
+    this.scrollOffset.set(0);
+    this.pendingRestore.set(null);
+  }
+
+  // -- scroll offset persistence -------------------------------------------
+
+  /**
+   * Record the viewport scroll offset (px). Called on every `elementScrolled`
+   * so the position survives a route change to `/repo/file-status` and back.
+   */
+  rememberScrollOffset(offset: number): void {
+    this.scrollOffset.set(offset);
+  }
+
+  /**
+   * Mark the remembered offset as pending restore. Called when the user leaves
+   * the graph; {@link consumeScrollRestore} hands it back once on return.
+   */
+  requestScrollRestore(): void {
+    this.pendingRestore.set(this.scrollOffset());
+  }
+
+  /**
+   * Return the pending restore offset exactly once and clear it, so a second
+   * call (or a re-mounted viewport) can never restore a stale position.
+   */
+  consumeScrollRestore(): number | null {
+    const pending = this.pendingRestore();
+    this.pendingRestore.set(null);
+    return pending;
   }
 
   private applyPage(offset: number, resp: GetCommitsResponse): void {

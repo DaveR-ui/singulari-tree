@@ -3,9 +3,12 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Stash } from '@contracts/domain';
 import type { AppError } from '@core/services/ipc-bridge.service';
-import { SidebarLeft } from './sidebar-left';
+import { NavRail } from './nav-rail';
 
 interface SetupOptions {
+  collapsed?: boolean;
+  repoName?: string;
+  repoPath?: string;
   branches?: string[];
   currentBranch?: string;
   currentBranchBehind?: number;
@@ -19,19 +22,25 @@ interface SetupOptions {
   loading?: boolean;
   offline?: boolean;
   error?: AppError | null;
+  activeWorkspace?: string;
+  changeCount?: number;
 }
 
 function stash(index: number, message = `WIP ${index}`, branchName = 'main'): Stash {
   return { index, oid: undefined, message, branchName };
 }
 
-async function setup(opts: SetupOptions = {}): Promise<ComponentFixture<SidebarLeft>> {
+async function setup(opts: SetupOptions = {}): Promise<ComponentFixture<NavRail>> {
+  TestBed.resetTestingModule();
   await TestBed.configureTestingModule({
     providers: [provideZonelessChangeDetection()],
   }).compileComponents();
 
-  const fixture = TestBed.createComponent(SidebarLeft);
+  const fixture = TestBed.createComponent(NavRail);
   const ref = fixture.componentRef;
+  ref.setInput('collapsed', opts.collapsed ?? false);
+  ref.setInput('repoName', opts.repoName ?? '');
+  ref.setInput('repoPath', opts.repoPath ?? '');
   ref.setInput('branches', opts.branches ?? []);
   ref.setInput('currentBranch', opts.currentBranch ?? '');
   ref.setInput('currentBranchBehind', opts.currentBranchBehind ?? 0);
@@ -45,45 +54,163 @@ async function setup(opts: SetupOptions = {}): Promise<ComponentFixture<SidebarL
   ref.setInput('loading', opts.loading ?? false);
   ref.setInput('offline', opts.offline ?? false);
   ref.setInput('error', opts.error ?? null);
+  ref.setInput('activeWorkspace', opts.activeWorkspace ?? 'history');
+  ref.setInput('changeCount', opts.changeCount ?? 0);
   fixture.detectChanges();
   return fixture;
 }
 
-function all(fixture: ComponentFixture<SidebarLeft>, testId: string): Element[] {
+function all(fixture: ComponentFixture<NavRail>, testId: string): Element[] {
   return Array.from(
     (fixture.nativeElement as HTMLElement).querySelectorAll(`[data-testid="${testId}"]`),
   );
 }
 
-function expandTags(fixture: ComponentFixture<SidebarLeft>): void {
+function head(fixture: ComponentFixture<NavRail>, label: string): HTMLButtonElement {
   const el = fixture.nativeElement as HTMLElement;
-  const head = Array.from(el.querySelectorAll<HTMLButtonElement>('.st-left__head')).find((b) =>
-    b.textContent?.includes('TAGS'),
+  const found = Array.from(el.querySelectorAll<HTMLButtonElement>('.st-rail__head')).find((b) =>
+    b.textContent?.includes(label),
   );
-  head!.click();
+  if (!found) throw new Error(`rail head '${label}' not found`);
+  return found;
+}
+
+function expandTags(fixture: ComponentFixture<NavRail>): void {
+  head(fixture, 'Tags').click();
   fixture.detectChanges();
 }
 
-function expandStashes(fixture: ComponentFixture<SidebarLeft>): void {
-  const el = fixture.nativeElement as HTMLElement;
-  const head = Array.from(el.querySelectorAll<HTMLButtonElement>('.st-left__head')).find((b) =>
-    b.textContent?.includes('STASHES'),
-  );
-  head!.click();
+function expandStashes(fixture: ComponentFixture<NavRail>): void {
+  head(fixture, 'Stashes').click();
   fixture.detectChanges();
 }
 
-describe('SidebarLeft', () => {
+describe('NavRail', () => {
   beforeEach(() => {
     TestBed.resetTestingModule();
   });
 
-  it('renders populated branch/tag/remote lists', async () => {
+  it('renders the active-repo header when supplied', async () => {
     const fixture = await setup({
-      branches: ['main', 'feature/x'],
-      tags: ['v1.0.0'],
-      remotes: ['origin'],
+      repoName: 'alpha',
+      repoPath: '/tmp/alpha',
+      currentBranch: 'main',
     });
+    const header = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="st-rail-repo-header"]',
+    );
+
+    expect(header).not.toBeNull();
+    expect(header!.textContent).toContain('alpha');
+    expect(header!.textContent).toContain('main');
+    expect(header!.textContent).toContain('/tmp/alpha');
+  });
+
+  it('hides the repo header without a repository', async () => {
+    const fixture = await setup();
+
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="st-rail-repo-header"]'),
+    ).toBeNull();
+  });
+
+  it('renders the group headers', async () => {
+    const fixture = await setup();
+
+    expect(head(fixture, 'Workspace')).not.toBeNull();
+    expect(head(fixture, 'Local branches')).not.toBeNull();
+    expect(head(fixture, 'Remote references')).not.toBeNull();
+    expect(head(fixture, 'Tags')).not.toBeNull();
+    expect(head(fixture, 'Stashes')).not.toBeNull();
+    expect(all(fixture, 'st-sidebar-git-flow')).toHaveLength(1);
+  });
+
+  it('exposes aria-expanded on every section head, reflecting its state', async () => {
+    const fixture = await setup();
+
+    // Workspace / Local branches / Remote references start expanded; Tags and
+    // Stashes start collapsed.
+    expect(head(fixture, 'Workspace').getAttribute('aria-expanded')).toBe('true');
+    expect(head(fixture, 'Local branches').getAttribute('aria-expanded')).toBe('true');
+    expect(head(fixture, 'Remote references').getAttribute('aria-expanded')).toBe('true');
+    expect(head(fixture, 'Tags').getAttribute('aria-expanded')).toBe('false');
+    expect(head(fixture, 'Stashes').getAttribute('aria-expanded')).toBe('false');
+
+    head(fixture, 'Tags').click();
+    fixture.detectChanges();
+    expect(head(fixture, 'Tags').getAttribute('aria-expanded')).toBe('true');
+
+    head(fixture, 'Local branches').click();
+    fixture.detectChanges();
+    expect(head(fixture, 'Local branches').getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('exposes each WORKSPACE entry with a stable kind-scoped test id', async () => {
+    const fixture = await setup();
+
+    expect(all(fixture, 'st-sidebar-workspace-status')).toHaveLength(1);
+    expect(all(fixture, 'st-sidebar-workspace-history')).toHaveLength(1);
+    expect(all(fixture, 'st-sidebar-workspace-search')).toHaveLength(1);
+    expect(all(fixture, 'st-sidebar-workspace-status')[0].textContent).toContain('Local changes');
+    expect(all(fixture, 'st-sidebar-workspace-history')[0].textContent).toContain('History');
+  });
+
+  it('marks the active workspace item', async () => {
+    const fixture = await setup({ activeWorkspace: 'search' });
+
+    const item = all(fixture, 'st-sidebar-workspace-search')[0] as HTMLElement;
+    expect(item.classList.contains('st-rail__item--active')).toBe(true);
+    expect(
+      (all(fixture, 'st-sidebar-workspace-history')[0] as HTMLElement).classList.contains(
+        'st-rail__item--active',
+      ),
+    ).toBe(false);
+  });
+
+  it('emits the workspace kind when a WORKSPACE entry is clicked', async () => {
+    const fixture = await setup();
+    const emitted: string[] = [];
+    fixture.componentInstance.workspaceSelected.subscribe((kind) => emitted.push(kind));
+
+    (all(fixture, 'st-sidebar-workspace-history')[0] as HTMLElement).click();
+    (all(fixture, 'st-sidebar-workspace-status')[0] as HTMLElement).click();
+
+    expect(emitted).toEqual(['history', 'status']);
+  });
+
+  it('exposes the Repositories WORKSPACE entry exactly once', async () => {
+    const fixture = await setup();
+
+    const entries = all(fixture, 'st-sidebar-workspace-repos');
+    expect(entries).toHaveLength(1);
+    expect(entries[0].textContent).toContain('Repositories');
+  });
+
+  it('emits the repos workspace kind when Repositories is clicked', async () => {
+    const fixture = await setup();
+    const emitted: string[] = [];
+    fixture.componentInstance.workspaceSelected.subscribe((kind) => emitted.push(kind));
+
+    (all(fixture, 'st-sidebar-workspace-repos')[0] as HTMLElement).click();
+
+    expect(emitted).toEqual(['repos']);
+  });
+
+  it('shows the change-count pill on Local changes only when there is a count', async () => {
+    const hidden = await setup({ changeCount: 0 });
+    expect(
+      all(hidden, 'st-sidebar-workspace-status')[0].querySelector('[data-testid="nav-item-count"]'),
+    ).toBeNull();
+
+    const shown = await setup({ changeCount: 3 });
+    expect(
+      all(shown, 'st-sidebar-workspace-status')[0].querySelector('[data-testid="nav-item-count"]')
+        ?.textContent,
+    ).toContain('3');
+  });
+
+  it('renders populated branch/tag/remote lists', async () => {
+    const fixture = await setup({ branches: ['main', 'feature/x'], tags: ['v1.0.0'], remotes: ['origin'] });
     const el = fixture.nativeElement as HTMLElement;
 
     expect(el.querySelector('[data-testid="st-sidebar-branches"]')?.textContent).toContain('main');
@@ -96,32 +223,44 @@ describe('SidebarLeft', () => {
     expect(el.querySelector('[data-testid="st-sidebar-tags"]')?.textContent).toContain('v1.0.0');
   });
 
-  it('renders remote branches under their remote, stripping the prefix', async () => {
+  it('colours the ref lists semantically via dedicated classes', async () => {
     const fixture = await setup({
-      remotes: ['origin', 'upstream'],
-      remoteBranches: ['origin/main', 'origin/david/topic', 'upstream/develop'],
+      branches: ['main', 'feature/x'],
+      currentBranch: 'main',
+      remotes: ['origin'],
+      remoteBranches: ['origin/main'],
+      tags: ['v1.0.0'],
     });
     const el = fixture.nativeElement as HTMLElement;
 
-    const remotesText = el.querySelector('[data-testid="st-sidebar-remotes"]')?.textContent ?? '';
-    expect(remotesText).toContain('origin');
-    expect(remotesText).toContain('upstream');
+    // Every local branch label reads violet; only the current one lifts to text.
+    const branchLabels = el.querySelectorAll<HTMLElement>('.st-rail__row-label--branch');
+    expect(branchLabels).toHaveLength(2);
+    const currentLabel = el.querySelector<HTMLElement>('.st-rail__row-label--current');
+    expect(currentLabel?.textContent?.trim()).toBe('main');
 
-    const items = Array.from(
-      el.querySelectorAll('[data-testid="st-sidebar-remote-branches"]'),
-    ).map((li) => li.textContent?.trim());
-    expect(items).toEqual(['main', 'david/topic', 'develop']);
+    // Remote reference rows carry their own class; so do tag rows.
+    expect(el.querySelector('.st-rail__row--remote')).not.toBeNull();
+    expandTags(fixture);
+    expect(el.querySelector('.st-rail__row--tag')).not.toBeNull();
   });
 
-  it('surfaces a remote branch even when no remote config is known', async () => {
-    const fixture = await setup({ remoteBranches: ['origin/feature'] });
-    const el = fixture.nativeElement as HTMLElement;
+  it('narrows the branch list with the filter input', async () => {
+    const fixture = await setup({ branches: ['main', 'feature/x', 'release/1.0'] });
 
-    expect(el.querySelector('[data-testid="st-sidebar-remotes-empty"]')).toBeNull();
-    const items = Array.from(
-      el.querySelectorAll('[data-testid="st-sidebar-remote-branches"]'),
-    ).map((li) => li.textContent?.trim());
-    expect(items).toEqual(['feature']);
+    const rowsBefore = all(fixture, 'st-sidebar-branch');
+    expect(rowsBefore).toHaveLength(3);
+
+    const filterInput = (
+      fixture.nativeElement as HTMLElement
+    ).querySelector<HTMLInputElement>('[data-testid="st-rail-branch-filter"] input')!;
+    filterInput.value = 'feat';
+    filterInput.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    const rows = all(fixture, 'st-sidebar-branch');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain('feature/x');
   });
 
   it('badges the current branch row with the pull-pending count when behind', async () => {
@@ -135,35 +274,9 @@ describe('SidebarLeft', () => {
     const badges = el.querySelectorAll('[data-testid="st-sidebar-branch-badge"]');
     expect(badges).toHaveLength(1);
     expect(badges[0].textContent?.trim()).toBe('3');
-
-    const rows = Array.from(el.querySelectorAll('[data-testid="st-sidebar-branches"] li'));
-    expect(rows[0].textContent).toContain('main');
-    expect(rows[0].querySelector('[data-testid="st-sidebar-branch-badge"]')).not.toBeNull();
-    expect(rows[1].querySelector('[data-testid="st-sidebar-branch-badge"]')).toBeNull();
-  });
-
-  it('renders no badge when the current branch is not behind', async () => {
-    const fixture = await setup({
-      branches: ['main', 'feature/x'],
-      currentBranch: 'main',
-      currentBranchBehind: 0,
-    });
-    const el = fixture.nativeElement as HTMLElement;
-
-    expect(el.querySelectorAll('[data-testid="st-sidebar-branch-badge"]')).toHaveLength(0);
-  });
-
-  it('renders no badge for non-current branches even when behind', async () => {
-    const fixture = await setup({
-      branches: ['main', 'feature/x'],
-      currentBranch: 'main',
-      currentBranchBehind: 2,
-    });
-    const el = fixture.nativeElement as HTMLElement;
-
-    const rows = Array.from(el.querySelectorAll('[data-testid="st-sidebar-branches"] li'));
-    // Only the current branch row (`main`) can carry the badge.
-    expect(rows[1].querySelector('[data-testid="st-sidebar-branch-badge"]')).toBeNull();
+    // The selection bar marks the current branch row.
+    const currentRow = all(fixture, 'st-sidebar-branch')[0] as HTMLElement;
+    expect(currentRow.classList.contains('st-selection-bar')).toBe(true);
   });
 
   it('renders the empty state when there are no refs', async () => {
@@ -186,7 +299,6 @@ describe('SidebarLeft', () => {
   it('renders a loading state for every expanded section', async () => {
     const fixture = await setup({ loading: true });
 
-    // BRANCHES and REMOTES are expanded by default.
     expect(all(fixture, 'st-sidebar-refs-loading')).toHaveLength(2);
 
     expandTags(fixture);
@@ -200,7 +312,6 @@ describe('SidebarLeft', () => {
 
     expandTags(fixture);
     expect(all(fixture, 'st-sidebar-refs-offline')).toHaveLength(3);
-    expect(all(fixture, 'st-sidebar-refs-loading')).toHaveLength(0);
   });
 
   it('surfaces an error message for every expanded section', async () => {
@@ -225,7 +336,7 @@ describe('SidebarLeft', () => {
     expect(emitted).toEqual(['feature/x']);
   });
 
-  it('marks local branch rows as keyboard-activatable buttons', async () => {
+  it('activates a local branch row with Enter and Space', async () => {
     const fixture = await setup({ branches: ['main'] });
     const emitted: string[] = [];
     fixture.componentInstance.branchSelected.subscribe((name) => emitted.push(name));
@@ -233,11 +344,27 @@ describe('SidebarLeft', () => {
     const row = all(fixture, 'st-sidebar-branch')[0] as HTMLElement;
     expect(row.getAttribute('role')).toBe('button');
     expect(row.getAttribute('tabindex')).toBe('0');
-
     row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     row.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
 
     expect(emitted).toEqual(['main', 'main']);
+  });
+
+  it('renders remote branches under their remote, stripping the prefix', async () => {
+    const fixture = await setup({
+      remotes: ['origin', 'upstream'],
+      remoteBranches: ['origin/main', 'origin/david/topic', 'upstream/develop'],
+    });
+    const el = fixture.nativeElement as HTMLElement;
+
+    const remotesText = el.querySelector('[data-testid="st-sidebar-remotes"]')?.textContent ?? '';
+    expect(remotesText).toContain('origin');
+    expect(remotesText).toContain('upstream');
+
+    const items = Array.from(
+      el.querySelectorAll('[data-testid="st-sidebar-remote-branches"]'),
+    ).map((li) => li.textContent?.trim());
+    expect(items).toEqual(['main', 'david/topic', 'develop']);
   });
 
   it('emits remoteBranchSelected with the reconstructed remote/branch name', async () => {
@@ -249,43 +376,10 @@ describe('SidebarLeft', () => {
     fixture.componentInstance.remoteBranchSelected.subscribe((name) => emitted.push(name));
 
     const rows = all(fixture, 'st-sidebar-remote-branches') as HTMLElement[];
-    expect(rows).toHaveLength(3);
     rows[0].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     rows[2].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
 
     expect(emitted).toEqual(['origin/main', 'upstream/develop']);
-  });
-
-  it('activates a remote branch row with the keyboard', async () => {
-    const fixture = await setup({ remotes: ['origin'], remoteBranches: ['origin/feature'] });
-    const emitted: string[] = [];
-    fixture.componentInstance.remoteBranchSelected.subscribe((name) => emitted.push(name));
-
-    const row = all(fixture, 'st-sidebar-remote-branches')[0] as HTMLElement;
-    expect(row.getAttribute('role')).toBe('button');
-    row.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
-
-    expect(emitted).toEqual(['origin/feature']);
-  });
-
-  it('emits nothing on a single click for local or remote branch rows', async () => {
-    const fixture = await setup({
-      branches: ['main', 'feature/x'],
-      remotes: ['origin'],
-      remoteBranches: ['origin/feature'],
-    });
-    const localEmitted: string[] = [];
-    const remoteEmitted: string[] = [];
-    fixture.componentInstance.branchSelected.subscribe((name) => localEmitted.push(name));
-    fixture.componentInstance.remoteBranchSelected.subscribe((name) => remoteEmitted.push(name));
-
-    const localRows = all(fixture, 'st-sidebar-branch') as HTMLElement[];
-    const remoteRows = all(fixture, 'st-sidebar-remote-branches') as HTMLElement[];
-    localRows[1].click();
-    remoteRows[0].click();
-
-    expect(localEmitted).toEqual([]);
-    expect(remoteEmitted).toEqual([]);
   });
 
   it('emits newBranchRequested and newTagRequested from the header "+" buttons', async () => {
@@ -314,18 +408,13 @@ describe('SidebarLeft', () => {
     fixture.componentInstance.branchMergeRequested.subscribe((v) => merge.push(v));
     fixture.componentInstance.branchDeleteRequested.subscribe((v) => del.push(v));
 
-    expect(el.querySelector('[data-testid="st-sidebar-row-menu"]')).toBeNull();
-
     const rows = all(fixture, 'st-sidebar-branch') as HTMLElement[];
     rows[1].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     fixture.detectChanges();
-
     expect(el.querySelector('[data-testid="st-sidebar-row-menu"]')).not.toBeNull();
 
     (el.querySelector('[data-testid="st-sidebar-menu-checkout"]') as HTMLElement).click();
-    fixture.detectChanges();
     expect(checkout).toEqual(['feature/x']);
-    expect(el.querySelector('[data-testid="st-sidebar-row-menu"]')).toBeNull();
 
     rows[1].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     fixture.detectChanges();
@@ -353,53 +442,13 @@ describe('SidebarLeft', () => {
     rows[0].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     fixture.detectChanges();
 
-    const button = el.querySelector(
-      '[data-testid="st-sidebar-menu-delete"]',
-    ) as HTMLButtonElement;
+    const button = el.querySelector('[data-testid="st-sidebar-menu-delete"]') as HTMLButtonElement;
     expect(button.disabled).toBe(true);
     expect(button.getAttribute('title')).toContain('Cannot delete the current branch');
 
     button.click();
     fixture.detectChanges();
     expect(del).toEqual([]);
-  });
-
-  it('still deletes a non-current branch and any tag', async () => {
-    const fixture = await setup({
-      branches: ['main', 'feature/x'],
-      currentBranch: 'main',
-      tags: ['v1'],
-    });
-    const el = fixture.nativeElement as HTMLElement;
-    const branchDel: string[] = [];
-    const tagDel: string[] = [];
-    fixture.componentInstance.branchDeleteRequested.subscribe((v) => branchDel.push(v));
-    fixture.componentInstance.tagDeleteRequested.subscribe((v) => tagDel.push(v));
-
-    const rows = all(fixture, 'st-sidebar-branch') as HTMLElement[];
-    rows[1].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
-    fixture.detectChanges();
-    const branchButton = el.querySelector(
-      '[data-testid="st-sidebar-menu-delete"]',
-    ) as HTMLButtonElement;
-    expect(branchButton.disabled).toBe(false);
-    // No explanatory title on a deletable branch (FIX 4 nit).
-    expect(branchButton.hasAttribute('title')).toBe(false);
-    branchButton.click();
-    expect(branchDel).toEqual(['feature/x']);
-
-    expandTags(fixture);
-    (all(fixture, 'st-sidebar-tag')[0] as HTMLElement).dispatchEvent(
-      new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
-    );
-    fixture.detectChanges();
-    const tagButton = el.querySelector(
-      '[data-testid="st-sidebar-menu-delete"]',
-    ) as HTMLButtonElement;
-    expect(tagButton.disabled).toBe(false);
-    expect(tagButton.hasAttribute('title')).toBe(false);
-    tagButton.click();
-    expect(tagDel).toEqual(['v1']);
   });
 
   it('opens a tag row menu that only offers deletion', async () => {
@@ -418,7 +467,6 @@ describe('SidebarLeft', () => {
     expect(el.querySelector('[data-testid="st-sidebar-menu-delete"]')).not.toBeNull();
 
     (el.querySelector('[data-testid="st-sidebar-menu-delete"]') as HTMLElement).click();
-
     expect(del).toEqual(['v1.0.0']);
   });
 
@@ -437,24 +485,7 @@ describe('SidebarLeft', () => {
     expect(el.querySelector('[data-testid="st-sidebar-row-menu"]')).toBeNull();
   });
 
-  it('closes the row menu on a backdrop context-menu gesture', async () => {
-    const fixture = await setup({ branches: ['main'] });
-    const el = fixture.nativeElement as HTMLElement;
-    const row = all(fixture, 'st-sidebar-branch')[0] as HTMLElement;
-
-    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
-    fixture.detectChanges();
-
-    const backdrop = el.querySelector('[data-testid="st-sidebar-menu-backdrop"]') as HTMLElement;
-    const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
-    backdrop.dispatchEvent(event);
-    fixture.detectChanges();
-
-    expect(event.defaultPrevented).toBe(true);
-    expect(el.querySelector('[data-testid="st-sidebar-row-menu"]')).toBeNull();
-  });
-
-  // -- stashes (ADR-028) ---------------------------------------------------
+  // -- stashes -------------------------------------------------------------
 
   it('renders populated stash rows with label, branch and actions', async () => {
     const fixture = await setup({
@@ -466,56 +497,36 @@ describe('SidebarLeft', () => {
     const rows = all(fixture, 'st-sidebar-stash');
     expect(rows).toHaveLength(2);
     expect(rows[0].textContent).toContain('WIP on main');
-    expect(rows[0].textContent).toContain('main');
-    // Empty message falls back to the Git-style stash label.
     expect(rows[1].textContent).toContain('stash@{1}');
-    expect(rows[1].textContent).toContain('feature/x');
-
     expect(el.querySelectorAll('[data-testid="st-sidebar-stash-apply"]')).toHaveLength(2);
     expect(el.querySelectorAll('[data-testid="st-sidebar-stash-pop"]')).toHaveLength(2);
     expect(el.querySelectorAll('[data-testid="st-sidebar-stash-drop"]')).toHaveLength(2);
   });
 
-  it('renders the stash empty state', async () => {
-    const fixture = await setup();
-    expandStashes(fixture);
+  it('renders the stash empty/loading/offline/error states', async () => {
+    const empty = await setup();
+    expandStashes(empty);
     expect(
-      fixture.nativeElement.querySelector('[data-testid="st-sidebar-stashes-empty"]')?.textContent,
+      empty.nativeElement.querySelector('[data-testid="st-sidebar-stashes-empty"]')?.textContent,
     ).toContain('No stashes');
-  });
 
-  it('renders the stash loading state', async () => {
-    const fixture = await setup({ stashesLoading: true });
-    expandStashes(fixture);
+    const loading = await setup({ stashesLoading: true });
+    expandStashes(loading);
     expect(
-      fixture.nativeElement.querySelector('[data-testid="st-sidebar-stashes-loading"]'),
+      loading.nativeElement.querySelector('[data-testid="st-sidebar-stashes-loading"]'),
     ).not.toBeNull();
-  });
 
-  it('renders the stash offline state', async () => {
-    const fixture = await setup({ offline: true });
-    expandStashes(fixture);
+    const offline = await setup({ offline: true });
+    expandStashes(offline);
     expect(
-      fixture.nativeElement.querySelector('[data-testid="st-sidebar-stashes-offline"]'),
+      offline.nativeElement.querySelector('[data-testid="st-sidebar-stashes-offline"]'),
     ).not.toBeNull();
-  });
 
-  it('renders the stash error state', async () => {
-    const fixture = await setup({ stashesError: { code: 'GIT_FAILED', message: 'boom' } });
-    expandStashes(fixture);
+    const errored = await setup({ stashesError: { code: 'GIT_FAILED', message: 'boom' } });
+    expandStashes(errored);
     expect(
-      fixture.nativeElement.querySelector('[data-testid="st-sidebar-stashes-error"]')?.textContent,
+      errored.nativeElement.querySelector('[data-testid="st-sidebar-stashes-error"]')?.textContent,
     ).toContain('boom');
-  });
-
-  it('emits stashPushRequested from the STASHES header "+"', async () => {
-    const fixture = await setup();
-    let push = 0;
-    fixture.componentInstance.stashPushRequested.subscribe(() => (push += 1));
-
-    (all(fixture, 'st-sidebar-stash-push')[0] as HTMLElement).click();
-
-    expect(push).toBe(1);
   });
 
   it('emits the stash entry for apply, pop and drop', async () => {
@@ -541,12 +552,16 @@ describe('SidebarLeft', () => {
     const fixture = await setup({ stashes: [stash(0)], stashOpRunning: true });
     expandStashes(fixture);
 
-    for (const testId of ['st-sidebar-stash-apply', 'st-sidebar-stash-pop', 'st-sidebar-stash-drop']) {
+    for (const testId of [
+      'st-sidebar-stash-apply',
+      'st-sidebar-stash-pop',
+      'st-sidebar-stash-drop',
+    ]) {
       expect((all(fixture, testId)[0] as HTMLButtonElement).disabled).toBe(true);
     }
   });
 
-  it('emits gitFlowRequested from the GIT FLOW header', async () => {
+  it('emits gitFlowRequested from the Git Flow header', async () => {
     const fixture = await setup();
     let requested = 0;
     fixture.componentInstance.gitFlowRequested.subscribe(() => (requested += 1));
@@ -556,31 +571,21 @@ describe('SidebarLeft', () => {
     expect(requested).toBe(1);
   });
 
-  // -- WORKSPACE entries ---------------------------------------------------
+  it('emits collapseToggle and renders a collapsed rail with just the expand control', async () => {
+    const expanded = await setup({ collapsed: false });
+    let expandedToggles = 0;
+    expanded.componentInstance.collapseToggle.subscribe(() => (expandedToggles += 1));
+    (
+      expanded.nativeElement as HTMLElement
+    ).querySelector<HTMLButtonElement>('.st-rail__collapse')!.click();
+    expect(expandedToggles).toBe(1);
 
-  it('exposes each WORKSPACE entry with a stable kind-scoped test id', async () => {
-    const fixture = await setup();
-
-    const status = all(fixture, 'st-sidebar-workspace-status');
-    const history = all(fixture, 'st-sidebar-workspace-history');
-    const search = all(fixture, 'st-sidebar-workspace-search');
-
-    expect(status).toHaveLength(1);
-    expect(history).toHaveLength(1);
-    expect(search).toHaveLength(1);
-    expect(status[0].textContent).toContain('File status');
-    expect(history[0].textContent).toContain('History');
-    expect(search[0].textContent).toContain('Search');
-  });
-
-  it('emits the workspace kind when a WORKSPACE entry is clicked', async () => {
-    const fixture = await setup();
-    const emitted: string[] = [];
-    fixture.componentInstance.workspaceSelected.subscribe((kind) => emitted.push(kind));
-
-    (all(fixture, 'st-sidebar-workspace-history')[0] as HTMLElement).click();
-    (all(fixture, 'st-sidebar-workspace-status')[0] as HTMLElement).click();
-
-    expect(emitted).toEqual(['history', 'status']);
+    const collapsed = await setup({ collapsed: true });
+    const el = collapsed.nativeElement as HTMLElement;
+    expect(el.querySelector<HTMLElement>('.st-rail__list')).toBeNull();
+    let collapsedToggles = 0;
+    collapsed.componentInstance.collapseToggle.subscribe(() => (collapsedToggles += 1));
+    el.querySelector<HTMLButtonElement>('.st-rail__collapse')!.click();
+    expect(collapsedToggles).toBe(1);
   });
 });

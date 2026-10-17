@@ -73,6 +73,13 @@ const (
 	ErrCodeGitHubRateLimited    = "GITHUB_RATE_LIMITED"
 	ErrCodeGitHubAPIError       = "GITHUB_API_ERROR"
 	ErrCodeGitHubTokenInvalid   = "GITHUB_TOKEN_INVALID"
+	// Additive: repository relocation (errors.proto 33-34 — a registered folder
+	// that was moved/renamed). REPO_PATH_MISSING distinguishes "the recorded fs
+	// path is gone" from "the path exists but is not a Git repository"
+	// (NOT_A_GIT_REPO); REPO_PATH_IN_USE rejects a target already tracked by
+	// another repository. Next free numbers after 32.
+	ErrCodeRepoPathMissing = "REPO_PATH_MISSING"
+	ErrCodeRepoPathInUse   = "REPO_PATH_IN_USE"
 )
 
 // Advanced-git mutation errors (ADR-028). These mirror the branch error style

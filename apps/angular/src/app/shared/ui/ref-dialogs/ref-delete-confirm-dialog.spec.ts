@@ -30,6 +30,11 @@ function query(fixture: ReturnType<typeof render>, testId: string): HTMLElement 
   );
 }
 
+/** The native button inside the `<st-button>` host carrying `testId`. */
+function innerButton(fixture: ReturnType<typeof render>, testId: string): HTMLButtonElement {
+  return query(fixture, testId)!.querySelector('button') as HTMLButtonElement;
+}
+
 describe('RefDeleteConfirmDialog', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -80,8 +85,8 @@ describe('RefDeleteConfirmDialog', () => {
     const fixture = render({ running: true, error: { code: 'BRANCH_NOT_FOUND', message: 'gone' } });
 
     expect(query(fixture, 'ref-delete-error')?.textContent).toContain('gone');
-    expect(query(fixture, 'ref-delete-confirm')?.hasAttribute('disabled')).toBe(true);
-    expect(query(fixture, 'ref-delete-cancel')?.hasAttribute('disabled')).toBe(true);
+    expect(innerButton(fixture, 'ref-delete-confirm').disabled).toBe(true);
+    expect(innerButton(fixture, 'ref-delete-cancel').disabled).toBe(true);
   });
 
   it('emits cancelled on dismiss', () => {

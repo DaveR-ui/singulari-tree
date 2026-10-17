@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -241,5 +242,105 @@ func BenchmarkLanes(b *testing.B) {
 		if _, err := svc.Lanes(ctx, domain.RepositoryId("repo"), commits); err != nil {
 			b.Fatalf("Lanes: %v", err)
 		}
+	}
+}
+
+// -- straddle guard: write-through vs a racing invalidation -----------------
+
+// genCache is a domain.CachePort whose invalidation generation is observable
+// and whose write-through calls are counted. GetCommits always misses, so every
+// GraphService.Commits call reads Git (the path under test).
+type genCache struct {
+	mu   sync.Mutex
+	gen  uint64
+	puts int
+}
+
+func (c *genCache) GetCommits(context.Context, domain.RepositoryId, int, int) ([]domain.Commit, int, bool) {
+	return nil, 0, false
+}
+
+func (c *genCache) PutCommits(context.Context, domain.RepositoryId, int, int, []domain.Commit) error {
+	c.mu.Lock()
+	c.puts++
+	c.mu.Unlock()
+	return nil
+}
+
+func (c *genCache) GetCommitStats(context.Context, domain.RepositoryId, []string) ([]domain.CommitStats, bool) {
+	return nil, false
+}
+
+func (c *genCache) PutCommitStats(context.Context, domain.RepositoryId, []domain.CommitStats) error {
+	return nil
+}
+
+func (c *genCache) Invalidate(domain.RepositoryId) {
+	c.mu.Lock()
+	c.gen++
+	c.mu.Unlock()
+}
+
+// Generation implements the optional invalidationGeneration capability exercised
+// by the straddle guard.
+func (c *genCache) Generation() uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.gen
+}
+
+func (c *genCache) putCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.puts
+}
+
+// invalidatingLister bumps the cache's generation DURING List, modelling a
+// mutation's Invalidate racing the read.
+type invalidatingLister struct {
+	cache *genCache
+	all   []domain.Commit
+}
+
+func (l *invalidatingLister) List(_ context.Context, repoID domain.RepositoryId, _, _ int) ([]domain.Commit, int, error) {
+	l.cache.Invalidate(repoID)
+	return l.all, len(l.all), nil
+}
+
+// TestCommitsSkipsWriteThroughWhenInvalidationRacesRead proves the straddle
+// guard: an invalidation that lands while the Git read is in flight must prevent
+// the write-through, so the possibly pre-mutation window is never cached.
+func TestCommitsSkipsWriteThroughWhenInvalidationRacesRead(t *testing.T) {
+	ctx := context.Background()
+	all := branchMergeCommits()
+	cache := &genCache{}
+	svc := NewGraphService(&invalidatingLister{cache: cache, all: all}, cache)
+
+	commits, total, err := svc.Commits(ctx, domain.RepositoryId("repo"), 0, len(all))
+	if err != nil {
+		t.Fatalf("Commits: %v", err)
+	}
+	if len(commits) != len(all) || total != len(all) {
+		t.Fatalf("Commits = (%d commits, total %d), want (%d, %d)",
+			len(commits), total, len(all), len(all))
+	}
+	if got := cache.putCount(); got != 0 {
+		t.Fatalf("PutCommits called %d times despite a racing invalidation, want 0", got)
+	}
+}
+
+// TestCommitsWritesThroughWhenNoInvalidationRaces is the counterpart: without a
+// racing invalidation the write-through still happens exactly once.
+func TestCommitsWritesThroughWhenNoInvalidationRaces(t *testing.T) {
+	ctx := context.Background()
+	all := branchMergeCommits()
+	cache := &genCache{}
+	svc := NewGraphService(newFakeCommitLister(all), cache)
+
+	if _, _, err := svc.Commits(ctx, domain.RepositoryId("repo"), 0, len(all)); err != nil {
+		t.Fatalf("Commits: %v", err)
+	}
+	if got := cache.putCount(); got != 1 {
+		t.Fatalf("PutCommits called %d times, want 1 (non-raced write-through)", got)
 	}
 }

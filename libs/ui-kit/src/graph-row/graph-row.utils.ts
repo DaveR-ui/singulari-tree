@@ -22,6 +22,14 @@ export function formatShortDate(iso: string): string {
 
 export type RefKind = 'head' | 'branch' | 'remote' | 'tag' | 'other';
 
+/** Mainline branch names git conventionally uses; they take the mint `--st-color-ref-main` role. */
+const MAINLINE_BRANCHES: readonly string[] = ['main', 'master'];
+
+/** True when the branch name is the repository mainline (`main` / `master`). */
+export function isMainlineBranch(name: string): boolean {
+  return MAINLINE_BRANCHES.includes(name.trim().toLowerCase());
+}
+
 /**
  * Contract `RefLabel.kind` is a free-form string ("head" | "branch" | "remote" |
  * "tag"); normalize it so unknown kinds still render with a neutral style.

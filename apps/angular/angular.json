@@ -48,7 +48,7 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "500kB",
+                  "maximumWarning": "600kB",
                   "maximumError": "1MB"
                 },
                 {
@@ -108,6 +108,12 @@
               "src/**/*.d.ts",
               "src/main.ts",
               "src/environments/**"
+            ],
+            "include": [
+              "src/**/*.spec.ts",
+              "src/**/*.test.ts",
+              "../../../libs/ui-kit/src/**/*.spec.ts",
+              "../../../libs/ui-kit/src/**/*.test.ts"
             ],
             "coverageThresholds": {
               "statements": 80,

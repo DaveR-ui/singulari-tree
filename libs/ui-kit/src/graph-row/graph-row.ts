@@ -1,7 +1,14 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import type { Commit, CommitStats, Lane } from '@singularitree/contracts/domain';
+import type { Commit, CommitStats, Lane, RefLabel } from '@singularitree/contracts/domain';
 import { laneColor } from './lane-palette';
-import { authorName, firstLine, formatShortDate, normalizeRefKind, shortOidHex } from './graph-row.utils';
+import {
+  authorName,
+  firstLine,
+  formatShortDate,
+  isMainlineBranch,
+  normalizeRefKind,
+  shortOidHex,
+} from './graph-row.utils';
 
 /** Fixed row height in px — MUST match the CDK virtual-scroll `itemSize`. */
 export const GRAPH_ROW_HEIGHT = 28;
@@ -11,6 +18,11 @@ export const LANE_COLUMN_WIDTH = 14;
 /**
  * Dumb, presentational commit row: one SVG lane segment + short oid, ref labels,
  * message subject, author and date. Holds no services — the parent owns data.
+ *
+ * Ref pill colours are keyed on the reference TYPE — head / local branch /
+ * mainline branch / remote / tag — never per commit, so `main` and `master`
+ * take the mint `--st-color-ref-main` role while every other branch uses
+ * `--st-color-ref-branch`.
  */
 @Component({
   selector: 'st-graph-row',
@@ -22,6 +34,7 @@ export const LANE_COLUMN_WIDTH = 14;
     tabindex: '0',
     '[style.height.px]': 'rowHeight',
     '[class.st-graph-row--selected]': 'selected()',
+    '[class.st-selection-bar]': 'selected()',
     '(click)': 'picked.emit()',
     '(keydown.enter)': 'picked.emit()',
   },
@@ -57,14 +70,14 @@ export const LANE_COLUMN_WIDTH = 14;
     <div class="st-graph-row__content">
       <span class="st-graph-row__oid" data-testid="graph-row-oid">{{ shortOid() }}</span>
       @for (ref of refs(); track ref.kind + ':' + ref.name) {
-        <span class="st-graph-row__ref" [class]="refClass(ref.kind)" data-testid="graph-row-ref">{{
+        <span class="st-graph-row__ref" [class]="refClass(ref)" data-testid="graph-row-ref">{{
           ref.name
         }}</span>
       }
       <span class="st-graph-row__message" [title]="message()" data-testid="graph-row-message">{{
         message()
       }}</span>
-      <span class="st-graph-row__author" data-testid="graph-row-author">{{ author() }}</span>
+      <span class="st-graph-row__author st-hide-at-1100" data-testid="graph-row-author">{{ author() }}</span>
       @if (stats(); as gauge) {
         <span class="st-graph-row__stats" data-testid="graph-row-stats" [title]="statsTitle()">
           <span class="st-graph-row__additions" data-testid="graph-row-additions"
@@ -78,7 +91,7 @@ export const LANE_COLUMN_WIDTH = 14;
           >
         </span>
       }
-      <span class="st-graph-row__date" data-testid="graph-row-date">{{ date() }}</span>
+      <span class="st-graph-row__date st-hide-at-1600" data-testid="graph-row-date">{{ date() }}</span>
     </div>
   `,
   styles: `
@@ -86,28 +99,29 @@ export const LANE_COLUMN_WIDTH = 14;
       display: flex;
       align-items: center;
       gap: 6px;
-      height: 28px;
+      height: var(--st-size-row-graph);
       padding: 0 8px;
       overflow: hidden;
       cursor: pointer;
-      font-size: 12px;
+      font-size: var(--st-font-12);
       line-height: 1;
-      border-bottom: 1px solid var(--st-color-border, #2f2f44);
-      color: var(--st-color-text, #d6d6de);
+      border-bottom: var(--st-hairline) solid var(--st-color-border);
+      color: var(--st-color-text);
       contain: layout style;
     }
 
     :host(:hover) {
-      background: color-mix(in srgb, var(--st-color-accent, #0a84ff) 10%, transparent);
+      background: color-mix(in srgb, var(--st-color-accent) 10%, transparent);
     }
 
     :host:focus-visible {
-      outline: 1px solid var(--st-color-accent, #0a84ff);
+      outline: 1px solid var(--st-color-focus);
       outline-offset: -1px;
     }
 
     :host(.st-graph-row--selected) {
-      background: color-mix(in srgb, var(--st-color-accent, #0a84ff) 22%, transparent);
+      background: var(--st-color-selected);
+      border-bottom-color: var(--st-color-selected-border);
     }
 
     .st-graph-row__graph {
@@ -126,14 +140,14 @@ export const LANE_COLUMN_WIDTH = 14;
 
     .st-graph-row__oid {
       flex: none;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-family: var(--st-font-mono);
       opacity: 0.6;
     }
 
     .st-graph-row__ref {
       flex: none;
       padding: 1px 5px;
-      border-radius: 999px;
+      border-radius: var(--st-radius-pill);
       border: 1px solid currentColor;
       font-size: 10px;
       line-height: 14px;
@@ -141,23 +155,27 @@ export const LANE_COLUMN_WIDTH = 14;
     }
 
     .st-graph-row__ref--head {
-      color: #0a84ff;
+      color: var(--st-color-ref-head);
     }
 
     .st-graph-row__ref--branch {
-      color: #30d158;
+      color: var(--st-color-ref-branch);
+    }
+
+    .st-graph-row__ref--main {
+      color: var(--st-color-ref-main);
     }
 
     .st-graph-row__ref--remote {
-      color: #ff9f0a;
+      color: var(--st-color-ref-remote);
     }
 
     .st-graph-row__ref--tag {
-      color: #bf5af2;
+      color: var(--st-color-ref-tag);
     }
 
     .st-graph-row__ref--other {
-      color: var(--st-color-text, #d6d6de);
+      color: var(--st-color-text);
       opacity: 0.7;
     }
 
@@ -181,17 +199,17 @@ export const LANE_COLUMN_WIDTH = 14;
       display: inline-flex;
       align-items: baseline;
       gap: 4px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 11px;
+      font-family: var(--st-font-mono);
+      font-size: var(--st-font-11);
       white-space: nowrap;
     }
 
     .st-graph-row__additions {
-      color: #30d158;
+      color: var(--st-color-add);
     }
 
     .st-graph-row__deletions {
-      color: #ff6b6b;
+      color: var(--st-color-remove);
     }
 
     .st-graph-row__files {
@@ -200,6 +218,7 @@ export const LANE_COLUMN_WIDTH = 14;
 
     .st-graph-row__date {
       flex: none;
+      font-variant-numeric: tabular-nums;
       opacity: 0.5;
       white-space: nowrap;
     }
@@ -240,7 +259,11 @@ export class GraphRow {
   );
   readonly color = computed(() => laneColor(this.lane().color));
 
-  refClass(kind: string): string {
-    return `st-graph-row__ref st-graph-row__ref--${normalizeRefKind(kind)}`;
+  refClass(ref: RefLabel): string {
+    const kind = normalizeRefKind(ref.kind);
+    if (kind === 'branch' && isMainlineBranch(ref.name)) {
+      return 'st-graph-row__ref st-graph-row__ref--main';
+    }
+    return `st-graph-row__ref st-graph-row__ref--${kind}`;
   }
 }

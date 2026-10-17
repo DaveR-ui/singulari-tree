@@ -1,48 +1,10 @@
-/* SingulariTree global styles — Tailwind placeholder + base */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* SingulariTree global styles — canonical token layer + base resets. */
 
-/* Global resets and design tokens — dark shell */
-:root {
-  --st-color-bg: #1e1e2e;
-  --st-color-surface: #252536;
-  --st-color-border: #2f2f44;
-  --st-color-text: #d6d6de;
-  --st-color-accent: #0a84ff;
-  --left-w: 260px;
-  --right-w: 320px;
-  --header-h: 48px;
-  --toolbar-h: 44px;
-  --bottom-h: 260px;
-}
+/* Canonical two-tier token layer and shared utilities (ui-kit). */
+@use '../../../libs/ui-kit/src/styles/tokens';
+@use '../../../libs/ui-kit/src/styles/utilities';
 
-/*
- * Dark defaults for the chrome-specific tokens. Kept as a separate block so
- * the original token block above stays byte-identical.
- */
-:root {
-  color-scheme: dark;
-  --st-color-surface-2: #2a2a3a;
-  --st-color-muted: #8a8a9a;
-  --st-color-accent-soft: rgba(10, 132, 255, 0.15);
-  --st-color-menubar: #1a1a2e;
-}
-
-/* Light theme override — mirrors the same token set as `:root`. */
-[data-theme='light'] {
-  color-scheme: light;
-  --st-color-bg: #f5f5f7;
-  --st-color-surface: #ffffff;
-  --st-color-surface-2: #ececf1;
-  --st-color-border: #d5d5dd;
-  --st-color-text: #1c1c28;
-  --st-color-muted: #5f5f73;
-  --st-color-accent: #0a84ff;
-  --st-color-accent-soft: rgba(10, 132, 255, 0.15);
-  --st-color-menubar: #ececf1;
-}
-
+/* Base */
 * {
   box-sizing: border-box;
 }
@@ -51,7 +13,7 @@ html,
 body {
   height: 100%;
   margin: 0;
-  font-family: Inter, system-ui, -apple-system, sans-serif;
+  font-family: var(--st-font-ui);
   background: var(--st-color-bg);
   color: var(--st-color-text);
   overflow: hidden;
