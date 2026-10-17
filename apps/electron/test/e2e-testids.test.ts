@@ -22,7 +22,7 @@ import { describe, expect, it } from 'vitest';
  *     - dynamic composition prefixes: string fragments inside
  *       `[attr.data-testid]="..."`, e.g. `'st-sidebar-workspace-' + item.kind`
  *       yields the accepted prefix `st-sidebar-workspace-` (covering
- *       `st-sidebar-workspace-history|status|search`).
+ *       `st-sidebar-workspace-history|status|repos`).
  *   A test-side name passes when it equals a literal or starts with a prefix.
  */
 

@@ -472,32 +472,6 @@ export interface FsChangedEvent {
   paths: string[];
 }
 
-/**
- * Cross-repo local commit search (ADR-026). `query` matches message, author
- * name/email and oid substring, case-insensitively; `repo_ids` scopes the
- * search and an empty list matches no repositories.
- */
-export interface SearchCommitsRequest {
-  query: string;
-  repoIds: string[];
-  limit: number;
-}
-
-/** One search hit. Metadata only (never Git objects/blobs). */
-export interface CommitSearchHit {
-  repoId: string;
-  oid: string;
-  message: string;
-  authorName: string;
-  authorEmail: string;
-  /** unix seconds (converted from the stored RFC3339) */
-  committedAt: number;
-}
-
-export interface SearchCommitsResponse {
-  hits: CommitSearchHit[];
-}
-
 export interface GitFlowConfig {
   /** default "main" */
   mainBranch: string;

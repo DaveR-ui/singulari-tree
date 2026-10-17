@@ -58,7 +58,6 @@ const (
 	GitCore_Push_FullMethodName               = "/singularitree.v1.GitCore/Push"
 	GitCore_Pull_FullMethodName               = "/singularitree.v1.GitCore/Pull"
 	GitCore_Watch_FullMethodName              = "/singularitree.v1.GitCore/Watch"
-	GitCore_SearchCommits_FullMethodName      = "/singularitree.v1.GitCore/SearchCommits"
 	GitCore_GetGitFlowConfig_FullMethodName   = "/singularitree.v1.GitCore/GetGitFlowConfig"
 	GitCore_SetGitFlowConfig_FullMethodName   = "/singularitree.v1.GitCore/SetGitFlowConfig"
 	GitCore_StartGitFlow_FullMethodName       = "/singularitree.v1.GitCore/StartGitFlow"
@@ -122,11 +121,6 @@ type GitCoreClient interface {
 	Push(ctx context.Context, in *PushRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Progress], error)
 	Pull(ctx context.Context, in *PullRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Progress], error)
 	Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[FsChangedEvent], error)
-	// Cross-repo local commit search over the SQLite metadata cache (ADR-026).
-	// The core owns the query; the backing store holds commit metadata only,
-	// never Git objects. Results are best-effort over what is cached plus a
-	// bounded per-repo backfill.
-	SearchCommits(ctx context.Context, in *SearchCommitsRequest, opts ...grpc.CallOption) (*SearchCommitsResponse, error)
 	// git-flow workflow presets (ADR-027), built on the ADR-028 operations. The
 	// core owns the branch/merge/tag sequence; the renderer addresses by
 	// kind/name only.
@@ -579,16 +573,6 @@ func (c *gitCoreClient) Watch(ctx context.Context, in *WatchRequest, opts ...grp
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type GitCore_WatchClient = grpc.ServerStreamingClient[FsChangedEvent]
 
-func (c *gitCoreClient) SearchCommits(ctx context.Context, in *SearchCommitsRequest, opts ...grpc.CallOption) (*SearchCommitsResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(SearchCommitsResponse)
-	err := c.cc.Invoke(ctx, GitCore_SearchCommits_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *gitCoreClient) GetGitFlowConfig(ctx context.Context, in *GetGitFlowConfigRequest, opts ...grpc.CallOption) (*GitFlowConfig, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GitFlowConfig)
@@ -686,11 +670,6 @@ type GitCoreServer interface {
 	Push(*PushRequest, grpc.ServerStreamingServer[Progress]) error
 	Pull(*PullRequest, grpc.ServerStreamingServer[Progress]) error
 	Watch(*WatchRequest, grpc.ServerStreamingServer[FsChangedEvent]) error
-	// Cross-repo local commit search over the SQLite metadata cache (ADR-026).
-	// The core owns the query; the backing store holds commit metadata only,
-	// never Git objects. Results are best-effort over what is cached plus a
-	// bounded per-repo backfill.
-	SearchCommits(context.Context, *SearchCommitsRequest) (*SearchCommitsResponse, error)
 	// git-flow workflow presets (ADR-027), built on the ADR-028 operations. The
 	// core owns the branch/merge/tag sequence; the renderer addresses by
 	// kind/name only.
@@ -824,9 +803,6 @@ func (UnimplementedGitCoreServer) Pull(*PullRequest, grpc.ServerStreamingServer[
 }
 func (UnimplementedGitCoreServer) Watch(*WatchRequest, grpc.ServerStreamingServer[FsChangedEvent]) error {
 	return status.Error(codes.Unimplemented, "method Watch not implemented")
-}
-func (UnimplementedGitCoreServer) SearchCommits(context.Context, *SearchCommitsRequest) (*SearchCommitsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method SearchCommits not implemented")
 }
 func (UnimplementedGitCoreServer) GetGitFlowConfig(context.Context, *GetGitFlowConfigRequest) (*GitFlowConfig, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetGitFlowConfig not implemented")
@@ -1528,24 +1504,6 @@ func _GitCore_Watch_Handler(srv interface{}, stream grpc.ServerStream) error {
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type GitCore_WatchServer = grpc.ServerStreamingServer[FsChangedEvent]
 
-func _GitCore_SearchCommits_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(SearchCommitsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(GitCoreServer).SearchCommits(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: GitCore_SearchCommits_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(GitCoreServer).SearchCommits(ctx, req.(*SearchCommitsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _GitCore_GetGitFlowConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetGitFlowConfigRequest)
 	if err := dec(in); err != nil {
@@ -1760,10 +1718,6 @@ var GitCore_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "StashDrop",
 			Handler:    _GitCore_StashDrop_Handler,
-		},
-		{
-			MethodName: "SearchCommits",
-			Handler:    _GitCore_SearchCommits_Handler,
 		},
 		{
 			MethodName: "GetGitFlowConfig",

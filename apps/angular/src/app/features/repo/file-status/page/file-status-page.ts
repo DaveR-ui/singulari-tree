@@ -8,6 +8,7 @@ import { PreferencesService } from '@core/services/preferences.service';
 import { RepoState } from '@core/services/repo-state.service';
 import { GraphStore, WIP_OID } from '../../graph/graph.store';
 import { CommitDetailsPanel } from '../../graph/ui/commit-details-panel';
+import { splitCommitMessage } from '../../graph/ui/commit-message';
 import { ChangesPanel } from '../../status/ui/changes-panel';
 import type { HunkActionEvent } from '../../status/ui/hunk-actions';
 import { FileStatusStore } from '../file-status.store';
@@ -54,6 +55,7 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
       <div class="st-file-status__left" detail>
         <st-file-status-variant-bar
           [variant]="fs.variant()"
+          [pendingCount]="fs.unstagedFiles().length"
           [branches]="branchNames()"
           [baseRef]="fs.baseRef()"
           [targetRef]="fs.targetRef()"
@@ -88,11 +90,6 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
               />
             }
             @case ('commit') {
-              <st-commit-details-panel
-                [commit]="fs.activeCommit()"
-                [isWip]="false"
-                [collapsible]="true"
-              />
               <p class="st-file-status__summary" data-testid="file-status-summary">
                 {{ summaryText() }}
               </p>
@@ -100,6 +97,17 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
                 [files]="fs.diffFiles()"
                 [selectedPath]="fs.selectedPath()"
                 (fileSelect)="fs.selectFile($event)"
+              />
+              <!--
+                The subject headline is MOVED to the right-pane title, so the
+                panel renders without it and rests on the floor of this column
+                (margin-top: auto) below the file list.
+              -->
+              <st-commit-details-panel
+                [commit]="fs.activeCommit()"
+                [isWip]="false"
+                [collapsible]="true"
+                [showSubject]="false"
               />
             }
             @case ('pr') {
@@ -118,6 +126,11 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
 
       <!-- flexible RIGHT: the selected file's diff, always -->
       <div class="st-file-status__right" data-testid="file-status-diff">
+        @if (fs.variant() === 'commit' && commitTitle(); as title) {
+          <header class="st-file-status__pane-title st-hairline" data-testid="file-status-title">
+            <h2 class="st-file-status__pane-title-text" [title]="title">{{ title }}</h2>
+          </header>
+        }
         @if (untrackedSelected()) {
           <p class="st-file-status__notice" data-testid="file-status-untracked" i18n>
             Untracked file — nothing to diff until it is staged.
@@ -204,12 +217,16 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
       opacity: 0.75;
     }
 
-    /* Commit variant: the changed-file list owns the slack, the collapsible
-       commit header shrinks to its compact head. min-height: 0 lets both
-       shrink below their content inside the flex column. */
+    /* Commit variant: the free space lands between the changed-file list and
+       the commit panel, so the panel rests on the floor of the column
+       (margin-top: auto) and shrinks to its compact head. min-height: 0 lets
+       it shrink below its content; when the column overflows, the auto margin
+       collapses to 0 and the body scrolls.
+       content inside the flex column. */
     :host st-commit-details-panel {
       flex: 0 1 auto;
       min-height: 0;
+      margin-top: auto;
     }
 
     :host st-file-diff-list {
@@ -248,6 +265,28 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
       min-height: var(--st-size-row-tree-dense);
       font-size: var(--st-font-12);
       color: var(--st-color-muted);
+    }
+
+    /* Commit variant: the moved subject, above the diff and below its own
+       hairline so it heads the right pane. */
+    .st-file-status__pane-title {
+      display: flex;
+      align-items: center;
+      flex: none;
+      padding: 0 var(--st-space-3);
+      min-height: var(--st-size-row-tree-dense);
+      color: var(--st-color-muted);
+    }
+
+    .st-file-status__pane-title-text {
+      margin: 0;
+      min-width: 0;
+      font-size: var(--st-font-13);
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      word-break: break-word;
     }
 
     .st-file-status__diff-path {
@@ -372,6 +411,16 @@ export class FileStatusPage {
     return $localize`+${additions} −${deletions} across ${files}`;
   });
 
+  /**
+   * Subject of the active commit, shown as the right-pane title in the commit
+   * variant (the panel itself no longer renders it there). Empty when there is
+   * no active commit, so the title renders nothing.
+   */
+  readonly commitTitle = computed(() => {
+    const commit = this.fs.activeCommit();
+    return commit ? splitCommitMessage(commit.message ?? '').subject : '';
+  });
+
   constructor() {
     // Mirror `RepoPage`: a cold deep link (or the sidebar) can land here with no
     // graph loaded yet, so hydrate the shared route-scoped `GraphStore` from the
@@ -402,7 +451,7 @@ export class FileStatusPage {
           : undefined;
       // Dedupe on the RESOLVED selection, not on `oid`. `commits()` stays a
       // tracked dependency on purpose: a selection whose commit is not yet in
-      // the loaded window (the ADR-026 cross-repo search hand-off) resolves to
+      // the loaded window (the open-commit deep-link focus) resolves to
       // `null` here and must re-fire once the window that names it loads. But a
       // background `reload()` (fs:changed after stage/unstage/commit) installs a
       // NEW `commits()` array that still names the selected commit; without this

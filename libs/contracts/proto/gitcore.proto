@@ -59,11 +59,6 @@ service GitCore {
   rpc Push(PushRequest) returns (stream Progress);
   rpc Pull(PullRequest) returns (stream Progress);
   rpc Watch(WatchRequest) returns (stream FsChangedEvent);
-  // Cross-repo local commit search over the SQLite metadata cache (ADR-026).
-  // The core owns the query; the backing store holds commit metadata only,
-  // never Git objects. Results are best-effort over what is cached plus a
-  // bounded per-repo backfill.
-  rpc SearchCommits(SearchCommitsRequest) returns (SearchCommitsResponse);
   // git-flow workflow presets (ADR-027), built on the ADR-028 operations. The
   // core owns the branch/merge/tag sequence; the renderer addresses by
   // kind/name only.
@@ -340,25 +335,6 @@ message FsChangedEvent {
   string repo_id = 1;
   repeated string paths = 2;
 }
-
-// Cross-repo local commit search (ADR-026). `query` matches message, author
-// name/email and oid substring, case-insensitively; `repo_ids` scopes the
-// search and an empty list matches no repositories.
-message SearchCommitsRequest {
-  string query = 1;
-  repeated string repo_ids = 2;
-  uint32 limit = 3;
-}
-// One search hit. Metadata only (never Git objects/blobs).
-message CommitSearchHit {
-  string repo_id = 1;
-  string oid = 2;
-  string message = 3;
-  string author_name = 4;
-  string author_email = 5;
-  int64 committed_at = 6; // unix seconds (converted from the stored RFC3339)
-}
-message SearchCommitsResponse { repeated CommitSearchHit hits = 1; }
 
 // git-flow presets (ADR-027). Configuration is SQLite metadata (never Git
 // data); GetGitFlowConfig on an unset repository returns the defaults below.

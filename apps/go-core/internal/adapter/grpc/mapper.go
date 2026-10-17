@@ -228,19 +228,6 @@ func commitStatsToProto(s domain.CommitStats) *singularitreev1.CommitStats {
 	}
 }
 
-// commitSearchHitToProto maps a cross-repo search hit to its wire form
-// (ADR-026). committed_at is converted from the stored time to unix seconds.
-func commitSearchHitToProto(h domain.CommitSearchHit) *singularitreev1.CommitSearchHit {
-	return &singularitreev1.CommitSearchHit{
-		RepoId:      string(h.RepoID),
-		Oid:         h.Oid,
-		Message:     h.Message,
-		AuthorName:  h.AuthorName,
-		AuthorEmail: h.AuthorEmail,
-		CommittedAt: h.CommittedAt.Unix(),
-	}
-}
-
 // gitFlowConfigToProto maps a domain git-flow config to its wire form (ADR-027).
 func gitFlowConfigToProto(c domain.GitFlowConfig) *singularitreev1.GitFlowConfig {
 	return &singularitreev1.GitFlowConfig{

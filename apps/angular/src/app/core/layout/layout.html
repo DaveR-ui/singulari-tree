@@ -69,18 +69,12 @@
       (gitFlowRequested)="onGitFlowRequested()"
     />
 
-    <!-- CENTER: route-driven, except the cross-repo search workspace (ADR-026).
-         Route pages that need a detail pane (History, File status) mount their
-         own `st-workspace-split`; the shell only owns the routed host. -->
-    @if (activeWorkspace() === 'search') {
-      <div class="st-router-host">
-        <st-search-workspace (hitSelected)="onSearchHitSelected($event)" />
-      </div>
-    } @else {
-      <div class="st-router-host">
-        <router-outlet />
-      </div>
-    }
+    <!-- CENTER: route-driven. Route pages that need a detail pane (History,
+         File status) mount their own `st-workspace-split`; the shell only owns
+         the routed host. -->
+    <div class="st-router-host">
+      <router-outlet />
+    </div>
 
     <!-- REPO DRAWER (pinned inline or floating popover, plan §4.7) -->
     <st-repo-drawer

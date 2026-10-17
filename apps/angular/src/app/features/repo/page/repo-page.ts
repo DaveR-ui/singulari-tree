@@ -86,6 +86,12 @@ import { RepoRelocatePanel } from '../ui/repo-relocate-panel';
       min-height: 0;
     }
 
+    /* The History aside's commit panel rests on the floor of the detail pane. */
+    :host st-commit-details-panel {
+      margin-top: auto;
+      align-self: stretch;
+    }
+
     :host st-graph-page,
     :host st-repo-picker,
     :host st-repo-relocate-panel {
@@ -190,7 +196,7 @@ export class RepoPage {
     // `setActive` swaps the repo object, so without it the effect would fire a
     // second `openRepository` that races the explicit one.
     //
-    // The same effect consumes a pending cross-repo search focus (ADR-026): once
+    // The same effect consumes a pending deep-link commit focus: once
     // the matching repository is open it selects (and, if needed, pages to) the
     // requested commit. A focus for the already-open repo is handled in place.
     effect(() => {

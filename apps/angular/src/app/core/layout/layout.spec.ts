@@ -490,24 +490,26 @@ describe('LayoutComponent', () => {
   it('controls the sidebar workspace selection through the parent signal', async () => {
     const { fixture } = await setup();
     const el = fixture.nativeElement as HTMLElement;
+    const router = TestBed.inject(Router);
+    vi.spyOn(router, 'navigate').mockResolvedValue(true);
 
     const items = el.querySelectorAll<HTMLElement>('.st-rail__item');
-    expect(items.length).toBeGreaterThanOrEqual(3);
+    expect(items.length).toBe(3);
     items[2].click();
     fixture.detectChanges();
 
-    expect(fixture.componentInstance.activeWorkspace()).toBe('search');
+    expect(fixture.componentInstance.activeWorkspace()).toBe('repos');
     expect(items[2].classList.contains('st-rail__item--active')).toBe(true);
   });
 
-  it('routes the WORKSPACE "Local changes" entry to /repo/file-status', async () => {
+  it('routes the WORKSPACE "Commit analyzer" entry to /repo/file-status', async () => {
     const { fixture } = await setup();
     const el = fixture.nativeElement as HTMLElement;
     const router = TestBed.inject(Router);
     const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
 
     const items = Array.from(el.querySelectorAll<HTMLElement>('.st-rail__item'));
-    const fileStatus = items.find((item) => item.textContent?.includes('Local changes'));
+    const fileStatus = items.find((item) => item.textContent?.includes('Commit analyzer'));
     expect(fileStatus).toBeDefined();
     fileStatus!.click();
     fixture.detectChanges();
@@ -515,7 +517,7 @@ describe('LayoutComponent', () => {
     expect(fixture.componentInstance.activeWorkspace()).toBe('status');
     expect(navigate).toHaveBeenCalledWith(['/repo', 'file-status']);
     // The routed screen renders through the shared router outlet.
-    expect(el.querySelector('st-search-workspace')).toBeNull();
+    expect(el.querySelector('router-outlet')).not.toBeNull();
   });
 
   it('leaves the file-status screen when WORKSPACE "History" is picked', async () => {
@@ -525,7 +527,7 @@ describe('LayoutComponent', () => {
     const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
 
     const items = Array.from(el.querySelectorAll<HTMLElement>('.st-rail__item'));
-    items.find((item) => item.textContent?.includes('Local changes'))!.click();
+    items.find((item) => item.textContent?.includes('Commit analyzer'))!.click();
     fixture.detectChanges();
     navigate.mockClear();
 
@@ -1617,76 +1619,6 @@ describe('LayoutComponent', () => {
     expect(region).not.toBeNull();
     expect(region!.textContent).toContain('Fetching repositories');
     expect(region!.textContent).toContain('1/2');
-  });
-
-  // -- cross-repo search (ADR-026) -----------------------------------------
-
-  it('renders the search workspace when the sidebar selects search', async () => {
-    const { fixture } = await setup();
-
-    fixture.componentInstance.activeWorkspace.set('search');
-    fixture.detectChanges();
-
-    expect(query(fixture, 'search-workspace')).not.toBeNull();
-  });
-
-  it('keeps the non-routed Search workspace highlighted (no navigation clobbers it)', async () => {
-    const { fixture } = await setup();
-    const router = TestBed.inject(Router);
-    const navigate = vi.spyOn(router, 'navigate');
-    const el = fixture.nativeElement as HTMLElement;
-
-    // Selecting Search is an in-shell action: it must not route, so the new
-    // URL-driven effect has no NavigationEnd to re-derive the highlight from.
-    const items = Array.from(el.querySelectorAll<HTMLElement>('.st-rail__item'));
-    items.find((item) => item.textContent?.includes('Search'))!.click();
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    expect(navigate).not.toHaveBeenCalled();
-    expect(fixture.componentInstance.activeWorkspace()).toBe('search');
-  });
-
-  it('opens a search hit tab, queues the focus and routes to the graph', async () => {
-    const repo = makeRepository(1);
-    const { fixture, workspaces, commitFocus } = await setup({ repos: [repo] });
-    const router = TestBed.inject(Router);
-    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
-
-    fixture.componentInstance.onSearchHitSelected({
-      repoId: repo.id,
-      oid: 'abc123',
-      message: 'fix',
-      authorName: 'Ada',
-      authorEmail: 'ada@example.com',
-      committedAt: 0,
-    });
-
-    expect(workspaces.openTab).toHaveBeenCalledWith(repo);
-    expect(workspaces.selectTab).toHaveBeenCalledWith(repo.id);
-    expect(commitFocus.request).toHaveBeenCalledWith(repo.id, 'abc123');
-    expect(navigate).toHaveBeenCalledWith(['/repo']);
-    expect(fixture.componentInstance.activeWorkspace()).toBe('history');
-  });
-
-  it('ignores a search hit for an unknown repository', async () => {
-    const { fixture, workspaces, commitFocus } = await setup({ repos: [] });
-    const router = TestBed.inject(Router);
-    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
-
-    fixture.componentInstance.onSearchHitSelected({
-      repoId: 'ghost',
-      oid: 'abc',
-      message: '',
-      authorName: '',
-      authorEmail: '',
-      committedAt: 0,
-    });
-
-    expect(workspaces.openTab).not.toHaveBeenCalled();
-    expect(commitFocus.request).not.toHaveBeenCalled();
-    expect(navigate).not.toHaveBeenCalled();
   });
 
   // -- deep links (ADR-025) ------------------------------------------------

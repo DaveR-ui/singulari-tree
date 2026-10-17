@@ -823,10 +823,10 @@ export class NavRail {
   /** Controlled by the parent; this component never mutates it locally. */
   readonly activeWorkspace = input('history');
   /**
-   * Working-tree change count for the "Local changes" workspace pill. The shell
-   * has no working-tree count at its scope yet, so it passes 0 and the pill is
-   * hidden; the `st-nav-item` mechanism is already in place for a later feed.
-   * (Deferral — no IPC call is invented here.)
+   * Working-tree change count for the "Commit analyzer" workspace pill. The
+   * shell has no working-tree count at its scope yet, so it passes 0 and the
+   * pill is hidden; the `st-nav-item` mechanism is already in place for a later
+   * feed. (Deferral — no IPC call is invented here.)
    */
   readonly changeCount = input(0);
 
@@ -893,9 +893,8 @@ export class NavRail {
   });
 
   readonly WORKSPACE: readonly WorkspaceItem[] = [
-    { kind: 'status', label: $localize`Local changes`, icon: 'changes' },
+    { kind: 'status', label: $localize`Commit analyzer`, icon: 'changes' },
     { kind: 'history', label: $localize`History`, icon: 'history' },
-    { kind: 'search', label: $localize`Search`, icon: 'search' },
     { kind: 'repos', label: $localize`Repositories`, icon: 'repo' },
   ];
 
@@ -925,7 +924,7 @@ export class NavRail {
     this.workspaceSelected.emit(kind);
   }
 
-  /** Count pill for a workspace item: only "Local changes" carries one. */
+  /** Count pill for a workspace item: only "Commit analyzer" carries one. */
   countFor(kind: string): number | undefined {
     return kind === 'status' ? this.changeCount() : undefined;
   }

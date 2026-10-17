@@ -147,18 +147,21 @@ describe('NavRail', () => {
 
   it('exposes each WORKSPACE entry with a stable kind-scoped test id', async () => {
     const fixture = await setup();
+    const el = fixture.nativeElement as HTMLElement;
 
     expect(all(fixture, 'st-sidebar-workspace-status')).toHaveLength(1);
     expect(all(fixture, 'st-sidebar-workspace-history')).toHaveLength(1);
-    expect(all(fixture, 'st-sidebar-workspace-search')).toHaveLength(1);
-    expect(all(fixture, 'st-sidebar-workspace-status')[0].textContent).toContain('Local changes');
+    expect(all(fixture, 'st-sidebar-workspace-repos')).toHaveLength(1);
+    // Exactly three workspace rows: status, history and repositories.
+    expect(el.querySelectorAll('[data-testid^="st-sidebar-workspace-"]')).toHaveLength(3);
+    expect(all(fixture, 'st-sidebar-workspace-status')[0].textContent).toContain('Commit analyzer');
     expect(all(fixture, 'st-sidebar-workspace-history')[0].textContent).toContain('History');
   });
 
   it('marks the active workspace item', async () => {
-    const fixture = await setup({ activeWorkspace: 'search' });
+    const fixture = await setup({ activeWorkspace: 'repos' });
 
-    const item = all(fixture, 'st-sidebar-workspace-search')[0] as HTMLElement;
+    const item = all(fixture, 'st-sidebar-workspace-repos')[0] as HTMLElement;
     expect(item.classList.contains('st-rail__item--active')).toBe(true);
     expect(
       (all(fixture, 'st-sidebar-workspace-history')[0] as HTMLElement).classList.contains(
@@ -196,7 +199,7 @@ describe('NavRail', () => {
     expect(emitted).toEqual(['repos']);
   });
 
-  it('shows the change-count pill on Local changes only when there is a count', async () => {
+  it('shows the change-count pill on Commit analyzer only when there is a count', async () => {
     const hidden = await setup({ changeCount: 0 });
     expect(
       all(hidden, 'st-sidebar-workspace-status')[0].querySelector('[data-testid="nav-item-count"]'),

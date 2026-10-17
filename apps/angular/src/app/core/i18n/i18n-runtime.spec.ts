@@ -125,7 +125,7 @@ describe('locale catalogues', () => {
     'Pin repositories',
     'Review changes',
     'Synced',
-    'Local changes',
+    'Commit analyzer',
     'Commit / author',
   ];
 

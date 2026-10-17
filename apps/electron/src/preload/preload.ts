@@ -483,28 +483,7 @@ export interface WatchRequest {
   repoId: string;
 }
 
-// --- Commit search (ADR-026) + git-flow presets (ADR-027) ------------------
-
-/** One cross-repo commit search hit; metadata only (never Git objects/blobs). */
-export interface CommitSearchHit {
-  repoId: string;
-  oid: string;
-  message: string;
-  authorName: string;
-  authorEmail: string;
-  /** unix seconds (converted from the stored RFC3339) */
-  committedAt: number;
-}
-
-export interface SearchCommitsRequest {
-  query: string;
-  repoIds: string[];
-  limit: number;
-}
-
-export interface SearchCommitsResponse {
-  hits: CommitSearchHit[];
-}
+// --- git-flow presets (ADR-027) --------------------------------------------
 
 /**
  * git-flow workflow kind (ADR-027). proto-loader decodes the enum with
@@ -787,8 +766,7 @@ export interface GitClientApi {
   stashApply: (req: StashApplyRequest) => Promise<StashApplyResponse>;
   stashPop: (req: StashPopRequest) => Promise<StashPopResponse>;
   stashDrop: (req: StashDropRequest) => Promise<StashDropResponse>;
-  // Cross-repo commit search (ADR-026) + git-flow presets (ADR-027).
-  searchCommits: (req: SearchCommitsRequest) => Promise<SearchCommitsResponse>;
+  // git-flow presets (ADR-027).
   getGitFlowConfig: (req: GetGitFlowConfigRequest) => Promise<GitFlowConfig>;
   setGitFlowConfig: (req: SetGitFlowConfigRequest) => Promise<GitFlowConfig>;
   startGitFlow: (req: StartGitFlowRequest) => Promise<GitFlowResult>;
@@ -858,7 +836,6 @@ const api: GitClientApi = {
   stashApply: (req) => ipcRenderer.invoke('git:stashApply', req),
   stashPop: (req) => ipcRenderer.invoke('git:stashPop', req),
   stashDrop: (req) => ipcRenderer.invoke('git:stashDrop', req),
-  searchCommits: (req) => ipcRenderer.invoke('git:searchCommits', req),
   getGitFlowConfig: (req) => ipcRenderer.invoke('git:getGitFlowConfig', req),
   setGitFlowConfig: (req) => ipcRenderer.invoke('git:setGitFlowConfig', req),
   startGitFlow: (req) => ipcRenderer.invoke('git:startGitFlow', req),

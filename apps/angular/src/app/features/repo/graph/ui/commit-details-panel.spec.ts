@@ -25,6 +25,7 @@ function render(
   collapsible = false,
   showNavigation = false,
   changedFiles: readonly string[] = [],
+  showSubject = true,
 ) {
   const fixture = TestBed.createComponent(CommitDetailsPanel);
   fixture.componentRef.setInput('commit', commit);
@@ -33,6 +34,7 @@ function render(
   fixture.componentRef.setInput('collapsible', collapsible);
   fixture.componentRef.setInput('showNavigation', showNavigation);
   fixture.componentRef.setInput('changedFiles', changedFiles);
+  fixture.componentRef.setInput('showSubject', showSubject);
   fixture.detectChanges();
   return fixture;
 }
@@ -251,6 +253,20 @@ describe('CommitDetailsPanel', () => {
   it('hides the navigation controls unless showNavigation opts in', () => {
     const el = render(COMMIT).nativeElement as HTMLElement;
     expect(el.querySelector('[data-testid="commit-details-back"]')).toBeNull();
+  });
+
+  it('hides the subject headline when showSubject is false (File-status embed)', () => {
+    // History keeps the subject inside the panel.
+    const shown = render(COMMIT).nativeElement as HTMLElement;
+    expect(text(shown, 'commit-details-subject')).toBe('feat(graph): details panel');
+
+    // The File-status commit embed moves the subject to the right-pane title, so
+    // the panel must not duplicate it. The rest of the compact identity head
+    // (hash + byline) is unaffected.
+    const hidden = render(COMMIT, false, false, true, false, [], false).nativeElement as HTMLElement;
+    expect(hidden.querySelector('[data-testid="commit-details-subject"]')).toBeNull();
+    expect(text(hidden, 'commit-details-short-oid')).toBe('aaaaaaa');
+    expect(text(hidden, 'commit-details-byline')).toContain('Ada Lovelace <ada@example.com>');
   });
 });
 

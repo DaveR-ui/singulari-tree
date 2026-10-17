@@ -3665,198 +3665,6 @@ func (x *FsChangedEvent) GetPaths() []string {
 	return nil
 }
 
-// Cross-repo local commit search (ADR-026). `query` matches message, author
-// name/email and oid substring, case-insensitively; `repo_ids` scopes the
-// search and an empty list matches no repositories.
-type SearchCommitsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Query         string                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
-	RepoIds       []string               `protobuf:"bytes,2,rep,name=repo_ids,json=repoIds,proto3" json:"repo_ids,omitempty"`
-	Limit         uint32                 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SearchCommitsRequest) Reset() {
-	*x = SearchCommitsRequest{}
-	mi := &file_gitcore_proto_msgTypes[67]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SearchCommitsRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SearchCommitsRequest) ProtoMessage() {}
-
-func (x *SearchCommitsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[67]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SearchCommitsRequest.ProtoReflect.Descriptor instead.
-func (*SearchCommitsRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{67}
-}
-
-func (x *SearchCommitsRequest) GetQuery() string {
-	if x != nil {
-		return x.Query
-	}
-	return ""
-}
-
-func (x *SearchCommitsRequest) GetRepoIds() []string {
-	if x != nil {
-		return x.RepoIds
-	}
-	return nil
-}
-
-func (x *SearchCommitsRequest) GetLimit() uint32 {
-	if x != nil {
-		return x.Limit
-	}
-	return 0
-}
-
-// One search hit. Metadata only (never Git objects/blobs).
-type CommitSearchHit struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RepoId        string                 `protobuf:"bytes,1,opt,name=repo_id,json=repoId,proto3" json:"repo_id,omitempty"`
-	Oid           string                 `protobuf:"bytes,2,opt,name=oid,proto3" json:"oid,omitempty"`
-	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
-	AuthorName    string                 `protobuf:"bytes,4,opt,name=author_name,json=authorName,proto3" json:"author_name,omitempty"`
-	AuthorEmail   string                 `protobuf:"bytes,5,opt,name=author_email,json=authorEmail,proto3" json:"author_email,omitempty"`
-	CommittedAt   int64                  `protobuf:"varint,6,opt,name=committed_at,json=committedAt,proto3" json:"committed_at,omitempty"` // unix seconds (converted from the stored RFC3339)
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *CommitSearchHit) Reset() {
-	*x = CommitSearchHit{}
-	mi := &file_gitcore_proto_msgTypes[68]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *CommitSearchHit) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*CommitSearchHit) ProtoMessage() {}
-
-func (x *CommitSearchHit) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[68]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use CommitSearchHit.ProtoReflect.Descriptor instead.
-func (*CommitSearchHit) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{68}
-}
-
-func (x *CommitSearchHit) GetRepoId() string {
-	if x != nil {
-		return x.RepoId
-	}
-	return ""
-}
-
-func (x *CommitSearchHit) GetOid() string {
-	if x != nil {
-		return x.Oid
-	}
-	return ""
-}
-
-func (x *CommitSearchHit) GetMessage() string {
-	if x != nil {
-		return x.Message
-	}
-	return ""
-}
-
-func (x *CommitSearchHit) GetAuthorName() string {
-	if x != nil {
-		return x.AuthorName
-	}
-	return ""
-}
-
-func (x *CommitSearchHit) GetAuthorEmail() string {
-	if x != nil {
-		return x.AuthorEmail
-	}
-	return ""
-}
-
-func (x *CommitSearchHit) GetCommittedAt() int64 {
-	if x != nil {
-		return x.CommittedAt
-	}
-	return 0
-}
-
-type SearchCommitsResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Hits          []*CommitSearchHit     `protobuf:"bytes,1,rep,name=hits,proto3" json:"hits,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SearchCommitsResponse) Reset() {
-	*x = SearchCommitsResponse{}
-	mi := &file_gitcore_proto_msgTypes[69]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SearchCommitsResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SearchCommitsResponse) ProtoMessage() {}
-
-func (x *SearchCommitsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[69]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SearchCommitsResponse.ProtoReflect.Descriptor instead.
-func (*SearchCommitsResponse) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{69}
-}
-
-func (x *SearchCommitsResponse) GetHits() []*CommitSearchHit {
-	if x != nil {
-		return x.Hits
-	}
-	return nil
-}
-
 type GitFlowConfig struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	MainBranch       string                 `protobuf:"bytes,1,opt,name=main_branch,json=mainBranch,proto3" json:"main_branch,omitempty"`                     // default "main"
@@ -3871,7 +3679,7 @@ type GitFlowConfig struct {
 
 func (x *GitFlowConfig) Reset() {
 	*x = GitFlowConfig{}
-	mi := &file_gitcore_proto_msgTypes[70]
+	mi := &file_gitcore_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3883,7 +3691,7 @@ func (x *GitFlowConfig) String() string {
 func (*GitFlowConfig) ProtoMessage() {}
 
 func (x *GitFlowConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[70]
+	mi := &file_gitcore_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3896,7 +3704,7 @@ func (x *GitFlowConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitFlowConfig.ProtoReflect.Descriptor instead.
 func (*GitFlowConfig) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{70}
+	return file_gitcore_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *GitFlowConfig) GetMainBranch() string {
@@ -3950,7 +3758,7 @@ type GetGitFlowConfigRequest struct {
 
 func (x *GetGitFlowConfigRequest) Reset() {
 	*x = GetGitFlowConfigRequest{}
-	mi := &file_gitcore_proto_msgTypes[71]
+	mi := &file_gitcore_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3962,7 +3770,7 @@ func (x *GetGitFlowConfigRequest) String() string {
 func (*GetGitFlowConfigRequest) ProtoMessage() {}
 
 func (x *GetGitFlowConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[71]
+	mi := &file_gitcore_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3975,7 +3783,7 @@ func (x *GetGitFlowConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGitFlowConfigRequest.ProtoReflect.Descriptor instead.
 func (*GetGitFlowConfigRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{71}
+	return file_gitcore_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *GetGitFlowConfigRequest) GetRepoId() string {
@@ -3995,7 +3803,7 @@ type SetGitFlowConfigRequest struct {
 
 func (x *SetGitFlowConfigRequest) Reset() {
 	*x = SetGitFlowConfigRequest{}
-	mi := &file_gitcore_proto_msgTypes[72]
+	mi := &file_gitcore_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4007,7 +3815,7 @@ func (x *SetGitFlowConfigRequest) String() string {
 func (*SetGitFlowConfigRequest) ProtoMessage() {}
 
 func (x *SetGitFlowConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[72]
+	mi := &file_gitcore_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4020,7 +3828,7 @@ func (x *SetGitFlowConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetGitFlowConfigRequest.ProtoReflect.Descriptor instead.
 func (*SetGitFlowConfigRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{72}
+	return file_gitcore_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *SetGitFlowConfigRequest) GetRepoId() string {
@@ -4051,7 +3859,7 @@ type StartGitFlowRequest struct {
 
 func (x *StartGitFlowRequest) Reset() {
 	*x = StartGitFlowRequest{}
-	mi := &file_gitcore_proto_msgTypes[73]
+	mi := &file_gitcore_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4063,7 +3871,7 @@ func (x *StartGitFlowRequest) String() string {
 func (*StartGitFlowRequest) ProtoMessage() {}
 
 func (x *StartGitFlowRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[73]
+	mi := &file_gitcore_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4076,7 +3884,7 @@ func (x *StartGitFlowRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartGitFlowRequest.ProtoReflect.Descriptor instead.
 func (*StartGitFlowRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{73}
+	return file_gitcore_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *StartGitFlowRequest) GetRepoId() string {
@@ -4119,7 +3927,7 @@ type FinishGitFlowRequest struct {
 
 func (x *FinishGitFlowRequest) Reset() {
 	*x = FinishGitFlowRequest{}
-	mi := &file_gitcore_proto_msgTypes[74]
+	mi := &file_gitcore_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4131,7 +3939,7 @@ func (x *FinishGitFlowRequest) String() string {
 func (*FinishGitFlowRequest) ProtoMessage() {}
 
 func (x *FinishGitFlowRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[74]
+	mi := &file_gitcore_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4144,7 +3952,7 @@ func (x *FinishGitFlowRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FinishGitFlowRequest.ProtoReflect.Descriptor instead.
 func (*FinishGitFlowRequest) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{74}
+	return file_gitcore_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *FinishGitFlowRequest) GetRepoId() string {
@@ -4190,7 +3998,7 @@ type GitFlowResult struct {
 
 func (x *GitFlowResult) Reset() {
 	*x = GitFlowResult{}
-	mi := &file_gitcore_proto_msgTypes[75]
+	mi := &file_gitcore_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4202,7 +4010,7 @@ func (x *GitFlowResult) String() string {
 func (*GitFlowResult) ProtoMessage() {}
 
 func (x *GitFlowResult) ProtoReflect() protoreflect.Message {
-	mi := &file_gitcore_proto_msgTypes[75]
+	mi := &file_gitcore_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4215,7 +4023,7 @@ func (x *GitFlowResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitFlowResult.ProtoReflect.Descriptor instead.
 func (*GitFlowResult) Descriptor() ([]byte, []int) {
-	return file_gitcore_proto_rawDescGZIP(), []int{75}
+	return file_gitcore_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *GitFlowResult) GetBranch() string {
@@ -4441,21 +4249,7 @@ const file_gitcore_proto_rawDesc = "" +
 	"\arepo_id\x18\x01 \x01(\tR\x06repoId\"?\n" +
 	"\x0eFsChangedEvent\x12\x17\n" +
 	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x14\n" +
-	"\x05paths\x18\x02 \x03(\tR\x05paths\"]\n" +
-	"\x14SearchCommitsRequest\x12\x14\n" +
-	"\x05query\x18\x01 \x01(\tR\x05query\x12\x19\n" +
-	"\brepo_ids\x18\x02 \x03(\tR\arepoIds\x12\x14\n" +
-	"\x05limit\x18\x03 \x01(\rR\x05limit\"\xbd\x01\n" +
-	"\x0fCommitSearchHit\x12\x17\n" +
-	"\arepo_id\x18\x01 \x01(\tR\x06repoId\x12\x10\n" +
-	"\x03oid\x18\x02 \x01(\tR\x03oid\x12\x18\n" +
-	"\amessage\x18\x03 \x01(\tR\amessage\x12\x1f\n" +
-	"\vauthor_name\x18\x04 \x01(\tR\n" +
-	"authorName\x12!\n" +
-	"\fauthor_email\x18\x05 \x01(\tR\vauthorEmail\x12!\n" +
-	"\fcommitted_at\x18\x06 \x01(\x03R\vcommittedAt\"N\n" +
-	"\x15SearchCommitsResponse\x125\n" +
-	"\x04hits\x18\x01 \x03(\v2!.singularitree.v1.CommitSearchHitR\x04hits\"\xf8\x01\n" +
+	"\x05paths\x18\x02 \x03(\tR\x05paths\"\xf8\x01\n" +
 	"\rGitFlowConfig\x12\x1f\n" +
 	"\vmain_branch\x18\x01 \x01(\tR\n" +
 	"mainBranch\x12%\n" +
@@ -4500,7 +4294,7 @@ const file_gitcore_proto_rawDesc = "" +
 	"\aFEATURE\x10\x01\x12\v\n" +
 	"\aRELEASE\x10\x02\x12\n" +
 	"\n" +
-	"\x06HOTFIX\x10\x032\xaf\x1d\n" +
+	"\x06HOTFIX\x10\x032\xcd\x1c\n" +
 	"\aGitCore\x12E\n" +
 	"\x04Ping\x12\x1d.singularitree.v1.PingRequest\x1a\x1e.singularitree.v1.PingResponse\x12W\n" +
 	"\x0eOpenRepository\x12'.singularitree.v1.OpenRepositoryRequest\x1a\x1c.singularitree.v1.Repository\x12U\n" +
@@ -4544,8 +4338,7 @@ const file_gitcore_proto_rawDesc = "" +
 	"\x05Fetch\x12\x1e.singularitree.v1.FetchRequest\x1a\x1a.singularitree.v1.Progress0\x01\x12C\n" +
 	"\x04Push\x12\x1d.singularitree.v1.PushRequest\x1a\x1a.singularitree.v1.Progress0\x01\x12C\n" +
 	"\x04Pull\x12\x1d.singularitree.v1.PullRequest\x1a\x1a.singularitree.v1.Progress0\x01\x12K\n" +
-	"\x05Watch\x12\x1e.singularitree.v1.WatchRequest\x1a .singularitree.v1.FsChangedEvent0\x01\x12`\n" +
-	"\rSearchCommits\x12&.singularitree.v1.SearchCommitsRequest\x1a'.singularitree.v1.SearchCommitsResponse\x12^\n" +
+	"\x05Watch\x12\x1e.singularitree.v1.WatchRequest\x1a .singularitree.v1.FsChangedEvent0\x01\x12^\n" +
 	"\x10GetGitFlowConfig\x12).singularitree.v1.GetGitFlowConfigRequest\x1a\x1f.singularitree.v1.GitFlowConfig\x12^\n" +
 	"\x10SetGitFlowConfig\x12).singularitree.v1.SetGitFlowConfigRequest\x1a\x1f.singularitree.v1.GitFlowConfig\x12V\n" +
 	"\fStartGitFlow\x12%.singularitree.v1.StartGitFlowRequest\x1a\x1f.singularitree.v1.GitFlowResult\x12X\n" +
@@ -4564,7 +4357,7 @@ func file_gitcore_proto_rawDescGZIP() []byte {
 }
 
 var file_gitcore_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_gitcore_proto_msgTypes = make([]protoimpl.MessageInfo, 76)
+var file_gitcore_proto_msgTypes = make([]protoimpl.MessageInfo, 73)
 var file_gitcore_proto_goTypes = []any{
 	(MergeStrategy)(0),                // 0: singularitree.v1.MergeStrategy
 	(ResetMode)(0),                    // 1: singularitree.v1.ResetMode
@@ -4636,140 +4429,134 @@ var file_gitcore_proto_goTypes = []any{
 	(*Progress)(nil),                  // 67: singularitree.v1.Progress
 	(*WatchRequest)(nil),              // 68: singularitree.v1.WatchRequest
 	(*FsChangedEvent)(nil),            // 69: singularitree.v1.FsChangedEvent
-	(*SearchCommitsRequest)(nil),      // 70: singularitree.v1.SearchCommitsRequest
-	(*CommitSearchHit)(nil),           // 71: singularitree.v1.CommitSearchHit
-	(*SearchCommitsResponse)(nil),     // 72: singularitree.v1.SearchCommitsResponse
-	(*GitFlowConfig)(nil),             // 73: singularitree.v1.GitFlowConfig
-	(*GetGitFlowConfigRequest)(nil),   // 74: singularitree.v1.GetGitFlowConfigRequest
-	(*SetGitFlowConfigRequest)(nil),   // 75: singularitree.v1.SetGitFlowConfigRequest
-	(*StartGitFlowRequest)(nil),       // 76: singularitree.v1.StartGitFlowRequest
-	(*FinishGitFlowRequest)(nil),      // 77: singularitree.v1.FinishGitFlowRequest
-	(*GitFlowResult)(nil),             // 78: singularitree.v1.GitFlowResult
-	(*Repository)(nil),                // 79: singularitree.v1.Repository
-	(*Commit)(nil),                    // 80: singularitree.v1.Commit
-	(*Lane)(nil),                      // 81: singularitree.v1.Lane
-	(*Branch)(nil),                    // 82: singularitree.v1.Branch
-	(*Remote)(nil),                    // 83: singularitree.v1.Remote
-	(*Tag)(nil),                       // 84: singularitree.v1.Tag
-	(*Stash)(nil),                     // 85: singularitree.v1.Stash
-	(*Worktree)(nil),                  // 86: singularitree.v1.Worktree
-	(*FileStatus)(nil),                // 87: singularitree.v1.FileStatus
-	(*CommitStats)(nil),               // 88: singularitree.v1.CommitStats
-	(*Signature)(nil),                 // 89: singularitree.v1.Signature
-	(*Diff)(nil),                      // 90: singularitree.v1.Diff
+	(*GitFlowConfig)(nil),             // 70: singularitree.v1.GitFlowConfig
+	(*GetGitFlowConfigRequest)(nil),   // 71: singularitree.v1.GetGitFlowConfigRequest
+	(*SetGitFlowConfigRequest)(nil),   // 72: singularitree.v1.SetGitFlowConfigRequest
+	(*StartGitFlowRequest)(nil),       // 73: singularitree.v1.StartGitFlowRequest
+	(*FinishGitFlowRequest)(nil),      // 74: singularitree.v1.FinishGitFlowRequest
+	(*GitFlowResult)(nil),             // 75: singularitree.v1.GitFlowResult
+	(*Repository)(nil),                // 76: singularitree.v1.Repository
+	(*Commit)(nil),                    // 77: singularitree.v1.Commit
+	(*Lane)(nil),                      // 78: singularitree.v1.Lane
+	(*Branch)(nil),                    // 79: singularitree.v1.Branch
+	(*Remote)(nil),                    // 80: singularitree.v1.Remote
+	(*Tag)(nil),                       // 81: singularitree.v1.Tag
+	(*Stash)(nil),                     // 82: singularitree.v1.Stash
+	(*Worktree)(nil),                  // 83: singularitree.v1.Worktree
+	(*FileStatus)(nil),                // 84: singularitree.v1.FileStatus
+	(*CommitStats)(nil),               // 85: singularitree.v1.CommitStats
+	(*Signature)(nil),                 // 86: singularitree.v1.Signature
+	(*Diff)(nil),                      // 87: singularitree.v1.Diff
 }
 var file_gitcore_proto_depIdxs = []int32{
-	79, // 0: singularitree.v1.ListRepositoriesResponse.repositories:type_name -> singularitree.v1.Repository
-	80, // 1: singularitree.v1.GetCommitsResponse.commits:type_name -> singularitree.v1.Commit
-	81, // 2: singularitree.v1.GetCommitsResponse.lanes:type_name -> singularitree.v1.Lane
-	82, // 3: singularitree.v1.GetBranchesResponse.branches:type_name -> singularitree.v1.Branch
-	83, // 4: singularitree.v1.GetRemotesResponse.remotes:type_name -> singularitree.v1.Remote
-	84, // 5: singularitree.v1.GetTagsResponse.tags:type_name -> singularitree.v1.Tag
-	85, // 6: singularitree.v1.GetStashesResponse.stashes:type_name -> singularitree.v1.Stash
-	86, // 7: singularitree.v1.GetWorktreesResponse.worktrees:type_name -> singularitree.v1.Worktree
+	76, // 0: singularitree.v1.ListRepositoriesResponse.repositories:type_name -> singularitree.v1.Repository
+	77, // 1: singularitree.v1.GetCommitsResponse.commits:type_name -> singularitree.v1.Commit
+	78, // 2: singularitree.v1.GetCommitsResponse.lanes:type_name -> singularitree.v1.Lane
+	79, // 3: singularitree.v1.GetBranchesResponse.branches:type_name -> singularitree.v1.Branch
+	80, // 4: singularitree.v1.GetRemotesResponse.remotes:type_name -> singularitree.v1.Remote
+	81, // 5: singularitree.v1.GetTagsResponse.tags:type_name -> singularitree.v1.Tag
+	82, // 6: singularitree.v1.GetStashesResponse.stashes:type_name -> singularitree.v1.Stash
+	83, // 7: singularitree.v1.GetWorktreesResponse.worktrees:type_name -> singularitree.v1.Worktree
 	0,  // 8: singularitree.v1.MergeRequest.strategy:type_name -> singularitree.v1.MergeStrategy
-	87, // 9: singularitree.v1.GetStatusResponse.files:type_name -> singularitree.v1.FileStatus
+	84, // 9: singularitree.v1.GetStatusResponse.files:type_name -> singularitree.v1.FileStatus
 	1,  // 10: singularitree.v1.ResetRequest.mode:type_name -> singularitree.v1.ResetMode
-	88, // 11: singularitree.v1.GetCommitStatsResponse.stats:type_name -> singularitree.v1.CommitStats
-	89, // 12: singularitree.v1.CommitRequest.author:type_name -> singularitree.v1.Signature
-	85, // 13: singularitree.v1.StashPushResponse.stash:type_name -> singularitree.v1.Stash
-	71, // 14: singularitree.v1.SearchCommitsResponse.hits:type_name -> singularitree.v1.CommitSearchHit
-	73, // 15: singularitree.v1.SetGitFlowConfigRequest.config:type_name -> singularitree.v1.GitFlowConfig
-	2,  // 16: singularitree.v1.StartGitFlowRequest.kind:type_name -> singularitree.v1.GitFlowKind
-	2,  // 17: singularitree.v1.FinishGitFlowRequest.kind:type_name -> singularitree.v1.GitFlowKind
-	3,  // 18: singularitree.v1.GitCore.Ping:input_type -> singularitree.v1.PingRequest
-	5,  // 19: singularitree.v1.GitCore.OpenRepository:input_type -> singularitree.v1.OpenRepositoryRequest
-	6,  // 20: singularitree.v1.GitCore.GetRepository:input_type -> singularitree.v1.GetRepositoryRequest
-	7,  // 21: singularitree.v1.GitCore.ListRepositories:input_type -> singularitree.v1.ListRepositoriesRequest
-	9,  // 22: singularitree.v1.GitCore.RemoveRepository:input_type -> singularitree.v1.RemoveRepositoryRequest
-	11, // 23: singularitree.v1.GitCore.RelocateRepository:input_type -> singularitree.v1.RelocateRepositoryRequest
-	12, // 24: singularitree.v1.GitCore.GetCommits:input_type -> singularitree.v1.GetCommitsRequest
-	14, // 25: singularitree.v1.GitCore.StreamCommits:input_type -> singularitree.v1.StreamCommitsRequest
-	15, // 26: singularitree.v1.GitCore.GetBranches:input_type -> singularitree.v1.GetBranchesRequest
-	17, // 27: singularitree.v1.GitCore.GetRemotes:input_type -> singularitree.v1.GetRemotesRequest
-	19, // 28: singularitree.v1.GitCore.GetTags:input_type -> singularitree.v1.GetTagsRequest
-	21, // 29: singularitree.v1.GitCore.GetStashes:input_type -> singularitree.v1.GetStashesRequest
-	23, // 30: singularitree.v1.GitCore.GetWorktrees:input_type -> singularitree.v1.GetWorktreesRequest
-	40, // 31: singularitree.v1.GitCore.GetStatus:input_type -> singularitree.v1.GetStatusRequest
-	42, // 32: singularitree.v1.GitCore.GetDiff:input_type -> singularitree.v1.GetDiffRequest
-	43, // 33: singularitree.v1.GitCore.Stage:input_type -> singularitree.v1.StageRequest
-	45, // 34: singularitree.v1.GitCore.Unstage:input_type -> singularitree.v1.UnstageRequest
-	47, // 35: singularitree.v1.GitCore.StageHunk:input_type -> singularitree.v1.StageHunkRequest
-	49, // 36: singularitree.v1.GitCore.UnstageHunk:input_type -> singularitree.v1.UnstageHunkRequest
-	51, // 37: singularitree.v1.GitCore.DiscardHunk:input_type -> singularitree.v1.DiscardHunkRequest
-	53, // 38: singularitree.v1.GitCore.Discard:input_type -> singularitree.v1.DiscardRequest
-	55, // 39: singularitree.v1.GitCore.Reset:input_type -> singularitree.v1.ResetRequest
-	57, // 40: singularitree.v1.GitCore.GetCommitStats:input_type -> singularitree.v1.GetCommitStatsRequest
-	59, // 41: singularitree.v1.GitCore.Commit:input_type -> singularitree.v1.CommitRequest
-	60, // 42: singularitree.v1.GitCore.Checkout:input_type -> singularitree.v1.CheckoutRequest
-	62, // 43: singularitree.v1.GitCore.StashPush:input_type -> singularitree.v1.StashPushRequest
-	25, // 44: singularitree.v1.GitCore.CreateBranch:input_type -> singularitree.v1.CreateBranchRequest
-	26, // 45: singularitree.v1.GitCore.RenameBranch:input_type -> singularitree.v1.RenameBranchRequest
-	27, // 46: singularitree.v1.GitCore.DeleteBranch:input_type -> singularitree.v1.DeleteBranchRequest
-	29, // 47: singularitree.v1.GitCore.Merge:input_type -> singularitree.v1.MergeRequest
-	31, // 48: singularitree.v1.GitCore.CreateTag:input_type -> singularitree.v1.CreateTagRequest
-	32, // 49: singularitree.v1.GitCore.DeleteTag:input_type -> singularitree.v1.DeleteTagRequest
-	34, // 50: singularitree.v1.GitCore.StashApply:input_type -> singularitree.v1.StashApplyRequest
-	36, // 51: singularitree.v1.GitCore.StashPop:input_type -> singularitree.v1.StashPopRequest
-	38, // 52: singularitree.v1.GitCore.StashDrop:input_type -> singularitree.v1.StashDropRequest
-	64, // 53: singularitree.v1.GitCore.Fetch:input_type -> singularitree.v1.FetchRequest
-	65, // 54: singularitree.v1.GitCore.Push:input_type -> singularitree.v1.PushRequest
-	66, // 55: singularitree.v1.GitCore.Pull:input_type -> singularitree.v1.PullRequest
-	68, // 56: singularitree.v1.GitCore.Watch:input_type -> singularitree.v1.WatchRequest
-	70, // 57: singularitree.v1.GitCore.SearchCommits:input_type -> singularitree.v1.SearchCommitsRequest
-	74, // 58: singularitree.v1.GitCore.GetGitFlowConfig:input_type -> singularitree.v1.GetGitFlowConfigRequest
-	75, // 59: singularitree.v1.GitCore.SetGitFlowConfig:input_type -> singularitree.v1.SetGitFlowConfigRequest
-	76, // 60: singularitree.v1.GitCore.StartGitFlow:input_type -> singularitree.v1.StartGitFlowRequest
-	77, // 61: singularitree.v1.GitCore.FinishGitFlow:input_type -> singularitree.v1.FinishGitFlowRequest
-	4,  // 62: singularitree.v1.GitCore.Ping:output_type -> singularitree.v1.PingResponse
-	79, // 63: singularitree.v1.GitCore.OpenRepository:output_type -> singularitree.v1.Repository
-	79, // 64: singularitree.v1.GitCore.GetRepository:output_type -> singularitree.v1.Repository
-	8,  // 65: singularitree.v1.GitCore.ListRepositories:output_type -> singularitree.v1.ListRepositoriesResponse
-	10, // 66: singularitree.v1.GitCore.RemoveRepository:output_type -> singularitree.v1.RemoveRepositoryResponse
-	79, // 67: singularitree.v1.GitCore.RelocateRepository:output_type -> singularitree.v1.Repository
-	13, // 68: singularitree.v1.GitCore.GetCommits:output_type -> singularitree.v1.GetCommitsResponse
-	80, // 69: singularitree.v1.GitCore.StreamCommits:output_type -> singularitree.v1.Commit
-	16, // 70: singularitree.v1.GitCore.GetBranches:output_type -> singularitree.v1.GetBranchesResponse
-	18, // 71: singularitree.v1.GitCore.GetRemotes:output_type -> singularitree.v1.GetRemotesResponse
-	20, // 72: singularitree.v1.GitCore.GetTags:output_type -> singularitree.v1.GetTagsResponse
-	22, // 73: singularitree.v1.GitCore.GetStashes:output_type -> singularitree.v1.GetStashesResponse
-	24, // 74: singularitree.v1.GitCore.GetWorktrees:output_type -> singularitree.v1.GetWorktreesResponse
-	41, // 75: singularitree.v1.GitCore.GetStatus:output_type -> singularitree.v1.GetStatusResponse
-	90, // 76: singularitree.v1.GitCore.GetDiff:output_type -> singularitree.v1.Diff
-	44, // 77: singularitree.v1.GitCore.Stage:output_type -> singularitree.v1.StageResponse
-	46, // 78: singularitree.v1.GitCore.Unstage:output_type -> singularitree.v1.UnstageResponse
-	48, // 79: singularitree.v1.GitCore.StageHunk:output_type -> singularitree.v1.StageHunkResponse
-	50, // 80: singularitree.v1.GitCore.UnstageHunk:output_type -> singularitree.v1.UnstageHunkResponse
-	52, // 81: singularitree.v1.GitCore.DiscardHunk:output_type -> singularitree.v1.DiscardHunkResponse
-	54, // 82: singularitree.v1.GitCore.Discard:output_type -> singularitree.v1.DiscardResponse
-	56, // 83: singularitree.v1.GitCore.Reset:output_type -> singularitree.v1.ResetResponse
-	58, // 84: singularitree.v1.GitCore.GetCommitStats:output_type -> singularitree.v1.GetCommitStatsResponse
-	80, // 85: singularitree.v1.GitCore.Commit:output_type -> singularitree.v1.Commit
-	61, // 86: singularitree.v1.GitCore.Checkout:output_type -> singularitree.v1.CheckoutResponse
-	63, // 87: singularitree.v1.GitCore.StashPush:output_type -> singularitree.v1.StashPushResponse
-	82, // 88: singularitree.v1.GitCore.CreateBranch:output_type -> singularitree.v1.Branch
-	82, // 89: singularitree.v1.GitCore.RenameBranch:output_type -> singularitree.v1.Branch
-	28, // 90: singularitree.v1.GitCore.DeleteBranch:output_type -> singularitree.v1.DeleteBranchResponse
-	30, // 91: singularitree.v1.GitCore.Merge:output_type -> singularitree.v1.MergeResponse
-	84, // 92: singularitree.v1.GitCore.CreateTag:output_type -> singularitree.v1.Tag
-	33, // 93: singularitree.v1.GitCore.DeleteTag:output_type -> singularitree.v1.DeleteTagResponse
-	35, // 94: singularitree.v1.GitCore.StashApply:output_type -> singularitree.v1.StashApplyResponse
-	37, // 95: singularitree.v1.GitCore.StashPop:output_type -> singularitree.v1.StashPopResponse
-	39, // 96: singularitree.v1.GitCore.StashDrop:output_type -> singularitree.v1.StashDropResponse
-	67, // 97: singularitree.v1.GitCore.Fetch:output_type -> singularitree.v1.Progress
-	67, // 98: singularitree.v1.GitCore.Push:output_type -> singularitree.v1.Progress
-	67, // 99: singularitree.v1.GitCore.Pull:output_type -> singularitree.v1.Progress
-	69, // 100: singularitree.v1.GitCore.Watch:output_type -> singularitree.v1.FsChangedEvent
-	72, // 101: singularitree.v1.GitCore.SearchCommits:output_type -> singularitree.v1.SearchCommitsResponse
-	73, // 102: singularitree.v1.GitCore.GetGitFlowConfig:output_type -> singularitree.v1.GitFlowConfig
-	73, // 103: singularitree.v1.GitCore.SetGitFlowConfig:output_type -> singularitree.v1.GitFlowConfig
-	78, // 104: singularitree.v1.GitCore.StartGitFlow:output_type -> singularitree.v1.GitFlowResult
-	78, // 105: singularitree.v1.GitCore.FinishGitFlow:output_type -> singularitree.v1.GitFlowResult
-	62, // [62:106] is the sub-list for method output_type
-	18, // [18:62] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	85, // 11: singularitree.v1.GetCommitStatsResponse.stats:type_name -> singularitree.v1.CommitStats
+	86, // 12: singularitree.v1.CommitRequest.author:type_name -> singularitree.v1.Signature
+	82, // 13: singularitree.v1.StashPushResponse.stash:type_name -> singularitree.v1.Stash
+	70, // 14: singularitree.v1.SetGitFlowConfigRequest.config:type_name -> singularitree.v1.GitFlowConfig
+	2,  // 15: singularitree.v1.StartGitFlowRequest.kind:type_name -> singularitree.v1.GitFlowKind
+	2,  // 16: singularitree.v1.FinishGitFlowRequest.kind:type_name -> singularitree.v1.GitFlowKind
+	3,  // 17: singularitree.v1.GitCore.Ping:input_type -> singularitree.v1.PingRequest
+	5,  // 18: singularitree.v1.GitCore.OpenRepository:input_type -> singularitree.v1.OpenRepositoryRequest
+	6,  // 19: singularitree.v1.GitCore.GetRepository:input_type -> singularitree.v1.GetRepositoryRequest
+	7,  // 20: singularitree.v1.GitCore.ListRepositories:input_type -> singularitree.v1.ListRepositoriesRequest
+	9,  // 21: singularitree.v1.GitCore.RemoveRepository:input_type -> singularitree.v1.RemoveRepositoryRequest
+	11, // 22: singularitree.v1.GitCore.RelocateRepository:input_type -> singularitree.v1.RelocateRepositoryRequest
+	12, // 23: singularitree.v1.GitCore.GetCommits:input_type -> singularitree.v1.GetCommitsRequest
+	14, // 24: singularitree.v1.GitCore.StreamCommits:input_type -> singularitree.v1.StreamCommitsRequest
+	15, // 25: singularitree.v1.GitCore.GetBranches:input_type -> singularitree.v1.GetBranchesRequest
+	17, // 26: singularitree.v1.GitCore.GetRemotes:input_type -> singularitree.v1.GetRemotesRequest
+	19, // 27: singularitree.v1.GitCore.GetTags:input_type -> singularitree.v1.GetTagsRequest
+	21, // 28: singularitree.v1.GitCore.GetStashes:input_type -> singularitree.v1.GetStashesRequest
+	23, // 29: singularitree.v1.GitCore.GetWorktrees:input_type -> singularitree.v1.GetWorktreesRequest
+	40, // 30: singularitree.v1.GitCore.GetStatus:input_type -> singularitree.v1.GetStatusRequest
+	42, // 31: singularitree.v1.GitCore.GetDiff:input_type -> singularitree.v1.GetDiffRequest
+	43, // 32: singularitree.v1.GitCore.Stage:input_type -> singularitree.v1.StageRequest
+	45, // 33: singularitree.v1.GitCore.Unstage:input_type -> singularitree.v1.UnstageRequest
+	47, // 34: singularitree.v1.GitCore.StageHunk:input_type -> singularitree.v1.StageHunkRequest
+	49, // 35: singularitree.v1.GitCore.UnstageHunk:input_type -> singularitree.v1.UnstageHunkRequest
+	51, // 36: singularitree.v1.GitCore.DiscardHunk:input_type -> singularitree.v1.DiscardHunkRequest
+	53, // 37: singularitree.v1.GitCore.Discard:input_type -> singularitree.v1.DiscardRequest
+	55, // 38: singularitree.v1.GitCore.Reset:input_type -> singularitree.v1.ResetRequest
+	57, // 39: singularitree.v1.GitCore.GetCommitStats:input_type -> singularitree.v1.GetCommitStatsRequest
+	59, // 40: singularitree.v1.GitCore.Commit:input_type -> singularitree.v1.CommitRequest
+	60, // 41: singularitree.v1.GitCore.Checkout:input_type -> singularitree.v1.CheckoutRequest
+	62, // 42: singularitree.v1.GitCore.StashPush:input_type -> singularitree.v1.StashPushRequest
+	25, // 43: singularitree.v1.GitCore.CreateBranch:input_type -> singularitree.v1.CreateBranchRequest
+	26, // 44: singularitree.v1.GitCore.RenameBranch:input_type -> singularitree.v1.RenameBranchRequest
+	27, // 45: singularitree.v1.GitCore.DeleteBranch:input_type -> singularitree.v1.DeleteBranchRequest
+	29, // 46: singularitree.v1.GitCore.Merge:input_type -> singularitree.v1.MergeRequest
+	31, // 47: singularitree.v1.GitCore.CreateTag:input_type -> singularitree.v1.CreateTagRequest
+	32, // 48: singularitree.v1.GitCore.DeleteTag:input_type -> singularitree.v1.DeleteTagRequest
+	34, // 49: singularitree.v1.GitCore.StashApply:input_type -> singularitree.v1.StashApplyRequest
+	36, // 50: singularitree.v1.GitCore.StashPop:input_type -> singularitree.v1.StashPopRequest
+	38, // 51: singularitree.v1.GitCore.StashDrop:input_type -> singularitree.v1.StashDropRequest
+	64, // 52: singularitree.v1.GitCore.Fetch:input_type -> singularitree.v1.FetchRequest
+	65, // 53: singularitree.v1.GitCore.Push:input_type -> singularitree.v1.PushRequest
+	66, // 54: singularitree.v1.GitCore.Pull:input_type -> singularitree.v1.PullRequest
+	68, // 55: singularitree.v1.GitCore.Watch:input_type -> singularitree.v1.WatchRequest
+	71, // 56: singularitree.v1.GitCore.GetGitFlowConfig:input_type -> singularitree.v1.GetGitFlowConfigRequest
+	72, // 57: singularitree.v1.GitCore.SetGitFlowConfig:input_type -> singularitree.v1.SetGitFlowConfigRequest
+	73, // 58: singularitree.v1.GitCore.StartGitFlow:input_type -> singularitree.v1.StartGitFlowRequest
+	74, // 59: singularitree.v1.GitCore.FinishGitFlow:input_type -> singularitree.v1.FinishGitFlowRequest
+	4,  // 60: singularitree.v1.GitCore.Ping:output_type -> singularitree.v1.PingResponse
+	76, // 61: singularitree.v1.GitCore.OpenRepository:output_type -> singularitree.v1.Repository
+	76, // 62: singularitree.v1.GitCore.GetRepository:output_type -> singularitree.v1.Repository
+	8,  // 63: singularitree.v1.GitCore.ListRepositories:output_type -> singularitree.v1.ListRepositoriesResponse
+	10, // 64: singularitree.v1.GitCore.RemoveRepository:output_type -> singularitree.v1.RemoveRepositoryResponse
+	76, // 65: singularitree.v1.GitCore.RelocateRepository:output_type -> singularitree.v1.Repository
+	13, // 66: singularitree.v1.GitCore.GetCommits:output_type -> singularitree.v1.GetCommitsResponse
+	77, // 67: singularitree.v1.GitCore.StreamCommits:output_type -> singularitree.v1.Commit
+	16, // 68: singularitree.v1.GitCore.GetBranches:output_type -> singularitree.v1.GetBranchesResponse
+	18, // 69: singularitree.v1.GitCore.GetRemotes:output_type -> singularitree.v1.GetRemotesResponse
+	20, // 70: singularitree.v1.GitCore.GetTags:output_type -> singularitree.v1.GetTagsResponse
+	22, // 71: singularitree.v1.GitCore.GetStashes:output_type -> singularitree.v1.GetStashesResponse
+	24, // 72: singularitree.v1.GitCore.GetWorktrees:output_type -> singularitree.v1.GetWorktreesResponse
+	41, // 73: singularitree.v1.GitCore.GetStatus:output_type -> singularitree.v1.GetStatusResponse
+	87, // 74: singularitree.v1.GitCore.GetDiff:output_type -> singularitree.v1.Diff
+	44, // 75: singularitree.v1.GitCore.Stage:output_type -> singularitree.v1.StageResponse
+	46, // 76: singularitree.v1.GitCore.Unstage:output_type -> singularitree.v1.UnstageResponse
+	48, // 77: singularitree.v1.GitCore.StageHunk:output_type -> singularitree.v1.StageHunkResponse
+	50, // 78: singularitree.v1.GitCore.UnstageHunk:output_type -> singularitree.v1.UnstageHunkResponse
+	52, // 79: singularitree.v1.GitCore.DiscardHunk:output_type -> singularitree.v1.DiscardHunkResponse
+	54, // 80: singularitree.v1.GitCore.Discard:output_type -> singularitree.v1.DiscardResponse
+	56, // 81: singularitree.v1.GitCore.Reset:output_type -> singularitree.v1.ResetResponse
+	58, // 82: singularitree.v1.GitCore.GetCommitStats:output_type -> singularitree.v1.GetCommitStatsResponse
+	77, // 83: singularitree.v1.GitCore.Commit:output_type -> singularitree.v1.Commit
+	61, // 84: singularitree.v1.GitCore.Checkout:output_type -> singularitree.v1.CheckoutResponse
+	63, // 85: singularitree.v1.GitCore.StashPush:output_type -> singularitree.v1.StashPushResponse
+	79, // 86: singularitree.v1.GitCore.CreateBranch:output_type -> singularitree.v1.Branch
+	79, // 87: singularitree.v1.GitCore.RenameBranch:output_type -> singularitree.v1.Branch
+	28, // 88: singularitree.v1.GitCore.DeleteBranch:output_type -> singularitree.v1.DeleteBranchResponse
+	30, // 89: singularitree.v1.GitCore.Merge:output_type -> singularitree.v1.MergeResponse
+	81, // 90: singularitree.v1.GitCore.CreateTag:output_type -> singularitree.v1.Tag
+	33, // 91: singularitree.v1.GitCore.DeleteTag:output_type -> singularitree.v1.DeleteTagResponse
+	35, // 92: singularitree.v1.GitCore.StashApply:output_type -> singularitree.v1.StashApplyResponse
+	37, // 93: singularitree.v1.GitCore.StashPop:output_type -> singularitree.v1.StashPopResponse
+	39, // 94: singularitree.v1.GitCore.StashDrop:output_type -> singularitree.v1.StashDropResponse
+	67, // 95: singularitree.v1.GitCore.Fetch:output_type -> singularitree.v1.Progress
+	67, // 96: singularitree.v1.GitCore.Push:output_type -> singularitree.v1.Progress
+	67, // 97: singularitree.v1.GitCore.Pull:output_type -> singularitree.v1.Progress
+	69, // 98: singularitree.v1.GitCore.Watch:output_type -> singularitree.v1.FsChangedEvent
+	70, // 99: singularitree.v1.GitCore.GetGitFlowConfig:output_type -> singularitree.v1.GitFlowConfig
+	70, // 100: singularitree.v1.GitCore.SetGitFlowConfig:output_type -> singularitree.v1.GitFlowConfig
+	75, // 101: singularitree.v1.GitCore.StartGitFlow:output_type -> singularitree.v1.GitFlowResult
+	75, // 102: singularitree.v1.GitCore.FinishGitFlow:output_type -> singularitree.v1.GitFlowResult
+	60, // [60:103] is the sub-list for method output_type
+	17, // [17:60] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_gitcore_proto_init() }
@@ -4784,7 +4571,7 @@ func file_gitcore_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gitcore_proto_rawDesc), len(file_gitcore_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   76,
+			NumMessages:   73,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

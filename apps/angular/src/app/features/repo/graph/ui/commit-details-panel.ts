@@ -15,9 +15,7 @@ import {
   normalizeRefKind,
   shortOidHex,
 } from '@singularitree/ui-kit';
-
-/** Blank-line separator between a commit subject and its body (LF LF). */
-const BLANK_LINE = String.fromCharCode(10, 10);
+import { splitCommitMessage } from './commit-message';
 
 /**
  * Read-only details panel for the selected commit (plan §4.3, decision #8).
@@ -68,13 +66,15 @@ const BLANK_LINE = String.fromCharCode(10, 10);
           }
         </header>
 
-        <h2
-          class="st-commit-details__subject"
-          [class.st-commit-details__subject--compact]="collapsible()"
-          data-testid="commit-details-subject"
-        >
-          {{ subject() }}
-        </h2>
+        @if (showSubject()) {
+          <h2
+            class="st-commit-details__subject"
+            [class.st-commit-details__subject--compact]="collapsible()"
+            data-testid="commit-details-subject"
+          >
+            {{ subject() }}
+          </h2>
+        }
 
         @if (collapsible()) {
           <!-- Compact head: the changed-file list below owns the slack, so the
@@ -500,6 +500,13 @@ export class CommitDetailsPanel {
    */
   readonly collapsible = input(false);
   /**
+   * Whether the subject headline renders inside the panel. The File-status
+   * commit embed sets this to false because it moves the subject to the
+   * right-pane title above the diff; the History aside keeps the default `true`
+   * and shows the subject inside the panel.
+   */
+  readonly showSubject = input(true);
+  /**
    * Opt-in navigation row (the `Back` control). Only the History host wires it;
    * the File-status embed leaves it off so no inert control leaks in.
    */
@@ -556,17 +563,7 @@ export class CommitDetailsPanel {
   readonly shortOid = computed(() => shortOidHex(this.commit()?.oid?.hex));
 
   /** Subject/body split on the first blank line (plan §4.3). */
-  private readonly messageParts = computed(() => {
-    const message = this.commit()?.message ?? '';
-    // The blank-line separator is LF LF; built from char codes to keep the
-    // source free of escape sequences.
-    const split = message.indexOf(BLANK_LINE);
-    if (split === -1) return { subject: message.trim(), description: '' };
-    return {
-      subject: message.slice(0, split).trim(),
-      description: message.slice(split + BLANK_LINE.length).trim(),
-    };
-  });
+  private readonly messageParts = computed(() => splitCommitMessage(this.commit()?.message ?? ''));
   readonly subject = computed(() => this.messageParts().subject);
   readonly description = computed(() => this.messageParts().description);
 

@@ -59,8 +59,6 @@ import type {
   RenameBranchRequest,
   ResetRequest,
   ResetResponse,
-  SearchCommitsRequest,
-  SearchCommitsResponse,
   SetGitFlowConfigRequest,
   StageHunkRequest,
   StageHunkResponse,
@@ -159,8 +157,7 @@ export interface GitClientApi {
   stashApply: (req: StashApplyRequest) => Promise<StashApplyResponse>;
   stashPop: (req: StashPopRequest) => Promise<StashPopResponse>;
   stashDrop: (req: StashDropRequest) => Promise<StashDropResponse>;
-  // Cross-repo commit search (ADR-026) + git-flow presets (ADR-027).
-  searchCommits: (req: SearchCommitsRequest) => Promise<SearchCommitsResponse>;
+  // git-flow presets (ADR-027).
   getGitFlowConfig: (req: GetGitFlowConfigRequest) => Promise<GitFlowConfig>;
   setGitFlowConfig: (req: SetGitFlowConfigRequest) => Promise<GitFlowConfig>;
   startGitFlow: (req: StartGitFlowRequest) => Promise<GitFlowResult>;

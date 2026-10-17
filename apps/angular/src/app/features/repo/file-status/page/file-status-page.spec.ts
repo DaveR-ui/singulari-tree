@@ -342,6 +342,38 @@ describe('FileStatusPage', () => {
     assertDiffOnRight(fixture);
   });
 
+  it('moves the commit subject to the right-pane title and out of the panel', async () => {
+    const { fixture, fs } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+    fixture.detectChanges();
+
+    const title = query(fixture, 'file-status-title');
+    expect(title).not.toBeNull();
+    // The commit fixture's subject is the first line of its message.
+    expect(title!.textContent?.trim()).toBe('commit aaaa');
+
+    // It is the first child of the right (diff) pane, above the notice/header.
+    const right = query(fixture, 'file-status-diff')!;
+    expect(right.contains(title!)).toBe(true);
+    expect(right.firstElementChild).toBe(title);
+
+    // The subject is MOVED, never duplicated: the panel drops it.
+    expect(query(fixture, 'commit-details-subject')).toBeNull();
+    // The panel itself still renders (its identity head stays in the left pane).
+    expect(query(fixture, 'commit-details')).not.toBeNull();
+  });
+
+  it('leaves the right-pane title empty with no active commit', async () => {
+    const { fixture, fs } = await setup({ selection: WIP_OID });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('local'));
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.commitTitle()).toBe('');
+    expect(query(fixture, 'file-status-title')).toBeNull();
+  });
+
   it('lands on the local variant for the WIP pseudo-oid', async () => {
     const { fixture, fs } = await setup({ selection: WIP_OID });
 
@@ -415,7 +447,7 @@ describe('FileStatusPage', () => {
   it('defers a graph selection until its commit loads, then follows it exactly once', async () => {
     const PENDING_HEX = 'c'.repeat(40);
     // The graph names a commit the loaded window does not contain yet (the
-    // ADR-026 cross-repo search hand-off): the screen cannot resolve it and must
+    // open-commit deep-link focus): the screen cannot resolve it and must
     // not wedge on the working tree.
     const { fixture, fs, graph } = await setup({
       selection: PENDING_HEX,
@@ -457,7 +489,7 @@ describe('FileStatusPage', () => {
     expect(fs.variant()).toBe('local');
   });
 
-  it('gives the changed-file list the dominant share of the commit column, not the details panel', async () => {
+  it('orders the commit column as summary, then file list, then the panel on the floor', async () => {
     const { fixture, fs } = await setup({ selection: HEAD_HEX });
     await waitForDiff(fixture, fs);
     await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
@@ -471,19 +503,21 @@ describe('FileStatusPage', () => {
     expect(summary).not.toBeNull();
     expect(list).not.toBeNull();
 
-    // The three stack as siblings in the variant body, in reading order.
+    // The three stack as siblings in the variant body, in reading order:
+    // summary → changed-file list → panel, which rests on the floor below.
     expect(details!.parentElement).toBe(list!.parentElement);
     expect(summary!.parentElement).toBe(list!.parentElement);
     expect(
-      details!.compareDocumentPosition(summary!) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
       summary!.compareDocumentPosition(list!) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    expect(
+      list!.compareDocumentPosition(details!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
 
-    // The list is the flex-growing child; the details head is not.
+    // The list owns the slack; the panel shrinks and bottom-pins via auto margin.
     expect(getComputedStyle(list as Element).flexGrow).toBe('1');
     expect(getComputedStyle(details as Element).flexGrow).toBe('0');
+    expect(getComputedStyle(details as Element).marginTop).toBe('auto');
   });
 
   it('switches variant from the variant bar', async () => {
@@ -498,6 +532,24 @@ describe('FileStatusPage', () => {
 
     all(fixture, 'toggle-segment-local')[0].click();
     await vi.waitFor(() => expect(fs.variant()).toBe('local'));
+  });
+
+  it('badges the Local segment with the pending (unstaged) file count only', async () => {
+    const { fixture, fs } = await setup({
+      selection: WIP_OID,
+      files: [file('a.ts', false), file('b.ts', false), file('c.ts', true)],
+    });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('local'));
+
+    // Two pending files, one staged: staged files never count toward the badge.
+    expect(fs.unstagedFiles().map((pending) => pending.path)).toEqual(['a.ts', 'b.ts']);
+    expect(fs.stagedFiles().map((staged) => staged.path)).toEqual(['c.ts']);
+
+    const badge = query(fixture, 'toggle-segment-local')?.querySelector(
+      '[data-testid="toggle-segment-count"]',
+    );
+    expect(badge?.textContent?.trim()).toBe('2');
   });
 
   it('feeds the viewer the PROJECTED single-file diff, never the whole diff', async () => {

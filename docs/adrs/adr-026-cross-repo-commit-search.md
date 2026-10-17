@@ -3,9 +3,9 @@ id: adr-026-cross-repo-commit-search
 category: adrs
 tags: [adr, core, search, cache, m3]
 aliases: [ADR-026, Cross-repo commit search]
-related: [adr-index, feature-gap-analysis, core-slice, contracts-slice, accepted-debt, adr-0023-commit-change-size-gauge]
-version: 1.0
-status: active
+related: [adr-index, feature-gap-analysis, core-slice, contracts-slice, accepted-debt, adr-0023-commit-change-size-gauge, adr-0034-retire-cross-repo-commit-search]
+version: 1.1
+status: superseded
 ---
 
 # ADR-026: Cross-repo local commit search over the metadata cache

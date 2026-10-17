@@ -31,7 +31,7 @@ func (f *fakeWatchPort) Unwatch(domain.RepositoryId) error { return nil }
 // configured (the Watch RPC touches nothing else) and returns its address.
 func startWatchServer(t *testing.T, watcherSvc *service.WatcherService) string {
 	t.Helper()
-	grpcSrv := grpcadapter.NewServer(nil, nil, nil, watcherSvc, nil, nil, nil, testToken)
+	grpcSrv := grpcadapter.NewServer(nil, nil, nil, watcherSvc, nil, nil, testToken)
 	gs := googlegrpc.NewServer(
 		googlegrpc.UnaryInterceptor(grpcadapter.UnaryAuthInterceptor(testToken)),
 		googlegrpc.StreamInterceptor(grpcadapter.StreamAuthInterceptor(testToken)),

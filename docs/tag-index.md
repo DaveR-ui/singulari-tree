@@ -1,10 +1,10 @@
 # SingulariTree — Tag index
 
 <!-- BEGIN GENERATED: tags -->
-<!-- snapshot: 2026-10-15 -->
+<!-- snapshot: 2026-10-17 -->
 ## Generated tag index
 
-- **adr** — adr-0014-docs-corpus-layout, adr-0015-docs-validator-generated-index, adr-0016-lane-state-and-graph-dod, adr-0017-docs-language-en, adr-0018-renderer-i18n-locale-switch, adr-0019-adr-translation-authorization, adr-0020-diff-per-file-and-hunk-staging, adr-0021-reset-modes, adr-0022-graph-context-menu-shell, adr-0023-commit-change-size-gauge, adr-0029-file-status-screen, adr-0030-history-screen-is-compare-free, adr-0031-repository-relocation-and-missing-folder-recovery, adr-0032-history-commit-file-list-tooltip, adr-0033-commit-details-files-expandable-panel, adr-024-multi-repo-workspaces, adr-025-deep-links-and-clipboard-clone, adr-026-cross-repo-commit-search, adr-027-git-flow-presets, adr-028-advanced-git-rpcs, adr-index
+- **adr** — adr-0014-docs-corpus-layout, adr-0015-docs-validator-generated-index, adr-0016-lane-state-and-graph-dod, adr-0017-docs-language-en, adr-0018-renderer-i18n-locale-switch, adr-0019-adr-translation-authorization, adr-0020-diff-per-file-and-hunk-staging, adr-0021-reset-modes, adr-0022-graph-context-menu-shell, adr-0023-commit-change-size-gauge, adr-0029-file-status-screen, adr-0030-history-screen-is-compare-free, adr-0031-repository-relocation-and-missing-folder-recovery, adr-0032-history-commit-file-list-tooltip, adr-0033-commit-details-files-expandable-panel, adr-0034-retire-cross-repo-commit-search, adr-024-multi-repo-workspaces, adr-025-deep-links-and-clipboard-clone, adr-026-cross-repo-commit-search, adr-027-git-flow-presets, adr-028-advanced-git-rpcs, adr-index
 - **bootstrap** — bootstrap-protocol
 - **branch** — adr-028-advanced-git-rpcs
 - **cache** — adr-0023-commit-change-size-gauge, adr-026-cross-repo-commit-search
@@ -12,12 +12,12 @@
 - **compare** — adr-0030-history-screen-is-compare-free
 - **context-menu** — adr-0022-graph-context-menu-shell
 - **contract** — documentation-system, new-note-protocol
-- **contracts** — adr-0020-diff-per-file-and-hunk-staging, adr-0031-repository-relocation-and-missing-folder-recovery, adr-028-advanced-git-rpcs
-- **core** — adr-0021-reset-modes, adr-0023-commit-change-size-gauge, adr-0031-repository-relocation-and-missing-folder-recovery, adr-026-cross-repo-commit-search, adr-027-git-flow-presets, adr-028-advanced-git-rpcs
+- **contracts** — adr-0020-diff-per-file-and-hunk-staging, adr-0031-repository-relocation-and-missing-folder-recovery, adr-0034-retire-cross-repo-commit-search, adr-028-advanced-git-rpcs
+- **core** — adr-0021-reset-modes, adr-0023-commit-change-size-gauge, adr-0031-repository-relocation-and-missing-folder-recovery, adr-0034-retire-cross-repo-commit-search, adr-026-cross-repo-commit-search, adr-027-git-flow-presets, adr-028-advanced-git-rpcs
 - **debt** — accepted-debt
 - **deep-link** — adr-025-deep-links-and-clipboard-clone
 - **design-system** — design-system
-- **desktop-shell** — adr-025-deep-links-and-clipboard-clone
+- **desktop-shell** — adr-0034-retire-cross-repo-commit-search, adr-025-deep-links-and-clipboard-clone
 - **destructive** — adr-0021-reset-modes
 - **diff** — adr-0020-diff-per-file-and-hunk-staging, adr-0029-file-status-screen, adr-0030-history-screen-is-compare-free, adr-0032-history-commit-file-list-tooltip, adr-0033-commit-details-files-expandable-panel
 - **documentation** — accepted-debt, adr-0014-docs-corpus-layout, adr-0015-docs-validator-generated-index, adr-0017-docs-language-en, adr-0019-adr-translation-authorization, documentation-system
@@ -39,7 +39,7 @@
 - **legacy** — accepted-debt
 - **lifecycle** — adr-0019-adr-translation-authorization
 - **m2** — adr-0020-diff-per-file-and-hunk-staging, adr-0021-reset-modes, adr-0022-graph-context-menu-shell, adr-0023-commit-change-size-gauge
-- **m3** — adr-0029-file-status-screen, adr-024-multi-repo-workspaces, adr-025-deep-links-and-clipboard-clone, adr-026-cross-repo-commit-search, adr-027-git-flow-presets, adr-028-advanced-git-rpcs
+- **m3** — adr-0029-file-status-screen, adr-0034-retire-cross-repo-commit-search, adr-024-multi-repo-workspaces, adr-025-deep-links-and-clipboard-clone, adr-026-cross-repo-commit-search, adr-027-git-flow-presets, adr-028-advanced-git-rpcs
 - **merge** — adr-028-advanced-git-rpcs
 - **multi-repo** — adr-024-multi-repo-workspaces
 - **onrails** — adr-0014-docs-corpus-layout, adr-0016-lane-state-and-graph-dod, documentation-system
@@ -49,12 +49,12 @@
 - **ratchet** — accepted-debt
 - **redesign** — renderer-redesign-plan
 - **relocation** — adr-0031-repository-relocation-and-missing-folder-recovery
-- **renderer** — adr-0018-renderer-i18n-locale-switch, adr-0022-graph-context-menu-shell, adr-0029-file-status-screen, adr-0030-history-screen-is-compare-free, adr-0031-repository-relocation-and-missing-folder-recovery, adr-0032-history-commit-file-list-tooltip, adr-0033-commit-details-files-expandable-panel, adr-024-multi-repo-workspaces, design-system, renderer-redesign-plan
+- **renderer** — adr-0018-renderer-i18n-locale-switch, adr-0022-graph-context-menu-shell, adr-0029-file-status-screen, adr-0030-history-screen-is-compare-free, adr-0031-repository-relocation-and-missing-folder-recovery, adr-0032-history-commit-file-list-tooltip, adr-0033-commit-details-files-expandable-panel, adr-0034-retire-cross-repo-commit-search, adr-024-multi-repo-workspaces, design-system, renderer-redesign-plan
 - **repositories** — adr-0031-repository-relocation-and-missing-folder-recovery
 - **reset** — adr-0021-reset-modes
 - **review** — docs-review-protocol
 - **roadmap** — feature-gap-analysis
-- **search** — adr-026-cross-repo-commit-search
+- **search** — adr-0034-retire-cross-repo-commit-search, adr-026-cross-repo-commit-search
 - **singularitree** — project
 - **slice** — contracts-slice, core-slice, desktop-shell-slice, docs-slice, renderer-slice, tooling-slice
 - **slices** — slices-index

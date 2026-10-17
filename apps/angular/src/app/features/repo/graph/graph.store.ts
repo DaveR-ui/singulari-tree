@@ -15,7 +15,7 @@ export const GRAPH_WINDOW_SIZE = 200;
 export const GRAPH_PREFETCH = 100;
 /** Trigger prefetch when the rendered range is within this many rows of the end. */
 export const GRAPH_PREFETCH_THRESHOLD = 20;
-/** Max extra windows loaded to reveal a commit requested from cross-repo search. */
+/** Max extra windows loaded to reveal a commit requested by a focus hand-off. */
 export const COMMIT_FOCUS_MAX_LOADS = 10;
 
 function isIpcUnavailable(err: unknown): boolean {
@@ -389,7 +389,7 @@ export class GraphStore {
   /**
    * Select `oid` and, when it is not yet in the loaded window, page forward
    * (bounded by {@link COMMIT_FOCUS_MAX_LOADS}) until it appears or the history
-   * ends. Used by the cross-repo search hand-off (ADR-026) to reveal a hit that
+   * ends. Used by the deep-link commit-focus hand-off to reveal a commit that
    * lives beyond the first window; the selection is always applied, even when
    * the commit is not reached.
    */

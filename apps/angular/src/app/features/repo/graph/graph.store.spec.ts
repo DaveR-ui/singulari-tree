@@ -842,7 +842,7 @@ describe('GraphStore', () => {
     expect(store.resetError()).toBeNull();
   });
 
-  // -- focusCommit (ADR-026 search hand-off) -------------------------------
+  // -- focusCommit (deep-link commit focus) --------------------------------
 
   it('focusCommit ignores a blank oid', async () => {
     const getCommits = vi.fn(() => Promise.resolve(makePage(300, 0, 1000)));

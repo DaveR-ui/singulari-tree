@@ -252,7 +252,7 @@ describe('RepoPage hydration', () => {
     expect(graphStore.repoId()).toBe(REPO_B.id);
   });
 
-  // -- cross-repo search focus hand-off (ADR-026) --------------------------
+  // -- deep-link commit focus hand-off -------------------------------------
 
   it('focuses a queued commit when its repository is already open', async () => {
     const { graphStore } = await setup(REPO_A);

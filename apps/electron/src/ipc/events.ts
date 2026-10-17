@@ -11,7 +11,7 @@ export const EVENT_CHANNELS = {
   fsChanged: 'fs:changed',
   gitProgress: 'git:progress',
   // One-way push: a validated OS deep link normalized by the shell (ADR-025).
-  // Intentionally an event, not an RPC — the frozen 44-channel RPC surface is
+  // Intentionally an event, not an RPC — the frozen 43-channel RPC surface is
   // untouched.
   deepLink: 'deeplink:open',
 } as const;

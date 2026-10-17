@@ -113,6 +113,18 @@ import type { FileStatusVariant } from '../file-status.models';
 export class FileStatusVariantBar {
   /** Variant currently shown; drives the active segment and the PR controls. */
   readonly variant = input<FileStatusVariant>('local');
+  /**
+   * Count of pending (unstaged) files, rendered as a badge on the `Local`
+   * segment. Staged files are never counted; the badge hides at 0.
+   *
+   * Deliberate semantics: the count reuses the working tree's existing
+   * staged/unstaged classification (`!isStaged`, untracked included) so the
+   * badge always agrees with the file list it heads. A partially-staged
+   * (`MM`) or conflicted record is classified staged by that model and is
+   * therefore not counted here, even though it still carries unresolved
+   * worktree changes.
+   */
+  readonly pendingCount = input(0);
   /** Ref names offered as the PR base/target (the `getBranches` names). */
   readonly branches = input<string[]>([]);
   /** Current PR base ref name (editable: any ref, resolved by the page). */
@@ -126,9 +138,9 @@ export class FileStatusVariantBar {
 
   /** Segments of the variant control. */
   readonly variantOptions = computed(() => [
-    { value: 'local', label: $localize`Local` },
+    { value: 'local', label: $localize`Local`, count: this.pendingCount() },
     { value: 'commit', label: $localize`Commit` },
-    { value: 'pr', label: $localize`Pull request` },
+    { value: 'pr', label: $localize`Branch comparator` },
   ]);
 
   onBase(event: Event): void {
