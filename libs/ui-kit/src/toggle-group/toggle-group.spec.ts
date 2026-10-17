@@ -71,6 +71,21 @@ describe('ToggleGroupComponent', () => {
     expect(segment(fixture, 'light').disabled).toBe(true);
   });
 
+  it('disables only a per-segment disabled option, leaving the group enabled', async () => {
+    const fixture = await setup({
+      disabled: false,
+      options: [
+        { value: 'description', label: 'Description', disabled: true },
+        { value: 'files', label: 'Files' },
+      ],
+    });
+
+    // The per-segment flag disables ONLY that segment; the group-level input
+    // stays false, so the sibling segment remains selectable.
+    expect(segment(fixture, 'description').disabled).toBe(true);
+    expect(segment(fixture, 'files').disabled).toBe(false);
+  });
+
   it('forwards an accessible name to the group', async () => {
     const named = await setup({ ariaLabel: 'Diff layout' });
     expect(

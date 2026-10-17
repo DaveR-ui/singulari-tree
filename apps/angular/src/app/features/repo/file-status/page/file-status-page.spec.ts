@@ -1,13 +1,16 @@
 import { provideZonelessChangeDetection, signal, type WritableSignal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { Router } from '@angular/router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Branch, Commit, Diff, FileDiff, FileStatus, Hunk, Repository } from '@contracts/domain';
 import { DiffViewer } from '@singularitree/ui-kit';
+import { CommitFocusService } from '@core/services/commit-focus.service';
 import { DiffModeService } from '@core/services/diff-mode.service';
 import { IpcBridge } from '@core/services/ipc-bridge.service';
 import { RepoState } from '@core/services/repo-state.service';
 import { GraphStore, WIP_OID } from '../../graph/graph.store';
+import { CommitDetailsPanel } from '../../graph/ui/commit-details-panel';
 import { StatusStore } from '../../status/status.store';
 import { FileStatusStore } from '../file-status.store';
 import { FileStatusPage } from './file-status-page';
@@ -15,18 +18,23 @@ import { FileStatusPage } from './file-status-page';
 const HEAD_HEX = 'a'.repeat(40);
 const OTHER_HEX = 'b'.repeat(40);
 
-function commit(hex: string, parents: string[] = []): Commit {
+function commit(hex: string, parents: string[] = [], message?: string): Commit {
   return {
     oid: { hex, kind: 'SHA1' },
     parents: parents.map((parent) => ({ hex: parent, kind: 'SHA1' })),
     author: { name: 'Ada', email: 'ada@example.com', when: '2026-01-02T10:00:00Z' },
     committer: undefined,
-    message: `commit ${hex.slice(0, 4)}`,
+    message: message ?? `commit ${hex.slice(0, 4)}`,
     treeOid: undefined,
     committedAt: '2026-01-02T10:05:00Z',
     refs: [],
   };
 }
+
+/** Body of the default HEAD commit, so the analyzer's description mode is non-empty. */
+const HEAD_BODY = 'body for the head commit';
+/** Default HEAD message: subject + blank line + body (the analyzer splits it). */
+const HEAD_MESSAGE = `commit ${HEAD_HEX.slice(0, 4)}\n\n${HEAD_BODY}`;
 
 function hunk(text: string): Hunk {
   return {
@@ -123,6 +131,8 @@ interface Harness {
   status: StatusStore;
   graph: GraphStore;
   repoState: RepoStateStub;
+  commitFocus: CommitFocusService;
+  router: { navigate: ReturnType<typeof vi.fn> };
   getDiff: ReturnType<typeof vi.fn>;
   stageHunk: ReturnType<typeof vi.fn>;
   unstageHunk: ReturnType<typeof vi.fn>;
@@ -174,13 +184,18 @@ async function setup(
   const fs = new FileStatusStore(bridge as unknown as IpcBridge, status);
   const graph = new GraphStore(bridge as unknown as IpcBridge);
   graph.repoId.set('repo-1');
-  graph.commits.set([commit(HEAD_HEX, [OTHER_HEX]), commit(OTHER_HEX)]);
+  graph.commits.set(
+    options.commits
+      ? options.commits()
+      : [commit(HEAD_HEX, [OTHER_HEX], HEAD_MESSAGE), commit(OTHER_HEX)],
+  );
   if (options.selection !== null) graph.select(options.selection ?? HEAD_HEX);
 
   const repoState: RepoStateStub = {
     activeRepo: signal<Repository | null>(null),
     statusRefreshRequested: signal(0),
   };
+  const router = { navigate: vi.fn(() => Promise.resolve(true)) };
 
   await TestBed.configureTestingModule({
     providers: [
@@ -190,8 +205,10 @@ async function setup(
       { provide: StatusStore, useValue: status },
       { provide: FileStatusStore, useValue: fs },
       { provide: GraphStore, useValue: graph },
+      { provide: Router, useValue: router },
     ],
   }).compileComponents();
+  const commitFocus = TestBed.inject(CommitFocusService);
 
   // Root preferences are read in PreferencesService's constructor, so any
   // persisted value must be in place before the page (and its viewer) mount.
@@ -206,6 +223,8 @@ async function setup(
     status,
     graph,
     repoState,
+    commitFocus,
+    router,
     getDiff,
     stageHunk,
     unstageHunk,
@@ -350,8 +369,10 @@ describe('FileStatusPage', () => {
 
     const title = query(fixture, 'file-status-title');
     expect(title).not.toBeNull();
-    // The commit fixture's subject is the first line of its message.
-    expect(title!.textContent?.trim()).toBe('commit aaaa');
+    // The commit fixture's subject is the first line of its message, rendered in
+    // the title sector's default (`description`) mode.
+    const heading = title!.querySelector('.st-file-status__pane-title-text');
+    expect(heading?.textContent?.trim()).toBe('commit aaaa');
 
     // It is the first child of the right (diff) pane, above the notice/header.
     const right = query(fixture, 'file-status-diff')!;
@@ -372,6 +393,257 @@ describe('FileStatusPage', () => {
 
     expect(fixture.componentInstance.commitTitle()).toBe('');
     expect(query(fixture, 'file-status-title')).toBeNull();
+  });
+
+  it('defaults the analyzer to description: full subject + body, no left-column file list', async () => {
+    const { fixture, fs } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+    fixture.detectChanges();
+
+    const page = fixture.componentInstance;
+    expect(page.effectiveAnalyzerMode()).toBe('description');
+
+    const title = query(fixture, 'file-status-title')!;
+    const heading = title.querySelector('.st-file-status__pane-title-text')!;
+    expect(heading.textContent?.trim()).toBe('commit aaaa');
+    // The subject reads in full: the wrapping modifier drops the single-line clamp.
+    expect(heading.classList.contains('st-file-status__pane-title-text--wrap')).toBe(true);
+
+    const body = query(fixture, 'file-status-title-body');
+    expect(body).not.toBeNull();
+    expect(body?.textContent?.trim()).toBe(HEAD_BODY);
+    expect(title.contains(body!)).toBe(true);
+
+    // The left column's file list is absent in description mode.
+    expect(fixture.nativeElement.querySelector('st-file-diff-list')).toBeNull();
+    expect(query(fixture, 'file-status-summary')).toBeNull();
+    expect(query(fixture, 'commit-details-file-path')).toBeNull();
+  });
+
+  it('switches the analyzer to files mode: short sha title + left-column list', async () => {
+    const { fixture, fs } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+    fixture.detectChanges();
+
+    const title = query(fixture, 'file-status-title')!;
+    // The switch lives in the title header (query it THERE: the diff header
+    // carries its own st-toggle-group).
+    title.querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!.click();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.effectiveAnalyzerMode()).toBe('files');
+    // Title degrades to the short sha; no subject heading, no body.
+    expect(title.querySelector('.st-file-status__pane-title-sha')?.textContent?.trim()).toBe(
+      'aaaaaaa',
+    );
+    expect(title.querySelector('.st-file-status__pane-title-text')).toBeNull();
+    expect(query(fixture, 'file-status-title-body')).toBeNull();
+
+    // The left column's summary + file list render.
+    expect(query(fixture, 'file-status-summary')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('st-file-diff-list')).not.toBeNull();
+    expect(all(fixture, 'file-diff-row')).toHaveLength(2);
+
+    // Switching back restores the description sector.
+    title.querySelector<HTMLButtonElement>('[data-testid="toggle-segment-description"]')!.click();
+    fixture.detectChanges();
+    expect(query(fixture, 'file-status-title-body')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('st-file-diff-list')).toBeNull();
+  });
+
+  it('renders exactly one sector at a time with the switch inside the title header', async () => {
+    const { fixture, fs } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+    fixture.detectChanges();
+
+    const title = query(fixture, 'file-status-title')!;
+    expect(title.querySelector('[data-testid="file-status-view-switch"]')).not.toBeNull();
+    expect(title.querySelector('[data-testid="toggle-segment-description"]')).not.toBeNull();
+    expect(title.querySelector('[data-testid="toggle-segment-files"]')).not.toBeNull();
+
+    const bodyVisible = () => query(fixture, 'file-status-title-body') !== null;
+    const listVisible = () => fixture.nativeElement.querySelector('st-file-diff-list') !== null;
+    // Description mode: body XOR list.
+    expect(bodyVisible() && listVisible()).toBe(false);
+    expect(bodyVisible() || listVisible()).toBe(true);
+
+    title.querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!.click();
+    fixture.detectChanges();
+    // Files mode: still exactly one of the two.
+    expect(bodyVisible() && listVisible()).toBe(false);
+    expect(bodyVisible() || listVisible()).toBe(true);
+    expect(listVisible()).toBe(true);
+  });
+
+  it('keeps description mode for a subject-only commit (the subject is the content)', async () => {
+    const subjectOnly = commit(HEAD_HEX, [OTHER_HEX], 'subject only, no body');
+    const { fixture, fs } = await setup({
+      selection: HEAD_HEX,
+      commits: () => [subjectOnly, commit(OTHER_HEX)],
+    });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+    fixture.detectChanges();
+
+    const page = fixture.componentInstance;
+    expect(page.commitBody()).toBe('');
+    expect(page.hasMessage()).toBe(true);
+    // No force: the subject alone IS the description sector's content, so the
+    // default `description` mode stays and the segment is never a dead control.
+    expect(page.effectiveAnalyzerMode()).toBe('description');
+
+    const title = query(fixture, 'file-status-title')!;
+    const description = title.querySelector<HTMLButtonElement>(
+      '[data-testid="toggle-segment-description"]',
+    )!;
+    expect(description.disabled).toBe(false);
+    expect(description.getAttribute('aria-pressed')).toBe('true');
+
+    // The subject reads in full; there is no body element to render.
+    const heading = title.querySelector('.st-file-status__pane-title-text')!;
+    expect(heading.textContent?.trim()).toBe('subject only, no body');
+    expect(heading.classList.contains('st-file-status__pane-title-text--wrap')).toBe(true);
+    expect(query(fixture, 'file-status-title-body')).toBeNull();
+
+    // Exactly one sector: the left column's file list is absent.
+    expect(fixture.nativeElement.querySelector('st-file-diff-list')).toBeNull();
+
+    // Files mode is one click away, and description comes straight back.
+    title.querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!.click();
+    fixture.detectChanges();
+    expect(page.effectiveAnalyzerMode()).toBe('files');
+    expect(fixture.nativeElement.querySelector('st-file-diff-list')).not.toBeNull();
+    title.querySelector<HTMLButtonElement>('[data-testid="toggle-segment-description"]')!.click();
+    fixture.detectChanges();
+    expect(page.effectiveAnalyzerMode()).toBe('description');
+    expect(fixture.nativeElement.querySelector('st-file-diff-list')).toBeNull();
+  });
+
+  it('shows the body when the commit subject is empty (never neither sector)', async () => {
+    // A message that starts with a blank line splits to an empty subject and a
+    // real body. Keying the title sector on the subject alone would hide BOTH
+    // sectors at once (no switch to escape, no file list either).
+    const emptySubject = commit(HEAD_HEX, [OTHER_HEX], '\n\nbody only, no subject');
+    const { fixture, fs } = await setup({
+      selection: HEAD_HEX,
+      commits: () => [emptySubject, commit(OTHER_HEX)],
+    });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+    fixture.detectChanges();
+
+    const page = fixture.componentInstance;
+    expect(page.commitTitle()).toBe('');
+    expect(page.commitBody()).toBe('body only, no subject');
+    expect(page.hasMessage()).toBe(true);
+    expect(page.effectiveAnalyzerMode()).toBe('description');
+
+    const title = query(fixture, 'file-status-title')!;
+    // No subject heading (there is no subject), but the body renders and is
+    // reachable — the description sector is not empty.
+    expect(title.querySelector('.st-file-status__pane-title-text')).toBeNull();
+    const body = query(fixture, 'file-status-title-body');
+    expect(body?.textContent?.trim()).toBe('body only, no subject');
+
+    // Exactly one sector: the left column's file list is absent.
+    expect(fixture.nativeElement.querySelector('st-file-diff-list')).toBeNull();
+
+    // One click reaches the files sector (short sha title + the list).
+    title.querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!.click();
+    fixture.detectChanges();
+    expect(page.effectiveAnalyzerMode()).toBe('files');
+    expect(title.querySelector('.st-file-status__pane-title-sha')?.textContent?.trim()).toBe(
+      'aaaaaaa',
+    );
+    expect(fixture.nativeElement.querySelector('st-file-diff-list')).not.toBeNull();
+  });
+
+  it('grows no title sector or switch when the commit has no message at all', async () => {
+    const messageLess = commit(HEAD_HEX, [OTHER_HEX], '');
+    const { fixture, fs } = await setup({
+      selection: HEAD_HEX,
+      commits: () => [messageLess, commit(OTHER_HEX)],
+    });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+    fixture.detectChanges();
+
+    // Nothing to describe: no stray title sector and no dead switch.
+    expect(fixture.componentInstance.hasMessage()).toBe(false);
+    expect(fixture.componentInstance.commitTitle()).toBe('');
+    expect(query(fixture, 'file-status-title')).toBeNull();
+    expect(query(fixture, 'file-status-view-switch')).toBeNull();
+
+    // `files` is forced instead, so the left column is the one visible sector —
+    // never neither.
+    expect(fixture.componentInstance.effectiveAnalyzerMode()).toBe('files');
+    expect(fixture.nativeElement.querySelector('st-file-diff-list')).not.toBeNull();
+  });
+
+  it('never leaks the analyzer mode into the embedded panel (separate state)', async () => {
+    const { fixture, fs } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+    fixture.detectChanges();
+
+    const panel = fixture.debugElement.query(By.css('st-commit-details-panel'))
+      ?.componentInstance as CommitDetailsPanel;
+    expect(panel.mode()).toBe('description');
+
+    query(fixture, 'file-status-title')!
+      .querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!
+      .click();
+    fixture.detectChanges();
+
+    // The page flips, but the panel's own signal is untouched (no shared state).
+    expect(fixture.componentInstance.effectiveAnalyzerMode()).toBe('files');
+    expect(panel.mode()).toBe('description');
+    // The panel also renders no switch: it opted out of both sectors.
+    expect(panel.showFiles()).toBe(false);
+    expect(query(fixture, 'commit-details-view-switch')).toBeNull();
+  });
+
+  it('wires the commit-variant panel to the redesigned contract', async () => {
+    const { fixture, fs, graph } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+    fixture.detectChanges();
+
+    const panel = fixture.debugElement.query(By.css('st-commit-details-panel'))
+      ?.componentInstance as CommitDetailsPanel;
+    expect(panel.commit()?.oid?.hex).toBe(HEAD_HEX);
+    expect(panel.isWip()).toBe(false);
+    expect(panel.showFiles()).toBe(false);
+    expect(panel.showSubject()).toBe(false);
+    expect(panel.navMode()).toBe('release');
+    expect(panel.showInGraph()).toBe(true);
+    // The padlock reflects the shared graph lock.
+    expect(panel.locked()).toBe(false);
+    graph.lock();
+    fixture.detectChanges();
+    expect(panel.locked()).toBe(true);
+  });
+
+  it('toggles and releases the graph lock from the commit panel', async () => {
+    const { fixture, fs, graph } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+
+    const page = fixture.componentInstance;
+    page.toggleLock();
+    expect(graph.lockedOid()).toBe(HEAD_HEX);
+    page.toggleLock();
+    expect(graph.lockedOid()).toBeNull();
+
+    // Release drops the lock AND the selection; the follow effect re-opens local.
+    page.toggleLock();
+    page.releaseCommit();
+    expect(graph.lockedOid()).toBeNull();
+    expect(graph.selectedOid()).toBeNull();
+    await vi.waitFor(() => expect(fs.variant()).toBe('local'));
   });
 
   it('lands on the local variant for the WIP pseudo-oid', async () => {
@@ -489,10 +761,42 @@ describe('FileStatusPage', () => {
     expect(fs.variant()).toBe('local');
   });
 
+  it('keeps the commit variant alive when the locked row falls out of the window', async () => {
+    const { fixture, fs, graph } = await setup({
+      selection: HEAD_HEX,
+      commits: () => [commit(HEAD_HEX, [OTHER_HEX]), commit(OTHER_HEX)],
+    });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+
+    const openCommit = vi.spyOn(fs, 'openCommit');
+    // Pin the commit; its `Commit` object is captured in the lock.
+    graph.lock();
+    expect(graph.lockedCommit()?.oid?.hex).toBe(HEAD_HEX);
+
+    // A reload replaces the window WITHOUT the pinned commit. The follow effect
+    // must resolve through the lock (not `commits().find`) and leave the commit
+    // variant standing instead of flipping back to the working tree.
+    graph.commits.set([commit(OTHER_HEX)]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(fs.variant()).toBe('commit');
+    expect(fs.activeCommit()?.oid?.hex).toBe(HEAD_HEX);
+    expect(openCommit).not.toHaveBeenCalled();
+  });
+
   it('orders the commit column as summary, then file list, then the panel on the floor', async () => {
     const { fixture, fs } = await setup({ selection: HEAD_HEX });
     await waitForDiff(fixture, fs);
     await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+    fixture.detectChanges();
+
+    // The summary and file list live in the files sector; the default is
+    // description, so switch first.
+    query(fixture, 'file-status-title')!
+      .querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!
+      .click();
     fixture.detectChanges();
 
     const host = fixture.nativeElement as HTMLElement;
@@ -571,6 +875,14 @@ describe('FileStatusPage', () => {
   it('re-projects when a file row is clicked', async () => {
     const { fixture, fs } = await setup({ selection: HEAD_HEX });
     await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+    fixture.detectChanges();
+
+    // The file rows live in the files sector; the default is description.
+    query(fixture, 'file-status-title')!
+      .querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!
+      .click();
+    fixture.detectChanges();
 
     const rows = all(fixture, 'file-diff-row');
     expect(rows).toHaveLength(2);
@@ -672,6 +984,14 @@ describe('FileStatusPage', () => {
   it('renders the one-line change summary of the commit diff', async () => {
     const { fixture, fs } = await setup({ selection: HEAD_HEX });
     await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+    fixture.detectChanges();
+
+    // The summary is part of the files sector; switch to it first.
+    query(fixture, 'file-status-title')!
+      .querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!
+      .click();
+    fixture.detectChanges();
 
     expect(query(fixture, 'file-status-summary')?.textContent?.trim()).toBe(
       '+10 \u22124 across 2 files',
@@ -768,6 +1088,47 @@ describe('FileStatusPage', () => {
     assertDiffOnRight(fixture);
   });
 
+  it('selects the resolved commit when the commit segment is chosen with no graph selection', async () => {
+    const { fixture, fs, graph } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+
+    // Release drops the lock AND the selection but retains `activeCommit`; the
+    // user then picks the commit segment directly.
+    fixture.componentInstance.releaseCommit();
+    await vi.waitFor(() => expect(fs.variant()).toBe('local'));
+    expect(graph.selectedOid()).toBeNull();
+
+    all(fixture, 'toggle-segment-commit')[0].click();
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+    fixture.detectChanges();
+
+    // Choosing the segment selects the commit it opens, so the padlock has a
+    // real oid to pin instead of silently no-opping.
+    expect(graph.selectedOid()).toBe(HEAD_HEX);
+    graph.lock();
+    expect(graph.lockedOid()).toBe(HEAD_HEX);
+  });
+
+  it('opens the locked commit, not a stale active commit, when the commit segment is chosen', async () => {
+    const { fixture, fs, graph } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+
+    // Pin HEAD, then let a different commit become the stale active one.
+    graph.lock();
+    await fs.openCommit(commit(OTHER_HEX));
+    expect(fs.activeCommit()?.oid?.hex).toBe(OTHER_HEX);
+
+    fixture.componentInstance.onVariantChange('commit');
+    await vi.waitFor(() => expect(fs.activeCommit()?.oid?.hex).toBe(HEAD_HEX));
+
+    // The locked commit is opened and, because a lock already exists, it is
+    // already the selection — no (refused) re-select.
+    expect(graph.lockedOid()).toBe(HEAD_HEX);
+    expect(graph.selectedOid()).toBe(HEAD_HEX);
+  });
+
   it('falls back to the working tree when the commit variant has no active commit', async () => {
     const { fixture, fs } = await setup({ selection: null });
     await vi.waitFor(() => expect(fs.variant()).toBe('local'));
@@ -827,42 +1188,41 @@ describe('FileStatusPage', () => {
     expect(diff?.deletions).toBe(2);
   });
 
-  it('forwards page hunk actions by indices only, never a patch (ADR-0020)', async () => {
-    const { fixture, fs, stageHunk, unstageHunk, discardHunk } = await setup({ selection: WIP_OID });
+  it('forwards inline hunk actions by indices only, never a patch (ADR-0020)', async () => {
+    const { fixture, fs, stageHunk, discardHunk } = await setup({ selection: WIP_OID });
     await waitForDiff(fixture, fs);
+    all(fixture, 'status-file')[0].click();
+    await vi.waitFor(() => expect(fs.selectedPath()).toBe('a.ts'));
+    await settle(fixture);
     const page = fixture.componentInstance;
 
-    page.onStageHunk({ path: 'a.ts', hunkIndex: 3, lineIndices: [2, 5] });
-    page.onUnstageHunk({ path: 'b.ts', hunkIndex: 1, lineIndices: [0] });
-    page.onDiscardHunk({ path: 'c.ts', hunkIndex: 4, lineIndices: [] });
+    // Select line 0, discard (the payload carries the selection), then reselect
+    // and stage: each action clears its hunk's selection afterwards.
+    page.onHunkLineToggle({ hunkIndex: 0, lineIndex: 0 });
+    page.onHunkAction({ hunkIndex: 0, actionKey: 'discard' });
+    page.onHunkLineToggle({ hunkIndex: 0, lineIndex: 0 });
+    page.onHunkAction({ hunkIndex: 0, actionKey: 'stage' });
 
     await vi.waitFor(() => {
       expect(stageHunk).toHaveBeenCalledTimes(1);
-      expect(unstageHunk).toHaveBeenCalledTimes(1);
       expect(discardHunk).toHaveBeenCalledTimes(1);
     });
 
     // The exact ADR-0020 payload — every field, lineIndices included.
+    expect(lastPayload(discardHunk)).toEqual({
+      repoId: 'repo-1',
+      path: 'a.ts',
+      hunkIndex: 0,
+      lineIndices: [0],
+    });
     expect(lastPayload(stageHunk)).toEqual({
       repoId: 'repo-1',
       path: 'a.ts',
-      hunkIndex: 3,
-      lineIndices: [2, 5],
-    });
-    expect(lastPayload(unstageHunk)).toEqual({
-      repoId: 'repo-1',
-      path: 'b.ts',
-      hunkIndex: 1,
+      hunkIndex: 0,
       lineIndices: [0],
     });
-    expect(lastPayload(discardHunk)).toEqual({
-      repoId: 'repo-1',
-      path: 'c.ts',
-      hunkIndex: 4,
-      lineIndices: [],
-    });
 
-    for (const mock of [stageHunk, unstageHunk, discardHunk]) {
+    for (const mock of [stageHunk, discardHunk]) {
       // Exactly the four allowed keys — no dropped/extra keys.
       expect(Object.keys(lastPayload(mock)).sort()).toEqual([
         'hunkIndex',
@@ -878,7 +1238,7 @@ describe('FileStatusPage', () => {
     }
   });
 
-  it('wires the changes-panel Stage-hunk button to the page handler and the bridge', async () => {
+  it('renders the page-supplied inline hunk actions and forwards a click', async () => {
     const { fixture, fs, stageHunk } = await setup({ selection: WIP_OID });
     await waitForDiff(fixture, fs);
 
@@ -886,17 +1246,191 @@ describe('FileStatusPage', () => {
     await vi.waitFor(() => expect(fs.selectedPath()).toBe('a.ts'));
     await settle(fixture);
 
-    // The selected file exposes the hunk action list bound to the page handlers.
-    expect(query(fixture, 'hunk-actions')).not.toBeNull();
-    all(fixture, 'hunk-stage')[0].click();
-    await vi.waitFor(() => expect(stageHunk).toHaveBeenCalledTimes(1));
+    const page = fixture.componentInstance;
+    expect(page.hunkActionSlots()).toHaveLength(1);
+    expect(page.hunkActionSlots()?.[0].hunkIndex).toBe(0);
 
+    // The viewer owns the inline-action grid: one button per hunk action.
+    expect(query(fixture, 'diff-fallback')).not.toBeNull();
+    const buttons = all(fixture, 'diff-hunk-action');
+    expect(buttons.map((button) => button.getAttribute('data-action'))).toEqual([
+      'stage',
+      'discard',
+    ]);
+
+    buttons[0].click();
+    await vi.waitFor(() => expect(stageHunk).toHaveBeenCalledTimes(1));
     expect(lastPayload(stageHunk)).toEqual({
       repoId: 'repo-1',
       path: 'a.ts',
       hunkIndex: 0,
       lineIndices: [],
     });
+  });
+
+  it('toggles a changed line and addresses the hunk by the selected line indices', async () => {
+    const { fixture, fs, stageHunk } = await setup({ selection: WIP_OID });
+    await waitForDiff(fixture, fs);
+
+    all(fixture, 'status-file')[0].click();
+    await vi.waitFor(() => expect(fs.selectedPath()).toBe('a.ts'));
+    await settle(fixture);
+
+    // The only changed line of a.ts carries lineIndex 0.
+    const checkbox = all(fixture, 'diff-hunk-line')[0] as HTMLInputElement;
+    expect(checkbox).not.toBeUndefined();
+    expect(checkbox.getAttribute('data-line')).toBe('0');
+
+    checkbox.click();
+    await settle(fixture);
+
+    const page = fixture.componentInstance;
+    expect(page.hunkActionSlots()?.[0].selectedLines).toEqual([0]);
+
+    all(fixture, 'diff-hunk-action')[0].click();
+    await vi.waitFor(() => expect(stageHunk).toHaveBeenCalledTimes(1));
+    expect(lastPayload(stageHunk)).toEqual({
+      repoId: 'repo-1',
+      path: 'a.ts',
+      hunkIndex: 0,
+      lineIndices: [0],
+    });
+
+    // The action clears the hunk's selection so the next one starts fresh.
+    await settle(fixture);
+    expect(page.hunkActionSlots()?.[0].selectedLines).toEqual([]);
+  });
+
+  it('clears the per-hunk line selection when the selected file changes', async () => {
+    const { fixture, fs } = await setup({
+      selection: WIP_OID,
+      files: [file('a.ts', false), file('b.ts', false)],
+    });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('local'));
+
+    const page = fixture.componentInstance;
+    fs.selectFile('a.ts');
+    await vi.waitFor(() => expect(fs.selectedPath()).toBe('a.ts'));
+    await settle(fixture);
+
+    page.onHunkLineToggle({ hunkIndex: 0, lineIndex: 0 });
+    expect(page.hunkActionSlots()?.[0].selectedLines).toEqual([0]);
+
+    // Switching files must not carry a.ts's checked lines onto b.ts: a Discard
+    // would otherwise destroy lines the user never selected on THIS file.
+    fs.selectFile('b.ts');
+    await vi.waitFor(() => expect(fs.selectedPath()).toBe('b.ts'));
+    await settle(fixture);
+
+    expect(page.hunkActionSlots()?.[0].selectedLines).toEqual([]);
+  });
+
+  it('clears the ENTIRE hunk selection map after a hunk action (the diff re-indexes)', async () => {
+    const twoHunks: Diff = {
+      ...wholeDiff(),
+      files: [{ ...fileDiff('a.ts', 6, 2, 'a-line'), hunks: [hunk('a-line'), hunk('a-line-2')] }],
+    };
+    const { fixture, fs } = await setup({ selection: WIP_OID, diff: () => twoHunks });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('local'));
+
+    const page = fixture.componentInstance;
+    fs.selectFile('a.ts');
+    await vi.waitFor(() => expect(fs.selectedPath()).toBe('a.ts'));
+    await settle(fixture);
+
+    // Both hunks carry a selected line.
+    page.onHunkLineToggle({ hunkIndex: 0, lineIndex: 0 });
+    page.onHunkLineToggle({ hunkIndex: 1, lineIndex: 0 });
+    expect(page.hunkActionSlots()?.[0].selectedLines).toEqual([0]);
+    expect(page.hunkActionSlots()?.[1].selectedLines).toEqual([0]);
+
+    // The action re-indexes EVERY hunk, so the untouched hunk's stale index is
+    // cleared too — not only the acted-on one.
+    page.onHunkAction({ hunkIndex: 0, actionKey: 'stage' });
+    expect(page.hunkActionSlots()?.[0].selectedLines).toEqual([]);
+    expect(page.hunkActionSlots()?.[1].selectedLines).toEqual([]);
+  });
+
+  it('hides the diff-mode toggle while inline hunk actions are supplied', async () => {
+    const { fixture, fs } = await setup({ selection: WIP_OID });
+    await waitForDiff(fixture, fs);
+
+    all(fixture, 'status-file')[0].click();
+    await vi.waitFor(() => expect(fs.selectedPath()).toBe('a.ts'));
+    await settle(fixture);
+
+    // The inline grid ignores side-by-side, so the inert layout toggle is gone.
+    expect(query(fixture, 'diff-mode-toggle')).toBeNull();
+    expect(all(fixture, 'diff-hunk-action').length).toBeGreaterThan(0);
+  });
+
+  it('heads the local column with the locked commit, above the changes panel', async () => {
+    const { fixture, fs, graph } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+
+    // Pin the commit, then move to the working tree: the pinned section stays.
+    graph.lock();
+    all(fixture, 'toggle-segment-local')[0].click();
+    await vi.waitFor(() => expect(fs.variant()).toBe('local'));
+    fixture.detectChanges();
+
+    expect(graph.lockedCommit()?.oid?.hex).toBe(HEAD_HEX);
+    const panel = fixture.debugElement
+      .queryAll(By.css('st-commit-details-panel'))[0]
+      .componentInstance as CommitDetailsPanel;
+    expect(panel.commit()?.oid?.hex).toBe(HEAD_HEX);
+    expect(panel.navMode()).toBe('release');
+    expect(panel.locked()).toBe(true);
+    expect(panel.showInGraph()).toBe(true);
+
+    // The section sits ABOVE the changes panel in the local column.
+    const host = fixture.nativeElement as HTMLElement;
+    const section = host.querySelector('st-commit-details-panel');
+    const changes = host.querySelector('st-changes-panel');
+    expect(section).not.toBeNull();
+    expect(changes).not.toBeNull();
+    expect(
+      section!.compareDocumentPosition(changes!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(host.querySelector('.st-file-status__body--local')).not.toBeNull();
+  });
+
+  it('offers the History shortcut in the unlocked local commit section', async () => {
+    const { fixture, fs } = await setup({ selection: WIP_OID });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('local'));
+    fixture.detectChanges();
+
+    const panel = fixture.debugElement
+      .queryAll(By.css('st-commit-details-panel'))[0]
+      .componentInstance as CommitDetailsPanel;
+    expect(panel.commit()).toBeNull();
+    expect(panel.navMode()).toBe('history');
+    expect(panel.locked()).toBe(false);
+
+    // The empty branch renders with the History shortcut (one click to pick).
+    expect(query(fixture, 'commit-details-empty')).not.toBeNull();
+    expect(query(fixture, 'commit-details-history')).not.toBeNull();
+    // The bottom-pinning class is commit-only; the local column is not pinned.
+    expect((fixture.nativeElement as HTMLElement).querySelector('.st-file-status__body--commit')).toBeNull();
+  });
+
+  it('navigates to History and hands the commit focus over to reveal it in the graph', async () => {
+    const { fixture, fs, router, commitFocus } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+
+    const page = fixture.componentInstance;
+    page.goHistory();
+    expect(router.navigate).toHaveBeenCalledWith(['/repo']);
+
+    page.showInGraph();
+    // The focus hand-off lets RepoPage page to a commit outside the window.
+    expect(commitFocus.pending()).toEqual({ repoId: 'repo-1', oid: HEAD_HEX });
+    expect(router.navigate).toHaveBeenLastCalledWith(['/repo']);
   });
 
   it('reloads the graph window when the working tree changes externally', async () => {

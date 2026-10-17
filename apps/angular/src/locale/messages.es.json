@@ -221,6 +221,18 @@
     "4312138688396754332": "Archivo binario — sin diff textual.",
     "241789004515431521": " Se detectaron marcadores de conflicto de fusión. ",
     "4800537186689691502": "No hay cambios que mostrar.",
-    "7951627907963554285": "Redimensionar panel de detalle"
+    "7951627907963554285": "Redimensionar panel de detalle",
+    "9007231607272070502": " Ningún archivo coincide con el filtro. ",
+    "6860680053649305670": "Filtrar archivos",
+    "5082596911643014377": "La selección de confirmaciones está bloqueada. Libera el bloqueo para seleccionar otra confirmación.",
+    "4024883731731881186": "Filtrar archivos modificados",
+    "4328024498825335442": "Mostrar en el grafo",
+    "2909281953967014309": "Desbloquear confirmación",
+    "4123059051626284137": "Bloquear confirmación",
+    "431214032115679215": "{$PH} de {$PH_1} archivos modificados",
+    "1926497852590172646": "Seleccionar línea modificada",
+    "4902817035128594900": "Descripción",
+    "4116911651502837995": "Archivos",
+    "7263025013708325954": "Descripción o archivos modificados"
   }
 }

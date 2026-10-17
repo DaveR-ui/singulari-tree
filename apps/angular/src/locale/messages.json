@@ -221,6 +221,18 @@
     "4312138688396754332": "Binary file — no textual diff.",
     "241789004515431521": " Merge conflict markers detected. ",
     "4800537186689691502": "No changes to display.",
-    "7951627907963554285": "Resize detail pane"
+    "7951627907963554285": "Resize detail pane",
+    "9007231607272070502": " No files match the filter. ",
+    "6860680053649305670": "Filter files",
+    "5082596911643014377": "Commit selection is locked. Release the lock to select another commit.",
+    "4024883731731881186": "Filter changed files",
+    "4328024498825335442": "Show in graph",
+    "2909281953967014309": "Unlock commit",
+    "4123059051626284137": "Lock commit",
+    "431214032115679215": "{$PH} of {$PH_1} changed files",
+    "1926497852590172646": "Select changed line",
+    "4902817035128594900": "Description",
+    "4116911651502837995": "Files",
+    "7263025013708325954": "Description or changed files"
   }
 }

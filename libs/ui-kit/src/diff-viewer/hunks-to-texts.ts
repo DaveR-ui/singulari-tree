@@ -117,3 +117,52 @@ export function diffToGridRows(diff: Diff | null | undefined): DiffGridRow[] {
   }
   return rows;
 }
+
+/** A changed line's address in both the grid rows and the source hunk. */
+export interface HunkLineSegment {
+  /** Index into the `diffToGridRows(diff)` output (the rendered row). */
+  readonly rowIndex: number;
+  /** Index into `hunk.lines` (the RPC's `line_indices` addressing). */
+  readonly lineIndex: number;
+}
+
+/** One rendered hunk: where its header row sits and where its changed lines sit. */
+export interface HunkSegment {
+  /** Index into `diff().hunks` — the RPC's `hunk_index`. */
+  readonly hunkIndex: number;
+  /** Index of the hunk header row within the `diffToGridRows()` output. */
+  readonly headerRowIndex: number;
+  /** ONLY changed (added/removed) lines, in render order. */
+  readonly lines: readonly HunkLineSegment[];
+}
+
+/**
+ * Pure projection of a `Diff` into per-hunk render anchors: the header row's
+ * index within the `diffToGridRows()` output and, for every CHANGED line, both
+ * its grid `rowIndex` and its `lineIndex` inside `hunk.lines` (the values the
+ * `StageHunk`/`UnstageHunk`/`DiscardHunk` RPCs address by `hunk_index` /
+ * `line_indices`).
+ *
+ * This walks the same row layout as `diffToGridRows` (one row per line plus one
+ * meta row per `noNewline`) instead of re-deriving the diff, so a rendered hunk
+ * maps 1:1 to the diff the host addresses — a single source of truth for the
+ * inline-action surface.
+ */
+export function hunkGridSegments(diff: Diff | null | undefined): HunkSegment[] {
+  const segments: HunkSegment[] = [];
+  let rowIndex = 0;
+  for (const [hunkIndex, hunk] of (diff?.hunks ?? []).entries()) {
+    const headerRowIndex = rowIndex;
+    rowIndex++; // The hunk header row.
+    const lines: HunkLineSegment[] = [];
+    for (const [lineIndex, line] of (hunk.lines ?? []).entries()) {
+      if (line.kind === 'added' || line.kind === 'removed') {
+        lines.push({ rowIndex, lineIndex });
+      }
+      rowIndex++; // The line row.
+      if (line.noNewline) rowIndex++; // The `\ No newline` meta row.
+    }
+    segments.push({ hunkIndex, headerRowIndex, lines });
+  }
+  return segments;
+}

@@ -7,9 +7,11 @@ import {
   MONACO_ENVIRONMENT_AVAILABLE,
   MONACO_LOADER,
   diffLineHeight,
+  hunkGridSegments,
   hunksToTexts,
   monacoEnvironmentAvailable,
   shouldInitializeMonaco,
+  type HunkActionSlot,
   type MonacoLoader,
   type MonacoModule,
 } from '@singularitree/ui-kit';
@@ -45,11 +47,51 @@ function makeDiff(overrides: Partial<Diff> = {}): Diff {
   };
 }
 
+/** Two hunks with context, added, removed and a `\ No newline` meta row. */
+function makeMultiHunkDiff(): Diff {
+  return {
+    from: undefined,
+    to: undefined,
+    hunks: [
+      {
+        fromStart: 1,
+        fromLines: 4,
+        toStart: 1,
+        toLines: 4,
+        lines: [
+          { kind: 'context', text: 'a', noNewline: false },
+          { kind: 'removed', text: 'b', noNewline: false },
+          { kind: 'added', text: 'B', noNewline: false },
+          { kind: 'context', text: 'c', noNewline: false },
+        ],
+      },
+      {
+        fromStart: 10,
+        fromLines: 3,
+        toStart: 10,
+        toLines: 3,
+        lines: [
+          { kind: 'context', text: 'x', noNewline: false },
+          { kind: 'added', text: 'y', noNewline: false },
+          { kind: 'removed', text: 'z', noNewline: true },
+        ],
+      },
+    ],
+    additions: 2,
+    deletions: 2,
+    isBinary: false,
+    hasConflictMarkers: false,
+    files: [],
+    truncated: false,
+  };
+}
+
 function render(
   diff: Diff | null,
   loading = false,
   errorMsg: string | null = null,
   typography: { fontSize?: number; wordWrap?: boolean } = {},
+  hunkActions?: readonly HunkActionSlot[] | null,
 ) {
   const fixture = TestBed.createComponent(DiffViewer);
   fixture.componentRef.setInput('diff', diff);
@@ -61,6 +103,9 @@ function render(
   if (typography.wordWrap !== undefined) {
     fixture.componentRef.setInput('wordWrap', typography.wordWrap);
   }
+  if (hunkActions !== undefined) {
+    fixture.componentRef.setInput('hunkActions', hunkActions);
+  }
   fixture.detectChanges();
   return fixture;
 }
@@ -69,6 +114,33 @@ function query(fixture: ComponentFixture<DiffViewer>, testId: string): HTMLEleme
   return (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
     `[data-testid="${testId}"]`,
   );
+}
+
+function all(fixture: ComponentFixture<DiffViewer>, testId: string): HTMLElement[] {
+  return Array.from(
+    (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+      `[data-testid="${testId}"]`,
+    ),
+  );
+}
+
+/** Stage/Discard on hunk 0, Stage only on hunk 1 (with line 1 pre-checked). */
+function makeHunkActions(): HunkActionSlot[] {
+  return [
+    {
+      hunkIndex: 0,
+      actions: [
+        { key: 'stage', icon: 'plus', label: 'Stage hunk' },
+        { key: 'discard', icon: 'discard', label: 'Discard hunk' },
+      ],
+      selectedLines: [],
+    },
+    {
+      hunkIndex: 1,
+      actions: [{ key: 'stage', icon: 'plus', label: 'Stage hunk' }],
+      selectedLines: [1],
+    },
+  ];
 }
 
 interface FakeModel {
@@ -481,5 +553,172 @@ describe('DiffViewer Monaco initialization', () => {
     expect(
       fallback?.querySelector<HTMLElement>('[data-kind="removed"]')?.textContent,
     ).toContain('old');
+  });
+});
+
+describe('hunkGridSegments', () => {
+  it('maps hunks and changed lines to grid rows and line indices', () => {
+    expect(hunkGridSegments(makeMultiHunkDiff())).toEqual([
+      {
+        hunkIndex: 0,
+        headerRowIndex: 0,
+        lines: [
+          { rowIndex: 2, lineIndex: 1 },
+          { rowIndex: 3, lineIndex: 2 },
+        ],
+      },
+      {
+        hunkIndex: 1,
+        headerRowIndex: 5,
+        lines: [
+          { rowIndex: 7, lineIndex: 1 },
+          { rowIndex: 8, lineIndex: 2 },
+        ],
+      },
+    ]);
+  });
+
+  it('is empty for a null diff and a hunk-less diff', () => {
+    expect(hunkGridSegments(null)).toEqual([]);
+    expect(hunkGridSegments(makeDiff({ hunks: [] }))).toEqual([]);
+  });
+});
+
+describe('DiffViewer inline hunk actions', () => {
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      providers: [provideZonelessChangeDetection()],
+    }).compileComponents();
+  });
+
+  afterEach(() => {
+    TestBed.resetTestingModule();
+  });
+
+  it('renders an action button per hunk and a checkbox only on changed lines', () => {
+    const fixture = render(makeMultiHunkDiff(), false, null, {}, makeHunkActions());
+
+    const headers = all(fixture, 'diff-fallback-hunk');
+    // Two hunk headers plus the `\ No newline` meta row of hunk 1.
+    expect(headers).toHaveLength(3);
+    expect(headers[0].querySelectorAll('[data-testid="diff-hunk-action"]')).toHaveLength(2);
+    expect(headers[1].querySelectorAll('[data-testid="diff-hunk-action"]')).toHaveLength(1);
+    expect(headers[2].querySelectorAll('[data-testid="diff-hunk-action"]')).toHaveLength(0);
+
+    // `data-action` echoes the host key, in hunk order across the grid.
+    expect(all(fixture, 'diff-hunk-action').map((el) => el.getAttribute('data-action'))).toEqual([
+      'stage',
+      'discard',
+      'stage',
+    ]);
+
+    // One checkbox per CHANGED line (context/header rows get none), carrying the
+    // 0-based index into that hunk's `lines`.
+    const checks = all(fixture, 'diff-hunk-line');
+    expect(checks.map((el) => el.getAttribute('data-line'))).toEqual(['1', '2', '1', '2']);
+  });
+
+  it('gives every action button and checkbox an accessible name', () => {
+    const fixture = render(makeMultiHunkDiff(), false, null, {}, makeHunkActions());
+
+    expect(
+      all(fixture, 'diff-hunk-action').map((host) =>
+        host.querySelector('button')?.getAttribute('aria-label'),
+      ),
+    ).toEqual(['Stage hunk', 'Discard hunk', 'Stage hunk']);
+    expect(all(fixture, 'diff-hunk-line')[0].getAttribute('aria-label')).toBeTruthy();
+  });
+
+  it('emits hunkAction with the hunk index (not the row index) and the action key', () => {
+    const fixture = render(makeMultiHunkDiff(), false, null, {}, makeHunkActions());
+    const emitted: { hunkIndex: number; actionKey: string }[] = [];
+    fixture.componentInstance.hunkAction.subscribe((event) => emitted.push(event));
+
+    // Index 2 is hunk 1's Stage button (row index 5, hunk index 1).
+    all(fixture, 'diff-hunk-action')[2].click();
+
+    expect(emitted).toEqual([{ hunkIndex: 1, actionKey: 'stage' }]);
+  });
+
+  it('emits hunkLineToggle with the hunk and line indices and reflects the checked set', () => {
+    const fixture = render(makeMultiHunkDiff(), false, null, {}, makeHunkActions());
+    const emitted: { hunkIndex: number; lineIndex: number }[] = [];
+    fixture.componentInstance.hunkLineToggle.subscribe((event) => emitted.push(event));
+
+    const checks = all(fixture, 'diff-hunk-line') as HTMLInputElement[];
+    // `selectedLines: [1]` on hunk 1 pre-checks its line index 1 (the added 'y').
+    expect(checks[2].checked).toBe(true);
+    // The last changed line is hunk 1, line index 2 (the removed 'z').
+    checks[3].click();
+
+    expect(emitted).toEqual([{ hunkIndex: 1, lineIndex: 2 }]);
+  });
+
+  it('renders the action surface instead of Monaco, in the shared grid', () => {
+    const fixture = render(makeMultiHunkDiff(), false, null, {}, makeHunkActions());
+    const fallback = query(fixture, 'diff-fallback');
+
+    expect(fallback).not.toBeNull();
+    expect(fallback!.classList.contains('st-diff-viewer__fallback--actions')).toBe(true);
+    // The Monaco mount point never renders in the action state.
+    expect(fixture.nativeElement.querySelector('.st-diff-viewer__editor')).toBeNull();
+    // The hunk range text lives on the header row (in the code column).
+    expect(all(fixture, 'diff-fallback-hunk')[0].textContent).toContain('@@ -1,4 +1,4 @@');
+  });
+
+  it('never loads or mounts Monaco when the host supplies hunk actions', async () => {
+    const fake = makeFakeMonaco();
+    const loader = vi.fn(() => Promise.resolve(fake.monaco));
+    await TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        { provide: MONACO_ENVIRONMENT_AVAILABLE, useValue: () => true },
+        { provide: MONACO_LOADER, useValue: loader },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(DiffViewer);
+    fixture.componentRef.setInput('diff', makeMultiHunkDiff());
+    fixture.componentRef.setInput('hunkActions', makeHunkActions());
+    fixture.detectChanges();
+    TestBed.tick();
+    await Promise.resolve();
+
+    expect(loader).not.toHaveBeenCalled();
+    expect(fake.createDiffEditor).not.toHaveBeenCalled();
+    expect(query(fixture, 'diff-fallback')).not.toBeNull();
+  });
+
+  it('disposes a mounted Monaco editor when actions appear', async () => {
+    const fake = makeFakeMonaco();
+    const loader = vi.fn(() => Promise.resolve(fake.monaco));
+    await TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        { provide: MONACO_ENVIRONMENT_AVAILABLE, useValue: () => true },
+        { provide: MONACO_LOADER, useValue: loader },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(DiffViewer);
+    fixture.componentRef.setInput('diff', makeMultiHunkDiff());
+    fixture.detectChanges();
+    TestBed.tick();
+    await vi.waitFor(() => expect(fake.createDiffEditor).toHaveBeenCalledTimes(1));
+
+    fixture.componentRef.setInput('hunkActions', makeHunkActions());
+    fixture.detectChanges();
+    await vi.waitFor(() => expect(fake.diffEditor.dispose).toHaveBeenCalled());
+    expect(fixture.nativeElement.querySelector('.st-diff-viewer__editor')).toBeNull();
+  });
+
+  it('renders no hunk affordances and the unchanged 4-column surface without the input', () => {
+    const fixture = render(makeDiff());
+
+    expect(all(fixture, 'diff-hunk-action')).toHaveLength(0);
+    expect(all(fixture, 'diff-hunk-line')).toHaveLength(0);
+    expect(
+      query(fixture, 'diff-fallback')!.classList.contains('st-diff-viewer__fallback--actions'),
+    ).toBe(false);
   });
 });

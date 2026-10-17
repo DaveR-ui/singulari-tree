@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 import type { FileDiff } from '@contracts/domain';
-import { ButtonComponent, SelectableRowDirective } from '@singularitree/ui-kit';
+import { ButtonComponent, InputComponent, SelectableRowDirective } from '@singularitree/ui-kit';
 
 /** Preferred chip order: A, M, D, R first, then any other porcelain code alphabetically. */
 const STATUS_ORDER = ['A', 'M', 'D', 'R'];
@@ -11,10 +11,11 @@ const STATUS_ORDER = ['A', 'M', 'D', 'R'];
  * diff and emits the path the user picked, which the page forwards to
  * `FileStatusStore.selectFile` so the right pane re-projects that single file.
  *
- * Above the heading sits a local, per-screen status filter: one toggle chip per
- * status present in the data, so the row never offers a status with zero files.
- * The store is never touched — the filter is view state the list owns; an empty
- * selection means "no filter", never "match nothing".
+ * Above the heading sits a local, per-screen filter row: a name search over
+ * `file.path` plus one toggle chip per status present in the data, so the row
+ * never offers a status with zero files. The store is never touched — the filter
+ * is view state the list owns; an empty selection means "no filter", never
+ * "match nothing".
  *
  * A renamed file is addressed by its NEW path (`oldPath` is never shown as the
  * row identity, because that is the path the diff viewer addresses). Binary
@@ -24,7 +25,7 @@ const STATUS_ORDER = ['A', 'M', 'D', 'R'];
 @Component({
   selector: 'st-file-diff-list',
   standalone: true,
-  imports: [ButtonComponent, SelectableRowDirective],
+  imports: [ButtonComponent, InputComponent, SelectableRowDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="st-file-diff-list">
@@ -67,13 +68,25 @@ const STATUS_ORDER = ['A', 'M', 'D', 'R'];
         </div>
       }
 
+      @if (files().length > 0) {
+        <st-input
+          class="st-file-diff-list__filter"
+          type="search"
+          testId="file-list-filter"
+          [value]="nameFilter()"
+          [placeholder]="filterPlaceholder"
+          [ariaLabel]="filterLabel"
+          (valueChange)="nameFilter.set($event)"
+        />
+      }
+
       <h3 class="st-file-diff-list__heading st-eyebrow" i18n>Changed files</h3>
 
       @if (files().length === 0) {
         <p class="st-file-diff-list__empty" data-testid="file-list-empty" i18n>No changed files.</p>
       } @else if (filteredFiles().length === 0) {
         <p class="st-file-diff-list__empty" data-testid="file-list-filter-empty" i18n>
-          No files match the selected filters.
+          No files match the filter.
         </p>
       } @else {
         <ul class="st-file-diff-list__list">
@@ -129,6 +142,12 @@ const STATUS_ORDER = ['A', 'M', 'D', 'R'];
 
     .st-file-diff-list__heading {
       margin: 0;
+    }
+
+    /* The name filter never shrinks away in the flex column; its own host fills
+       the row width. */
+    .st-file-diff-list__filter {
+      flex: none;
     }
 
     .st-file-diff-list__filters {
@@ -270,6 +289,21 @@ export class FileDiffList {
    */
   private readonly activeStatuses = signal<ReadonlySet<string>>(new Set());
 
+  /** Live name-filter text (path substring). Owned here; the store never sees it. */
+  readonly nameFilter = signal('');
+
+  /** Placeholder + accessible name of the name filter. */
+  readonly filterPlaceholder = $localize`Filter files`;
+  readonly filterLabel = $localize`Filter files`;
+
+  /**
+   * Normalized name-filter query: trimmed and lowercased once so the "active"
+   * check and the match test agree, and matched with `String#includes` — never
+   * a RegExp — so a path containing filter metacharacters (`.`, `*`, `[`) is
+   * matched literally rather than as an unintended pattern.
+   */
+  private readonly normalizedFilter = computed(() => this.nameFilter().trim().toLowerCase());
+
   /**
    * Distinct statuses present in `files()`, ordered A, M, D, R then the rest
    * alphabetically, so the filter row grows with the data and never offers a
@@ -289,17 +323,24 @@ export class FileDiffList {
     });
   });
 
-  readonly hasActiveFilters = computed(() => this.activeStatuses().size > 0);
+  readonly hasActiveFilters = computed(
+    () => this.activeStatuses().size > 0 || this.normalizedFilter().length > 0,
+  );
 
   /**
-   * Rows actually rendered. An empty selection is the identity filter, so
-   * clearing the last chip always restores every file rather than hiding all of
-   * them.
+   * Rows actually rendered: the status chips and the name filter combine with
+   * AND. Both inactive is the identity filter, so clearing the last control
+   * always restores every file rather than hiding all of them.
    */
   readonly filteredFiles = computed<FileDiff[]>(() => {
     const active = this.activeStatuses();
-    if (active.size === 0) return this.files();
-    return this.files().filter((file) => active.has(file.status));
+    const query = this.normalizedFilter();
+    if (active.size === 0 && !query) return this.files();
+    return this.files().filter(
+      (file) =>
+        (active.size === 0 || active.has(file.status)) &&
+        (!query || file.path.toLowerCase().includes(query)),
+    );
   });
 
   /** True when a chip represents a currently included status. */
@@ -320,5 +361,8 @@ export class FileDiffList {
 
   clearFilters(): void {
     this.activeStatuses.set(new Set());
+    // The name filter is a filter too: clearing only the chips would leave the
+    // rows name-filtered and the button gone, stranding the list.
+    this.nameFilter.set('');
   }
 }

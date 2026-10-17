@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-10-16
+last_updated: 2026-10-17
 status: active
 description: Shipped SingulariTree renderer design system — the Dark Neon / Developer Studio palette in dark and light, the two-tier CSS custom property vocabulary, typography, spacing and geometry, the ui-kit component inventory, and copy-paste usage.
 tags:
@@ -8,7 +8,7 @@ tags:
 - tokens
 - theming
 - ui-kit
-version: 1.5
+version: 1.7
 related:
 - renderer-redesign-plan
 - renderer-slice
@@ -238,7 +238,7 @@ Variants `neutral | branch | tag | success | warning | add | remove | warn | dan
 ### `st-icon`
 **Role:** decorative inline glyph
 
-A dumb renderer over an inline-SVG registry (`icon/icons.ts`): 24×24 viewBox, `stroke-width: 1.8`, `stroke: currentColor`, rendered at 17px (`--st-font-17`) by default. Always `aria-hidden` — the accessible name belongs to the host control. An unknown `name` renders nothing and is never an error.
+A dumb renderer over an inline-SVG registry (`icon/icons.ts`): 24×24 viewBox, `stroke-width: 1.8`, `stroke: currentColor`, rendered at 17px (`--st-font-17`) by default. Always `aria-hidden` — the accessible name belongs to the host control. An unknown `name` renders nothing and is never an error. The registry also carries the padlock pair `lock` / `lock-open` (the commit-details selection lock; `pin` / `pin-off` stay untouched for the drawer's pin model).
 
 ### `st-nav-item`
 **Role:** navigation-rail entry
@@ -258,7 +258,7 @@ The parent owns the state; each control re-emits its value on input/change. Surf
 ### `st-toggle-group`
 **Role:** segmented control
 
-`options[]` + `value` + `valueChange`, one segment active at a time. Surface-2 track, 24px segments, the active segment raised to the surface colour. Used for theme, language, density and variant bars.
+`options[]` + `value` + `valueChange`, one segment active at a time. Surface-2 track, 24px segments, the active segment raised to the surface colour. An option may carry an optional per-segment `count` (a small accent-tinted pill after the label, hidden when absent or zero and capped at `99+`, tabular-nums — e.g. the pending-file count on the variant bar's "Local" segment) and an optional per-segment `disabled` (a single segment can be disabled while the group stays enabled — the commit-details switch disables `description` for a body-less commit); a whole-group `disabled` input is also available. Used for theme, language, density and variant bars, and as a two-segment **view switch**: the commit-details view switch in the History aside (`commit-details-view-switch`, description | files) and the analyzer title switch (`file-status-view-switch`).
 
 ### `[stSelectableRow]`
 **Role:** the one reusable selectable-row pattern
@@ -298,9 +298,11 @@ Icon + name (+ optional branch badge) + optional subtitle. Emits `picked` on cli
 A fixed 28px row (`GRAPH_ROW_HEIGHT`, matching `--st-size-row-graph`) holding an inline-SVG lane segment, the short oid, ref pills, the message subject, the author, a `+N/−N/f` stats gauge and a `tabular-nums` date. Ref pills are keyed on the reference TYPE — `head` (`--st-color-ref-head`, turquoise), local branch (`--st-color-ref-branch`, violet), mainline branch (`--st-color-ref-main`, mint — `main`/`master` via `isMainlineBranch()`), remote (`--st-color-ref-remote`, electric blue) and tag (`--st-color-ref-tag`, amber). Lane colour comes from `--st-color-graph-lane-N`; the SVG lane width is dynamic (`(maxLane + 1) × 14px`). The selected row uses the `--st-color-selected` fill, the `--st-color-selected-border` bottom hairline and the 3px `.st-selection-bar`; hover tints the row with a 10% accent wash.
 
 ### `st-diff-viewer`
-**Role:** read-only diff surface
+**Role:** read-only diff surface that optionally carries host-supplied inline per-hunk actions
 
 Mounts a lazily-loaded Monaco `DiffEditor` when a real textual diff is available, and a plain tokenized grid fallback otherwise (a 4-column insert/delete/context grid, shown before the chunk loads, in tests, or if initialization fails). Distinct notices cover truncated, error, loading, binary, conflict and empty diffs. Monaco renders read-only `plaintext` models with the `--st-font-mono` family and is unified by default (`renderSideBySide: false`). Font size and soft wrap are inputs driven by the persisted preferences — `fontSize` (number, `11 | 12 | 13`, default `12`) and `wordWrap` (boolean, default `false`) — with the line height exactly 2× the font size via the exported pure helper `diffLineHeight(fontSize) => fontSize * 2` (11→22, 12→24, 13→26, matching `--st-leading-code`). Both reach Monaco in `createDiffEditor` and follow it live through `editor.updateOptions` only — never a remount — and the non-Monaco 4-column fallback grid carries the same values as a `data-wrap="on|off"` attribute plus inline `font-size`/`line-height` (wrapped = `white-space: pre-wrap` + `word-break: break-all`; unwrapped = `white-space: pre` with a `max-content` last grid track so long lines overflow and scroll horizontally). Two token-derived custom themes — `singularitree-dark` and `singularitree-light` in `libs/ui-kit/src/diff-viewer/monaco-theme.ts`, mirroring the `--st-color-*` diff, gutter and surface values in both themes — are registered by the lazy loader (`defineTheme`) before it hands back the module, and `setTheme` follows the current `data-theme` so the editor never flashes the built-in theme. The layout persists through `DiffModeService` (`st:diffMode`, default `unified`); the file-status diff-pane header toggle (`st-toggle-group`, Unified / Side by side) flips it live.
+
+**Inline-action mode (opt-in, additive).** The primitive is read-only *by default* — it renders a diff and emits nothing about it. A host that needs per-hunk affordances passes `hunkActions` (`HunkActionSlot[]`); when that input is non-null the viewer replaces Monaco with **its own 5-column tokenized grid** (`checkbox | old-num | new-num | sign | text`) — per-hunk action buttons on each hunk's header row and a checkbox on every changed line — and emits `hunkAction` (`{hunkIndex, actionKey}`) and `hunkLineToggle` (`{hunkIndex, lineIndex}`). Monaco does not mount in this mode (an already-mounted editor is disposed), and the grid carries the same `data-wrap` / `fontSize` / 2× line-height contract as the read-only fallback. The component stays dumb: it owns no selection and no store, knows no RPC, and adds no label beyond its own line-checkbox name — the host supplies each `HunkActionSpec` (`key`, `icon`, `label`, `disabled?`) and holds the line selection. `hunkIndex` indexes `diff().hunks` and `lineIndex` indexes `hunk.lines`, both resolved by the pure `hunkGridSegments(diff)` walk in `hunks-to-texts.ts` (the same row layout `diffToGridRows` produces — never a second diff), so the emitted addresses are exactly the `hunk_index` / `line_indices` the core's per-hunk RPCs take. Decision record: [[adr-0035-commit-details-redesign-and-inline-hunk-actions]]. With the input left at its `null` default the rendering is the read-only surface described above, unchanged.
 
 ### `st-modal` (app-level, not ui-kit)
 **Role:** shared dialog shell

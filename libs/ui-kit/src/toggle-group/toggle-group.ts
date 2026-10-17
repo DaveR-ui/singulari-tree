@@ -10,6 +10,13 @@ export interface ToggleOption {
    * absent or zero; capped at `99+`.
    */
   readonly count?: number;
+  /**
+   * Per-segment disabled state, independent of the group-level `disabled`
+   * input. Use it to express "this segment is unavailable for the current
+   * data" (e.g. the description segment of a commit with no body) while the
+   * other segment stays selectable.
+   */
+  readonly disabled?: boolean;
 }
 
 /**
@@ -29,7 +36,7 @@ export interface ToggleOption {
           [class.st-toggle-group__segment--active]="option.value === value()"
           [attr.aria-pressed]="option.value === value()"
           [attr.data-testid]="'toggle-segment-' + option.value"
-          [disabled]="disabled()"
+          [disabled]="disabled() || option.disabled === true"
           (click)="valueChange.emit(option.value)"
         >
           {{ option.label }}

@@ -1,23 +1,25 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import type { FileDiff, FileStatus } from '@contracts/domain';
+import type { FileStatus } from '@contracts/domain';
 import {
   ButtonComponent,
   IconComponent,
   SelectableRowDirective,
   TextareaComponent,
 } from '@singularitree/ui-kit';
-import { HunkActions, type HunkActionEvent } from './hunk-actions';
 
 /**
  * Working-tree changes panel: staged + unstaged file sections, file-level
- * stage/unstage/discard, the hunk/line action list for the selected file, and
- * the commit box. Dumb and presentational — it renders its inputs and emits
- * user intent; the owning page binds those events to `StatusStore`.
+ * stage/unstage/discard and the commit box. Dumb and presentational — it renders
+ * its inputs and emits user intent; the owning page binds those events to
+ * `StatusStore`.
+ *
+ * Hunk/line actions live INLINE inside `st-diff-viewer` now (per-hunk buttons and
+ * per-line checkboxes), so this panel no longer hosts a hunk-action block.
  */
 @Component({
   selector: 'st-changes-panel',
   standalone: true,
-  imports: [ButtonComponent, IconComponent, TextareaComponent, SelectableRowDirective, HunkActions],
+  imports: [ButtonComponent, IconComponent, TextareaComponent, SelectableRowDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="st-changes">
@@ -104,22 +106,6 @@ import { HunkActions, type HunkActionEvent } from './hunk-actions';
 
       @if (!stagedFiles().length && !unstagedFiles().length) {
         <p class="st-changes__empty" data-testid="status-empty" i18n>No changes.</p>
-      }
-
-      @if (selectedPath() && (unstagedFile() || stagedFile())) {
-        <div class="st-changes__hunks" data-testid="changes-hunks">
-          <h3 class="st-changes__heading st-eyebrow" i18n>Hunk actions</h3>
-          <st-hunk-actions
-            [unstagedFile]="unstagedFile()"
-            [stagedFile]="stagedFile()"
-            [busy]="busy()"
-            [truncated]="diffTruncated()"
-            (stageHunk)="stageHunk.emit($event)"
-            (unstageHunk)="unstageHunk.emit($event)"
-            (discardHunk)="discardHunk.emit($event)"
-            (discardFile)="discardFile.emit($event)"
-          />
-        </div>
       }
 
       <div class="st-changes__commit">
@@ -225,14 +211,6 @@ import { HunkActions, type HunkActionEvent } from './hunk-actions';
       gap: var(--st-space-1);
     }
 
-    /* Sits between the lists and the footer: fixed, so it never eats the
-       scrollable slack and is never squeezed to zero. */
-    .st-changes__hunks {
-      flex: none;
-      border-top: var(--st-hairline) solid var(--st-color-border);
-      padding-top: var(--st-space-2);
-    }
-
     /* Pinned footer: fixed (never grows or shrinks), so the sections keep the
        scrollable slack; the top hairline reads it as the commit box. */
     .st-changes__commit {
@@ -268,19 +246,10 @@ export class ChangesPanel {
   readonly selectedPath = input<string | null>(null);
   readonly statusError = input<string | null>(null);
   readonly commitError = input<string | null>(null);
-  /** Selected file's worktree FileDiff (Stage/Discard), or null. */
-  readonly unstagedFile = input<FileDiff | null>(null);
-  /** Selected file's staged FileDiff (Unstage), or null. */
-  readonly stagedFile = input<FileDiff | null>(null);
-  /** True when the addressed diff was capped by the core (ADR-0020 (c)). */
-  readonly diffTruncated = input(false);
 
   readonly stage = output<string[]>();
   readonly unstage = output<string[]>();
   readonly discardFile = output<string>();
-  readonly stageHunk = output<HunkActionEvent>();
-  readonly unstageHunk = output<HunkActionEvent>();
-  readonly discardHunk = output<HunkActionEvent>();
   readonly messageChange = output<string>();
   readonly commit = output<void>();
   readonly fileSelect = output<string>();

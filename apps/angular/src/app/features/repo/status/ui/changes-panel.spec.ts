@@ -1,7 +1,7 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DiffLine, FileDiff, FileStatus, Hunk } from '@contracts/domain';
+import type { FileStatus } from '@contracts/domain';
 import { ChangesPanel } from './changes-panel';
 
 interface PanelInputs {
@@ -12,41 +12,10 @@ interface PanelInputs {
   selectedPath?: string | null;
   statusError?: string | null;
   commitError?: string | null;
-  unstagedFile?: FileDiff | null;
-  stagedFile?: FileDiff | null;
-  diffTruncated?: boolean;
 }
 
 function file(path: string, isStaged: boolean): FileStatus {
   return { path, staged: isStaged ? 'M' : ' ', unstaged: 'M', isStaged, isConflicted: false };
-}
-
-function line(kind: string, text: string): DiffLine {
-  return { kind, text, noNewline: false };
-}
-
-function hunk(): Hunk {
-  return {
-    fromStart: 1,
-    fromLines: 2,
-    toStart: 1,
-    toLines: 2,
-    lines: [line('context', 'a'), line('removed', 'b'), line('added', 'B')],
-  };
-}
-
-function fileDiff(path: string, overrides: Partial<FileDiff> = {}): FileDiff {
-  return {
-    path,
-    oldPath: '',
-    status: 'M',
-    hunks: [hunk()],
-    additions: 1,
-    deletions: 1,
-    isBinary: false,
-    hasConflictMarkers: false,
-    ...overrides,
-  };
 }
 
 function render(inputs: PanelInputs = {}): ComponentFixture<ChangesPanel> {
@@ -59,9 +28,6 @@ function render(inputs: PanelInputs = {}): ComponentFixture<ChangesPanel> {
   if (inputs.selectedPath !== undefined) ref.setInput('selectedPath', inputs.selectedPath);
   if (inputs.statusError !== undefined) ref.setInput('statusError', inputs.statusError);
   if (inputs.commitError !== undefined) ref.setInput('commitError', inputs.commitError);
-  if (inputs.unstagedFile !== undefined) ref.setInput('unstagedFile', inputs.unstagedFile);
-  if (inputs.stagedFile !== undefined) ref.setInput('stagedFile', inputs.stagedFile);
-  if (inputs.diffTruncated !== undefined) ref.setInput('diffTruncated', inputs.diffTruncated);
   fixture.detectChanges();
   return fixture;
 }
@@ -291,41 +257,6 @@ describe('ChangesPanel', () => {
     expect(discarded).toEqual([]);
   });
 
-  it('exposes the hunk actions for the selected file and forwards their events', () => {
-    const fixture = render({
-      unstagedFiles: [file('a.ts', false)],
-      selectedPath: 'a.ts',
-      unstagedFile: fileDiff('a.ts'),
-    });
-    const staged: unknown[] = [];
-    const discarded: unknown[] = [];
-    fixture.componentInstance.stageHunk.subscribe((event) => staged.push(event));
-    fixture.componentInstance.discardHunk.subscribe((event) => discarded.push(event));
-
-    expect(query(fixture, 'changes-hunks')).not.toBeNull();
-    button(fixture, 'hunk-stage').click();
-    button(fixture, 'hunk-discard').click();
-
-    expect(staged).toEqual([{ path: 'a.ts', hunkIndex: 0, lineIndices: [] }]);
-    expect(discarded).toEqual([{ path: 'a.ts', hunkIndex: 0, lineIndices: [] }]);
-  });
-
-  it('hides the hunk actions without a selected file diff', () => {
-    const fixture = render({ unstagedFiles: [file('a.ts', false)], selectedPath: 'a.ts' });
-    expect(query(fixture, 'changes-hunks')).toBeNull();
-  });
-
-  it('renders the truncated notice in the hunk actions', () => {
-    const fixture = render({
-      unstagedFiles: [file('a.ts', false)],
-      selectedPath: 'a.ts',
-      unstagedFile: fileDiff('a.ts'),
-      diffTruncated: true,
-    });
-
-    expect(query(fixture, 'hunk-actions-truncated')?.textContent).toContain('truncated');
-  });
-
   it('anchors the commit box as the fixed last child of the panel column', () => {
     const fixture = render({ unstagedFiles: [file('dirty.ts', false)] });
     const host = fixture.nativeElement as HTMLElement;
@@ -353,19 +284,6 @@ describe('ChangesPanel', () => {
     expect(getComputedStyle(sections).overflowY).toBe('auto');
   });
 
-  it('keeps the hunk-actions section fixed so it never squeezes the lists', () => {
-    const fixture = render({
-      unstagedFiles: [file('a.ts', false)],
-      selectedPath: 'a.ts',
-      unstagedFile: fileDiff('a.ts'),
-    });
-    const hunks = fixture.nativeElement.querySelector('.st-changes__hunks') as HTMLElement;
-
-    expect(hunks).not.toBeNull();
-    expect(getComputedStyle(hunks).flexGrow).toBe('0');
-    expect(getComputedStyle(hunks).flexShrink).toBe('0');
-  });
-
   it('keeps every contract data-testid in a full render', () => {
     const fixture = render({
       stagedFiles: [file('staged.ts', true)],
@@ -374,8 +292,6 @@ describe('ChangesPanel', () => {
       selectedPath: 'dirty.ts',
       statusError: 'status failed',
       commitError: 'commit failed',
-      unstagedFile: fileDiff('dirty.ts'),
-      stagedFile: fileDiff('staged.ts'),
     });
 
     for (const id of [
@@ -384,7 +300,6 @@ describe('ChangesPanel', () => {
       'status-stage',
       'status-unstage',
       'status-discard',
-      'changes-hunks',
       'commit-message-input',
       'commit-button',
       'commit-error',

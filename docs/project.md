@@ -114,7 +114,7 @@ SingulariTree/
 - SQLite per user (WAL, `foreign_keys=ON`) and **NEVER** stores Git objects.
 - Necomat `frontend/`/`backend/` remain intact.
 - Tests/builds from the package directory (never the root, except Go via `go.work`).
-- ADRs are append-only; numbering continues at ADR-035 (last used: ADR-0034; new files use the padded form, e.g. `adr-0034-…`).
+- ADRs are append-only; numbering continues at ADR-036 (last used: ADR-0035; new files use the padded form, e.g. `adr-0034-…`).
 
 ## Domain Entities
 

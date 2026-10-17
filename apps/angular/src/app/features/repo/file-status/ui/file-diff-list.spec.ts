@@ -145,6 +145,9 @@ describe('FileDiffList', () => {
     expect(all(fixture, 'file-diff-row')).toHaveLength(0);
     // No files means no statuses to offer: the filter row is not rendered.
     expect(query(fixture, 'file-status-filters')).toBeNull();
+    // ...and the name filter is not rendered either: no dead control above the
+    // empty state.
+    expect(query(fixture, 'file-list-filter')).toBeNull();
   });
 
   function chip(fixture: ComponentFixture<FileDiffList>, status: string): HTMLElement {
@@ -155,6 +158,13 @@ describe('FileDiffList', () => {
 
   function rowPaths(fixture: ComponentFixture<FileDiffList>): (string | null)[] {
     return all(fixture, 'file-diff-row').map((row) => row.getAttribute('data-path'));
+  }
+
+  function typeFilter(fixture: ComponentFixture<FileDiffList>, value: string): void {
+    const input = query<HTMLInputElement>(fixture, 'file-list-filter');
+    input!.value = value;
+    input!.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
   }
 
   it('derives one filter chip per distinct status, ordered A, M, D, R then the rest', () => {
@@ -276,5 +286,81 @@ describe('FileDiffList', () => {
     expect(rowPaths(fixture)).toEqual(['m.ts']);
     expect(emitted).toEqual([]);
     expect(fixture.componentInstance.isActive('M')).toBe(true);
+  });
+
+  it('filters the rows by a case-insensitive path substring', () => {
+    const fixture = render({ files: [fileDiff('src/App.git-TS'), fileDiff('src/lib/util.ts')] });
+
+    typeFilter(fixture, 'app.git');
+
+    // The query is matched against `file.path` case-insensitively.
+    expect(rowPaths(fixture)).toEqual(['src/App.git-TS']);
+  });
+
+  it('matches the name filter literally, never as a RegExp', () => {
+    // `a.ts` would match both paths as a pattern (`.` = any char); as a literal
+    // substring it matches only the real path.
+    const fixture = render({ files: [fileDiff('a.ts'), fileDiff('axts')] });
+
+    typeFilter(fixture, 'a.ts');
+
+    expect(rowPaths(fixture)).toEqual(['a.ts']);
+  });
+
+  it('clears the name filter too so Clear filters never leaves the list searched', () => {
+    const fixture = render({
+      files: [fileDiff('a.ts', { status: 'A' }), fileDiff('b.ts')],
+    });
+
+    chip(fixture, 'A').click();
+    fixture.detectChanges();
+    typeFilter(fixture, 'a');
+    fixture.detectChanges();
+
+    // Both controls are active, so the clear button is offered.
+    const clear = query(fixture, 'file-status-filters-clear');
+    expect(clear).not.toBeNull();
+
+    (clear as HTMLElement).click();
+    fixture.detectChanges();
+
+    // Every row is restored and the control resets fully: the chip filter AND
+    // the name query are gone, and the button disappears with them.
+    expect(rowPaths(fixture)).toEqual(['a.ts', 'b.ts']);
+    expect(query(fixture, 'file-status-filters-clear')).toBeNull();
+    expect(query<HTMLInputElement>(fixture, 'file-list-filter')?.value).toBe('');
+  });
+
+  it('combines the name filter with the status chips (AND)', () => {
+    const fixture = render({
+      files: [
+        fileDiff('a.ts', { status: 'A' }),
+        fileDiff('src/a.ts'),
+        fileDiff('m.ts'),
+      ],
+    });
+
+    chip(fixture, 'A').click();
+    fixture.detectChanges();
+    typeFilter(fixture, 'a.ts');
+
+    // Only the A-status file whose path contains `a.ts` survives both controls.
+    expect(rowPaths(fixture)).toEqual(['a.ts']);
+  });
+
+  it('shows the filter zero-match state distinct from the empty state', () => {
+    const fixture = render({ files: [fileDiff('a.ts')] });
+
+    typeFilter(fixture, 'zzz');
+
+    expect(query(fixture, 'file-list-filter-empty')?.textContent).toContain('No files match');
+    expect(all(fixture, 'file-diff-row')).toHaveLength(0);
+    // Files exist, they are only filtered out — never the genuinely-empty state.
+    expect(query(fixture, 'file-list-empty')).toBeNull();
+
+    // Clearing the query restores the list and removes the zero-match state.
+    typeFilter(fixture, '');
+    expect(rowPaths(fixture)).toEqual(['a.ts']);
+    expect(query(fixture, 'file-list-filter-empty')).toBeNull();
   });
 });

@@ -1,7 +1,9 @@
+import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Commit, Lane, Repository } from '@contracts/domain';
 import type { GetCommitsResponse } from '@contracts/gitcore';
 import { IpcBridge } from '@core/services/ipc-bridge.service';
+import { LiveRegionService } from '@singularitree/ui-kit';
 import { COMMIT_FOCUS_MAX_LOADS, GRAPH_WINDOW_SIZE, GraphStore, WIP_OID } from './graph.store';
 
 const REPO: Repository = {
@@ -915,6 +917,28 @@ describe('GraphStore', () => {
     expect(getCommits).toHaveBeenCalledTimes(1);
   });
 
+  it('does not page focusCommit for another commit while locked, keeping the pin', async () => {
+    const getCommits = vi.fn((req: unknown) =>
+      Promise.resolve(makePage(300, (req as { offset: number }).offset, 1000)),
+    );
+    store = new GraphStore(makeBridge({ getCommits }));
+    store.repoId.set(REPO.id);
+    await store.loadWindow(0);
+
+    const lockedOid = makeCommit(0).oid?.hex as string;
+    store.select(lockedOid);
+    store.lock();
+    getCommits.mockClear();
+
+    // The target is a foreign commit the pin refuses: paging could never reveal
+    // it, so the store must not load any window and must leave the pin in place.
+    await store.focusCommit(makeCommit(350).oid?.hex as string);
+
+    expect(getCommits).not.toHaveBeenCalled();
+    expect(store.selectedOid()).toBe(lockedOid);
+    expect(store.lockedOid()).toBe(lockedOid);
+  });
+
   // -- CDK viewport scroll memory (P3) -------------------------------------
 
   it('remembers a scroll offset, restores it once and then clears it', () => {
@@ -969,5 +993,195 @@ describe('GraphStore', () => {
     expect(store.scrollOffset()).toBe(256);
     expect(store.pendingScrollOffset()).toBe(256);
     expect(store.consumeScrollRestore()).toBe(256);
+  });
+
+  // -- commit selection lock (padlock) -------------------------------------
+
+  it('locks the selected commit (oid + commit), unlocks keeping the selection and releases both', async () => {
+    store = new GraphStore(makeBridge({ getCommits: () => Promise.resolve(makePage(3)) }));
+    store.repoId.set(REPO.id);
+    await store.loadWindow(0);
+
+    const oid = makeCommit(1).oid?.hex as string;
+    store.select(oid);
+    store.lock();
+
+    expect(store.lockedOid()).toBe(oid);
+    expect(store.lockedCommit()?.oid?.hex).toBe(oid);
+    expect(store.selectedOid()).toBe(oid);
+
+    // Unlock lifts the pin but keeps the selection (the padlock's "off" intent).
+    store.unlock();
+    expect(store.lockedOid()).toBeNull();
+    expect(store.lockedCommit()).toBeNull();
+    expect(store.selectedOid()).toBe(oid);
+
+    // Release drops the lock AND the selection together (the pinned pane resets).
+    store.lock();
+    store.release();
+    expect(store.lockedOid()).toBeNull();
+    expect(store.lockedCommit()).toBeNull();
+    expect(store.selectedOid()).toBeNull();
+  });
+
+  it('refuses a foreign selection while locked, still allows the locked oid and blocks null', async () => {
+    store = new GraphStore(makeBridge({ getCommits: () => Promise.resolve(makePage(3)) }));
+    store.repoId.set(REPO.id);
+    await store.loadWindow(0);
+
+    const lockedOid = makeCommit(1).oid?.hex as string;
+    const otherOid = makeCommit(2).oid?.hex as string;
+    store.select(lockedOid);
+    store.lock();
+
+    // A different commit is refused: the pin holds.
+    store.select(otherOid);
+    expect(store.selectedOid()).toBe(lockedOid);
+
+    // WIP is a foreign target too.
+    store.select(WIP_OID);
+    expect(store.selectedOid()).toBe(lockedOid);
+
+    // Re-selecting the locked commit is allowed and is an effective no-op.
+    store.select(lockedOid);
+    expect(store.selectedOid()).toBe(lockedOid);
+
+    // `null` is refused as well: only `release()` clears a locked selection.
+    store.select(null);
+    expect(store.selectedOid()).toBe(lockedOid);
+
+    store.release();
+    expect(store.selectedOid()).toBeNull();
+    expect(store.lockedOid()).toBeNull();
+  });
+
+  it('is a no-op locking with nothing selected, the WIP node or an oid absent from the rows', async () => {
+    store = new GraphStore(makeBridge({ getCommits: () => Promise.resolve(makePage(3)) }));
+    store.repoId.set(REPO.id);
+    await store.loadWindow(0);
+
+    store.lock(); // nothing selected
+    expect(store.lockedOid()).toBeNull();
+    expect(store.lockedCommit()).toBeNull();
+
+    store.select(WIP_OID);
+    store.lock(); // WIP is not a real commit to pin
+    expect(store.lockedOid()).toBeNull();
+
+    store.select('deadbeefdeadbeefdeadbeefdeadbeefdeadbeef'); // not in rows()
+    store.lock();
+    expect(store.lockedOid()).toBeNull();
+  });
+
+  it('blocks keyboard next/previous while locked', async () => {
+    store = new GraphStore(makeBridge({ getCommits: () => Promise.resolve(makePage(3)) }));
+    store.repoId.set(REPO.id);
+    await store.loadWindow(0);
+
+    const oid = makeCommit(1).oid?.hex as string;
+    store.select(oid);
+    store.lock();
+
+    // Arrows route through `select`, so they hit the same guard as a row click.
+    store.selectNext();
+    expect(store.selectedOid()).toBe(oid);
+    store.selectPrevious();
+    expect(store.selectedOid()).toBe(oid);
+  });
+
+  it('clears the lock when another repository opens', async () => {
+    const getCommits = vi.fn(() => Promise.resolve(makePage(2, 0, 2)));
+    const openRepository = vi.fn(() => Promise.resolve(REPO));
+    const listRepositories = vi.fn(() => Promise.resolve({ repositories: [REPO] }));
+    const watch = vi.fn(() => Promise.resolve({}));
+    store = new GraphStore(makeBridge({ getCommits, openRepository, listRepositories, watch }));
+
+    await store.openRepository('/tmp/repo');
+    store.select(makeCommit(0).oid?.hex as string);
+    store.lock();
+    expect(store.lockedOid()).not.toBeNull();
+
+    // A different repository invalidates the pin: the locked commit belonged to
+    // the previous repo's DAG, so it cannot survive the switch.
+    await store.openRepository('/tmp/repo');
+
+    expect(store.lockedOid()).toBeNull();
+    expect(store.lockedCommit()).toBeNull();
+    expect(store.selectedOid()).toBeNull();
+  });
+
+  it('clears the lock on a failed open too', async () => {
+    let call = 0;
+    const getCommits = vi.fn(() => Promise.resolve(makePage(2, 0, 2)));
+    const openRepository = vi.fn(() => {
+      call++;
+      return call === 1
+        ? Promise.resolve(REPO)
+        : Promise.reject({ code: 'GIT_FAILED', message: 'boom' });
+    });
+    const listRepositories = vi.fn(() => Promise.resolve({ repositories: [REPO] }));
+    const watch = vi.fn(() => Promise.resolve({}));
+    store = new GraphStore(makeBridge({ getCommits, openRepository, listRepositories, watch }));
+
+    await store.openRepository('/tmp/repo');
+    store.select(makeCommit(0).oid?.hex as string);
+    store.lock();
+    expect(store.lockedOid()).not.toBeNull();
+
+    await expect(store.openRepository('/tmp/other')).resolves.toBeNull();
+
+    expect(store.lockedOid()).toBeNull();
+    expect(store.lockedCommit()).toBeNull();
+  });
+
+  it('keeps the lock and selection across a reload that drops the locked row', async () => {
+    let call = 0;
+    const getCommits = vi.fn(() => {
+      call++;
+      // First window contains the commit; the reload returns a window that does not.
+      return Promise.resolve(call === 1 ? makePage(3) : makePage(2, 10, 2));
+    });
+    store = new GraphStore(makeBridge({ getCommits }));
+    store.repoId.set(REPO.id);
+    await store.loadWindow(0);
+
+    const oid = makeCommit(1).oid?.hex as string;
+    store.select(oid);
+    store.lock();
+    expect(store.rows().some((row) => row.commit.oid?.hex === oid)).toBe(true);
+
+    store.reload();
+    await vi.waitFor(() => expect(store.commits()).toHaveLength(2));
+
+    // The freshly loaded window no longer contains the locked oid...
+    expect(store.rows().some((row) => row.commit.oid?.hex === oid)).toBe(false);
+    // ...yet the lock (and the cached commit) survive so the pinned pane still renders.
+    expect(store.lockedOid()).toBe(oid);
+    expect(store.lockedCommit()?.oid?.hex).toBe(oid);
+    expect(store.selectedOid()).toBe(oid);
+  });
+
+  it('announces a blocked selection through the root live region while locked', async () => {
+    // Built inside an injection context so the constructor can resolve the real
+    // root `LiveRegionService` (the plain `new GraphStore(bridge)` path degrades
+    // it to null by design).
+    const graphStore = TestBed.runInInjectionContext(
+      () => new GraphStore(makeBridge({ getCommits: () => Promise.resolve(makePage(2)) })),
+    );
+    const liveRegion = TestBed.inject(LiveRegionService);
+    graphStore.repoId.set(REPO.id);
+    await graphStore.loadWindow(0);
+
+    const lockedOid = makeCommit(0).oid?.hex as string;
+    graphStore.select(lockedOid);
+    graphStore.lock();
+
+    graphStore.select(makeCommit(1).oid?.hex as string);
+
+    // The pin holds and the refusal was published to the shared live region.
+    expect(graphStore.selectedOid()).toBe(lockedOid);
+    expect(liveRegion.message()).toBe(
+      'Commit selection is locked. Release the lock to select another commit.',
+    );
   });
 });

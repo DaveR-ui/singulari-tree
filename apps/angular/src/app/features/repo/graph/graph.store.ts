@@ -2,6 +2,7 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import type { Commit, CommitStats, Lane, Repository } from '@contracts/domain';
 import type { GetCommitsRequest, GetCommitsResponse, ResetRequest } from '@contracts/gitcore';
 import { IpcBridge, toAppError, type AppError } from '@core/services/ipc-bridge.service';
+import { LiveRegionService } from '@singularitree/ui-kit';
 import type { CommitRow } from '../repo-models';
 import { filterRows, joinRows, mapPageLanes, maxLaneIndex } from '../repo-mappers';
 import type { ResetModeName } from './graph-menu.models';
@@ -28,6 +29,24 @@ function isIpcUnavailable(err: unknown): boolean {
 }
 
 /**
+ * Read the root `LiveRegionService` when one exists, else `null`.
+ *
+ * The graph lock announces through the shared status-bar live region, but the
+ * store is also constructed directly (`new GraphStore(bridge)`) in unit tests
+ * with no DI context at all — a bare `inject()` would throw NG0203 there. The
+ * `try/catch` + `{ optional: true }` pair makes the announcement a best-effort
+ * side channel: outside a real app it simply degrades to silence, and the lock
+ * semantics themselves never depend on the region being present.
+ */
+function safeInjectLiveRegion(): LiveRegionService | null {
+  try {
+    return inject(LiveRegionService, { optional: true });
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Signal store for the commit graph (service-design.md §2.2/§3).
  *
  * Owns the windowed `getCommits` pagination (window 200 + prefetch 100) and the
@@ -37,9 +56,15 @@ function isIpcUnavailable(err: unknown): boolean {
 @Injectable()
 export class GraphStore {
   private readonly bridge: IpcBridge;
+  /**
+   * Root-scoped announcer for lock rejections, captured once at construction
+   * (see {@link safeInjectLiveRegion}); `null` in plain unit tests.
+   */
+  private readonly liveRegion: LiveRegionService | null;
 
   constructor(bridge: IpcBridge = inject(IpcBridge)) {
     this.bridge = bridge;
+    this.liveRegion = safeInjectLiveRegion();
   }
 
   readonly windowSize = GRAPH_WINDOW_SIZE;
@@ -83,6 +108,28 @@ export class GraphStore {
   readonly error = signal<AppError | null>(null);
   readonly selectedOid = signal<string | null>(null);
   readonly filter = signal('');
+
+  // -- commit selection lock (padlock) -------------------------------------
+  /**
+   * Oid of the pinned commit, or null when the padlock is open.
+   *
+   * The graph lock keeps ONE real commit selected across navigation between
+   * `/repo` (History) and `/repo/file-status` and refuses every other graph
+   * click until released. It lives here — on the route-scoped store shared by
+   * both screens — because the File-status screen follows this selection (and
+   * the pinned commit-detail pane reads {@link lockedCommit}) through effects
+   * on the same instance.
+   */
+  readonly lockedOid = signal<string | null>(null);
+  /**
+   * The `Commit` captured at lock time. Held separately from `lockedOid` on
+   * purpose: `reload()` / `loadWindow()` / `applyPage()` never touch the lock,
+   * so when the locked commit falls out of the freshly loaded window the cached
+   * object still renders the pinned detail pane instead of blanking to
+   * "select a commit".
+   */
+  readonly lockedCommit = signal<Commit | null>(null);
+
   /** Recently opened repositories (from `listRepositories`), newest first. */
   readonly recentRepos = signal<Repository[]>([]);
   /** True when the renderer runs without the Electron preload bridge. */
@@ -174,6 +221,11 @@ export class GraphStore {
       this.offline.set(false);
       this.repoId.set(repo.id);
       this.selectedOid.set(null);
+      // A different repository invalidates the lock: the pinned commit belonged
+      // to the previous repo's DAG, so it must not survive the switch. Cleared
+      // through the internal reset (not `release()`) because the selection was
+      // already blanked above and `release()` would only repeat that write.
+      this.resetLock();
       this.filter.set('');
       // A different repository invalidates the remembered graph position: both
       // the offset and any pending restore are scoped to the old repo.
@@ -213,6 +265,9 @@ export class GraphStore {
       this.lanes.set([]);
       this.total.set(0);
       this.selectedOid.set(null);
+      // The failed repo is gone, so its lock goes with it — a stale pinned
+      // commit must never outlive the repository it pointed at.
+      this.resetLock();
       this.filter.set('');
       this.scrollOffset.set(0);
       this.pendingRestore.set(null);
@@ -382,19 +437,101 @@ export class GraphStore {
     }
   }
 
+  /**
+   * Set the graph selection, unless the padlock holds a different commit.
+   *
+   * While locked, a foreign oid (including `null`/WIP) is refused and the
+   * refusal is announced through the live region, so keyboard and mouse alike
+   * cannot silently steal a pinned selection; re-selecting the locked oid (or
+   * selecting freely when unlocked) behaves exactly as before. This is the one
+   * chokepoint every selection path funnels through — `moveSelection` and the
+   * deep-link `focusCommit` included.
+   */
   select(oid: string | null): void {
+    const locked = this.lockedOid();
+    if (locked !== null && oid !== locked) {
+      this.announceLocked();
+      return;
+    }
     this.selectedOid.set(oid);
+  }
+
+  /**
+   * Pin the current real-commit selection (padlock closed).
+   *
+   * A no-op unless a genuine commit is selected: nothing selected, the
+   * synthetic WIP node (there is no commit to pin), or an oid no longer present
+   * in the loaded `rows()` all leave the lock open. On success the oid AND the
+   * live `Commit` object are captured, so the pinned detail pane keeps
+   * rendering even after a reload drops the row out of the window.
+   */
+  lock(): void {
+    const oid = this.selectedOid();
+    if (!oid || oid === WIP_OID) return;
+    const row = this.rows().find((r) => r.commit.oid?.hex === oid);
+    if (!row) return;
+    this.lockedOid.set(oid);
+    this.lockedCommit.set(row.commit);
+  }
+
+  /**
+   * Clear the lock, keeping the selection (the padlock's "off" intent).
+   *
+   * The selected commit stays selected; only the pin is lifted, so toggling the
+   * padlock off returns the graph to ordinary navigation without losing the
+   * user's place.
+   */
+  unlock(): void {
+    this.resetLock();
+  }
+
+  /**
+   * Release the pinned selection entirely (the contextual "release the commit"
+   * action): drop the lock AND the selection together.
+   *
+   * Writes `selectedOid` directly rather than through {@link select} because
+   * this is the one action that is *allowed* to move a locked selection — the
+   * guard exists to block foreign selectors, not the release itself.
+   */
+  release(): void {
+    this.resetLock();
+    this.selectedOid.set(null);
+  }
+
+  /** Clear both lock signals without touching the selection. */
+  private resetLock(): void {
+    this.lockedOid.set(null);
+    this.lockedCommit.set(null);
+  }
+
+  /** Announce a refused selection change through the shared live region. */
+  private announceLocked(): void {
+    this.liveRegion?.announce(
+      $localize`Commit selection is locked. Release the lock to select another commit.`,
+    );
   }
 
   /**
    * Select `oid` and, when it is not yet in the loaded window, page forward
    * (bounded by {@link COMMIT_FOCUS_MAX_LOADS}) until it appears or the history
    * ends. Used by the deep-link commit-focus hand-off to reveal a commit that
-   * lives beyond the first window; the selection is always applied, even when
-   * the commit is not reached.
+   * lives beyond the first window; the selection is normally applied even when
+   * the commit is not reached. The internal {@link select} calls now honour the
+   * padlock, so a deep link arriving while a different commit is locked is
+   * blocked (and announced) rather than replacing the pinned selection.
+   *
+   * Locked on a DIFFERENT commit, paging is pointless: both internal `select`
+   * calls would be refused (announcing twice), so the address is applied once
+   * through the normal `select` path and the method returns without loading any
+   * window. Only an unlocked graph, or a target that IS the locked oid, pages.
    */
   async focusCommit(oid: string): Promise<void> {
     if (!oid) return;
+    const locked = this.lockedOid();
+    if (locked !== null && locked !== oid) {
+      this.select(oid);
+      return;
+    }
     this.select(oid);
 
     const contains = (): boolean =>
@@ -428,7 +565,10 @@ export class GraphStore {
     const current = this.selectedIndex();
     const target =
       current < 0 ? 0 : Math.min(Math.max(current + delta, 0), rows.length - 1);
-    this.selectedOid.set(rows[target].commit.oid?.hex ?? null);
+    // Route through `select` so keyboard traversal obeys the padlock exactly
+    // like a row click: while locked, an arrow key onto another row is refused
+    // and announced instead of quietly moving the selection off the pin.
+    this.select(rows[target].commit.oid?.hex ?? null);
   }
 
   setFilter(query: string): void {
