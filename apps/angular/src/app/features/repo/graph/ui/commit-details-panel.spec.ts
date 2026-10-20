@@ -1,8 +1,8 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Commit } from '@contracts/domain';
-import { CommitDetailsPanel } from './commit-details-panel';
+import { CommitDetailsPanel, TOOLTIP_DELAY_MS } from './commit-details-panel';
 
 const COMMIT: Commit = {
   oid: { hex: 'a'.repeat(40), kind: 'SHA1' },
@@ -21,12 +21,17 @@ const COMMIT: Commit = {
 /** A subject-only commit: no blank line, so there is no description body. */
 const SUBJECT_ONLY: Commit = { ...COMMIT, message: 'subject only, no body' };
 
+/** A commit with no message at all: an empty subject AND body. */
+const NO_MESSAGE: Commit = { ...COMMIT, message: '   ' };
+
 type PanelInputs = {
   commit?: Commit | null;
   isWip?: boolean;
   showCta?: boolean;
   showSubject?: boolean;
   showFiles?: boolean;
+  mode?: 'description' | 'files';
+  showViewSwitch?: boolean;
   navMode?: 'none' | 'release' | 'history';
   locked?: boolean;
   showInGraph?: boolean;
@@ -40,6 +45,8 @@ function render(inputs: PanelInputs = {}): ComponentFixture<CommitDetailsPanel> 
   fixture.componentRef.setInput('showCta', inputs.showCta ?? false);
   fixture.componentRef.setInput('showSubject', inputs.showSubject ?? true);
   fixture.componentRef.setInput('showFiles', inputs.showFiles ?? false);
+  fixture.componentRef.setInput('mode', inputs.mode ?? 'description');
+  fixture.componentRef.setInput('showViewSwitch', inputs.showViewSwitch ?? false);
   fixture.componentRef.setInput('navMode', inputs.navMode ?? 'none');
   fixture.componentRef.setInput('locked', inputs.locked ?? false);
   fixture.componentRef.setInput('showInGraph', inputs.showInGraph ?? false);
@@ -78,6 +85,18 @@ function clickSegment(el: HTMLElement, value: string): void {
   segment.click();
 }
 
+/** Expands the collapsed metadata footer and returns the root element. */
+function expandFooter(fixture: ComponentFixture<CommitDetailsPanel>): HTMLElement {
+  const el = fixture.nativeElement as HTMLElement;
+  const toggle = el.querySelector<HTMLButtonElement>(
+    '[data-testid="commit-details-footer-toggle"]',
+  );
+  if (!toggle) throw new Error('footer toggle not found');
+  toggle.click();
+  fixture.detectChanges();
+  return el;
+}
+
 describe('CommitDetailsPanel', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -91,9 +110,36 @@ describe('CommitDetailsPanel', () => {
     expect(el.querySelector('[data-testid="commit-details"]')).toBeNull();
   });
 
+  it('renders exactly three regions: header, content and footer', () => {
+    const el = render({ commit: COMMIT }).nativeElement as HTMLElement;
+
+    const header = el.querySelector('[data-testid="commit-details-header"]');
+    const content = el.querySelector('[data-testid="commit-details-content"]');
+    const footer = el.querySelector('[data-testid="commit-details-footer"]');
+
+    expect(header).not.toBeNull();
+    expect(content).not.toBeNull();
+    expect(footer).not.toBeNull();
+    expect(isBefore(header!, content!)).toBe(true);
+    expect(isBefore(content!, footer!)).toBe(true);
+  });
+
+  it('starts with the metadata footer collapsed', () => {
+    const el = render({ commit: COMMIT }).nativeElement as HTMLElement;
+
+    const toggle = el.querySelector<HTMLButtonElement>(
+      '[data-testid="commit-details-footer-toggle"]',
+    );
+    expect(toggle).not.toBeNull();
+    expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+    // Collapsed means the metadata markup is NOT in the DOM.
+    expect(el.querySelector('[data-testid="commit-details-meta"]')).toBeNull();
+    expect(el.querySelector('[data-testid="commit-details-author"]')).toBeNull();
+  });
+
   it('renders oid, split message, author, committer, date, parents and refs', () => {
     const fixture = render({ commit: COMMIT });
-    const el = fixture.nativeElement as HTMLElement;
+    const el = expandFooter(fixture);
 
     expect(text(el, 'commit-details-oid')).toBe('a'.repeat(40));
     // The message splits on the first blank line (subject + body); each element
@@ -122,32 +168,7 @@ describe('CommitDetailsPanel', () => {
     expect(text(el, 'commit-details-short-oid')).toBe('aaaaaaa');
   });
 
-  it('lays the commit out per mode: header → subject → body → metadata in description mode', () => {
-    const el = render({
-      commit: COMMIT,
-      showCta: true,
-      showFiles: true,
-      changedFiles: ['src/a.ts'],
-    }).nativeElement as HTMLElement;
-
-    // Description is the default mode: the body sits between the subject and
-    // the metadata, and the files block is NOT in the DOM.
-    const order = [
-      'commit-details-short-oid', // header
-      'commit-details-subject', // description sector (identity)
-      'commit-details-description',
-      'commit-details-author', // metadata footer
-      'commit-details-committer',
-    ].map((id) => el.querySelector(`[data-testid="${id}"]`));
-
-    order.forEach((node) => expect(node).not.toBeNull());
-    for (let i = 0; i < order.length - 1; i += 1) {
-      expect(isBefore(order[i]!, order[i + 1]!)).toBe(true);
-    }
-    expect(el.querySelector('[data-testid="commit-details-files-heading"]')).toBeNull();
-  });
-
-  it('lays the commit out per mode: header → subject → files → metadata in files mode', () => {
+  it('lays the commit out per mode: header → content (subject → body) → footer in description mode', () => {
     const fixture = render({
       commit: COMMIT,
       showCta: true,
@@ -155,17 +176,47 @@ describe('CommitDetailsPanel', () => {
       changedFiles: ['src/a.ts'],
     });
     const el = fixture.nativeElement as HTMLElement;
-    clickSegment(el, 'files');
-    fixture.detectChanges();
 
     const order = [
-      'commit-details-short-oid', // header
-      'commit-details-subject', // identity stays visible
-      'commit-details-files-heading', // changed-files sector
+      'commit-details-header',
+      'commit-details-content',
+      'commit-details-subject',
+      'commit-details-description',
+      'commit-details-footer',
+    ].map((id) => el.querySelector(`[data-testid="${id}"]`));
+
+    order.forEach((node) => expect(node).not.toBeNull());
+    for (let i = 0; i < order.length - 1; i += 1) {
+      expect(isBefore(order[i]!, order[i + 1]!)).toBe(true);
+    }
+    // The subject and the body both live INSIDE the content region.
+    const content = el.querySelector('[data-testid="commit-details-content"]')!;
+    expect(content.contains(el.querySelector('[data-testid="commit-details-subject"]'))).toBe(true);
+    expect(content.contains(el.querySelector('[data-testid="commit-details-description"]'))).toBe(
+      true,
+    );
+    expect(el.querySelector('[data-testid="commit-details-files-heading"]')).toBeNull();
+  });
+
+  it('lays the commit out per mode: header → content (subject → files) → footer in files mode', () => {
+    const fixture = render({
+      commit: COMMIT,
+      showCta: true,
+      showFiles: true,
+      showViewSwitch: true,
+      mode: 'files',
+      changedFiles: ['src/a.ts'],
+    });
+    const el = fixture.nativeElement as HTMLElement;
+
+    const order = [
+      'commit-details-header',
+      'commit-details-content',
+      'commit-details-subject',
+      'commit-details-files-heading',
       'commit-details-files-filter',
       'commit-details-file-path',
-      'commit-details-author', // metadata footer
-      'commit-details-committer',
+      'commit-details-footer',
     ].map((id) => el.querySelector(`[data-testid="${id}"]`));
 
     order.forEach((node) => expect(node).not.toBeNull());
@@ -185,7 +236,7 @@ describe('CommitDetailsPanel', () => {
         { name: 'feature/x', kind: 'branch' },
       ],
     };
-    const el = render({ commit }).nativeElement as HTMLElement;
+    const el = expandFooter(render({ commit }));
 
     const refs = el.querySelectorAll<HTMLElement>(
       '[data-testid="commit-details-refs"] .st-commit-details__ref',
@@ -201,7 +252,7 @@ describe('CommitDetailsPanel', () => {
   it('keeps a head-kind ref on the head colour even when it names the mainline', () => {
     // The current branch is reported as kind `head` (see the fixture); only a
     // `branch`-kind ref takes the mint mainline role, matching `st-graph-row`.
-    const el = render({ commit: COMMIT }).nativeElement as HTMLElement;
+    const el = expandFooter(render({ commit: COMMIT }));
     const main = el.querySelector<HTMLElement>(
       '[data-testid="commit-details-refs"] .st-commit-details__ref',
     );
@@ -217,7 +268,7 @@ describe('CommitDetailsPanel', () => {
         { name: 'master', kind: 'tag' },
       ],
     };
-    const el = render({ commit }).nativeElement as HTMLElement;
+    const el = expandFooter(render({ commit }));
 
     const refs = el.querySelectorAll<HTMLElement>(
       '[data-testid="commit-details-refs"] .st-commit-details__ref',
@@ -231,14 +282,14 @@ describe('CommitDetailsPanel', () => {
   });
 
   it('renders the 24px initials avatar from the author name', () => {
-    const el = render({ commit: COMMIT }).nativeElement as HTMLElement;
+    const el = expandFooter(render({ commit: COMMIT }));
     // First letters of the first two whitespace-separated words, uppercased.
     expect(text(el, 'commit-details-avatar')).toBe('AL');
   });
 
   it('falls back to a placeholder avatar when the author is missing', () => {
     const root: Commit = { ...COMMIT, author: undefined };
-    const el = render({ commit: root }).nativeElement as HTMLElement;
+    const el = expandFooter(render({ commit: root }));
     expect(text(el, 'commit-details-avatar')).toBe('?');
   });
 
@@ -281,7 +332,7 @@ describe('CommitDetailsPanel', () => {
       author: undefined,
       committer: undefined,
     };
-    const el = render({ commit: root }).nativeElement as HTMLElement;
+    const el = expandFooter(render({ commit: root }));
 
     expect(text(el, 'commit-details-parents')).toBe('(root commit)');
     expect(text(el, 'commit-details-author')).toBe('—');
@@ -324,40 +375,88 @@ describe('CommitDetailsPanel — exclusive view switch', () => {
     }).compileComponents();
   });
 
-  it('defaults to description: subject + body render and the files block is absent', () => {
-    const el = render({
+  it('renders the switch only when showViewSwitch opts in', () => {
+    // Default `showViewSwitch` is false even for a commit that has both sectors
+    // available (the analyzer embed owns them itself).
+    const off = render({
       commit: COMMIT,
       showFiles: true,
       changedFiles: ['src/a.ts'],
     }).nativeElement as HTMLElement;
+    expect(off.querySelector('[data-testid="commit-details-view-switch"]')).toBeNull();
 
-    expect(el.querySelector('[data-testid="commit-details-view-switch"]')).not.toBeNull();
-    expect(text(el, 'commit-details-subject')).toBe('feat(graph): details panel');
-    expect(text(el, 'commit-details-description')).toBe('full body text');
-    // The hidden sector is NOT in the DOM at all (not merely hidden by CSS).
-    expect(el.querySelector('[data-testid="commit-details-files-heading"]')).toBeNull();
-    expect(el.querySelector('[data-testid="commit-details-files-filter"]')).toBeNull();
-    expect(el.querySelector('[data-testid="commit-details-file-path"]')).toBeNull();
+    // WIP and the empty branch never grow a switch either.
+    expect(
+      (render({ isWip: true, showViewSwitch: true }).nativeElement as HTMLElement).querySelector(
+        '[data-testid="commit-details-view-switch"]',
+      ),
+    ).toBeNull();
+    expect(
+      (render({ showViewSwitch: true }).nativeElement as HTMLElement).querySelector(
+        '[data-testid="commit-details-view-switch"]',
+      ),
+    ).toBeNull();
+
+    const on = render({
+      commit: COMMIT,
+      showViewSwitch: true,
+      showFiles: true,
+      changedFiles: ['src/a.ts'],
+    }).nativeElement as HTMLElement;
+    expect(on.querySelector('[data-testid="commit-details-view-switch"]')).not.toBeNull();
   });
 
-  it('switches exclusively: files shows the block and drops the body, back restores it', () => {
+  it('keeps the two-row header: identity row first, switch row inside the header', () => {
+    const el = render({
+      commit: COMMIT,
+      showCta: true,
+      showFiles: true,
+      showViewSwitch: true,
+      changedFiles: ['src/a.ts'],
+    }).nativeElement as HTMLElement;
+
+    const header = el.querySelector('[data-testid="commit-details-header"]')!;
+    const row = header.querySelector('.st-commit-details__header-row')!;
+    const identity = row.querySelector('.st-commit-details__identity')!;
+    const center = row.querySelector('.st-commit-details__header-center')!;
+    const actions = row.querySelector('.st-commit-details__actions')!;
+    const viewSwitch = el.querySelector('[data-testid="commit-details-view-switch"]')!;
+
+    // Row 1 holds identity → CTA slot → actions, in that order.
+    expect(identity).not.toBeNull();
+    expect(center).not.toBeNull();
+    expect(actions).not.toBeNull();
+    expect(isBefore(identity, center)).toBe(true);
+    expect(isBefore(center, actions)).toBe(true);
+
+    // Row 2 (the switch) stays inside the header but outside the identity row.
+    expect(header.contains(viewSwitch)).toBe(true);
+    expect(row.contains(viewSwitch)).toBe(false);
+    expect(isBefore(row, viewSwitch)).toBe(true);
+  });
+
+  it('renders the host-owned mode: description shows the body, files shows the list', () => {
     const fixture = render({
       commit: COMMIT,
       showFiles: true,
+      showViewSwitch: true,
       changedFiles: ['src/a.ts', 'src/b.ts'],
     });
     const el = fixture.nativeElement as HTMLElement;
 
-    // description → files
-    clickSegment(el, 'files');
+    // Default mode is description: subject + body, no files block.
+    expect(text(el, 'commit-details-subject')).toBe('feat(graph): details panel');
+    expect(text(el, 'commit-details-description')).toBe('full body text');
+    expect(el.querySelector('[data-testid="commit-details-files-heading"]')).toBeNull();
+
+    // The HOST changes the mode; the panel just renders the new input.
+    fixture.componentRef.setInput('mode', 'files');
     fixture.detectChanges();
 
     expect(el.querySelector('[data-testid="commit-details-description"]')).toBeNull();
     expect(text(el, 'commit-details-files-heading')).toBe('2 changed files');
-    expect(el.querySelector('[data-testid="commit-details-files-filter"]')).not.toBeNull();
     expect(el.querySelectorAll('[data-testid="commit-details-file-path"]').length).toBe(2);
-    // Identity stays visible; only the body is swapped out, and the subject is
-    // clamped to one line in files mode.
+    // Identity stays visible; the subject is clamped to one line in files mode.
     expect(text(el, 'commit-details-subject')).toBe('feat(graph): details panel');
     expect(
       el
@@ -365,13 +464,11 @@ describe('CommitDetailsPanel — exclusive view switch', () => {
         ?.classList.contains('st-commit-details__subject--collapsed'),
     ).toBe(true);
 
-    // files → description
-    clickSegment(el, 'description');
+    fixture.componentRef.setInput('mode', 'description');
     fixture.detectChanges();
 
     expect(text(el, 'commit-details-description')).toBe('full body text');
     expect(el.querySelector('[data-testid="commit-details-files-heading"]')).toBeNull();
-    expect(el.querySelector('[data-testid="commit-details-file-path"]')).toBeNull();
     expect(
       el
         .querySelector('[data-testid="commit-details-subject"]')
@@ -379,10 +476,37 @@ describe('CommitDetailsPanel — exclusive view switch', () => {
     ).toBe(false);
   });
 
-  it('forces files mode for a subject-only commit and disables its description segment', () => {
-    const el = render({
-      commit: SUBJECT_ONLY,
+  it('emits modeChange on a segment pick without mutating the rendered mode', () => {
+    const fixture = render({
+      commit: COMMIT,
       showFiles: true,
+      showViewSwitch: true,
+      changedFiles: ['src/a.ts'],
+    });
+    const el = fixture.nativeElement as HTMLElement;
+    const picks: Array<'description' | 'files'> = [];
+    fixture.componentInstance.modeChange.subscribe((value) => picks.push(value));
+
+    clickSegment(el, 'files');
+    fixture.detectChanges();
+
+    expect(picks).toEqual(['files']);
+    // The host has not fed the mode back yet, so the panel still renders
+    // description: the pick is an intent, never internal state.
+    expect(text(el, 'commit-details-description')).toBe('full body text');
+    expect(el.querySelector('[data-testid="commit-details-files-heading"]')).toBeNull();
+
+    clickSegment(el, 'description');
+    fixture.detectChanges();
+    expect(picks).toEqual(['files', 'description']);
+  });
+
+  it('forces files mode for a commit with NO message at all and disables its description segment', () => {
+    const el = render({
+      commit: NO_MESSAGE,
+      mode: 'description',
+      showFiles: true,
+      showViewSwitch: true,
       changedFiles: ['src/a.ts'],
     }).nativeElement as HTMLElement;
 
@@ -390,45 +514,49 @@ describe('CommitDetailsPanel — exclusive view switch', () => {
       '[data-testid="toggle-segment-description"]',
     );
     const files = el.querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]');
-    // A commit with no body can never land in description: the segment is
-    // disabled and the mode is forced to files.
     expect(description?.disabled).toBe(true);
     expect(files?.disabled).toBe(false);
     expect(files?.getAttribute('aria-pressed')).toBe('true');
 
     expect(text(el, 'commit-details-files-heading')).toBe('1 changed file');
     expect(el.querySelector('[data-testid="commit-details-file-path"]')).not.toBeNull();
-    // The body never exists.
+    // No subject and no body: the empty heading is not rendered at all.
+    expect(el.querySelector('[data-testid="commit-details-subject"]')).toBeNull();
     expect(el.querySelector('[data-testid="commit-details-description"]')).toBeNull();
-    expect(text(el, 'commit-details-subject')).toBe('subject only, no body');
   });
 
-  it('renders no switch for the WIP row, the empty branch, or a files-less embed', () => {
-    // WIP row.
-    expect(
-      (render({ isWip: true, showFiles: true }).nativeElement as HTMLElement).querySelector(
-        '[data-testid="commit-details-view-switch"]',
-      ),
-    ).toBeNull();
-    // Empty branch (no selection).
-    expect(
-      (render({ showFiles: true }).nativeElement as HTMLElement).querySelector(
-        '[data-testid="commit-details-view-switch"]',
-      ),
-    ).toBeNull();
-    // Analyzer-style embed: a real commit WITH a body, but showFiles is off, so
-    // the panel never grows a switch (the page owns the sector there).
-    const embed = render({ commit: COMMIT }).nativeElement as HTMLElement;
-    expect(embed.querySelector('[data-testid="commit-details-view-switch"]')).toBeNull();
-    expect(embed.querySelector('[data-testid="commit-details-file-path"]')).toBeNull();
+  it('keeps the description segment enabled for a subject-only commit', () => {
+    const el = render({
+      commit: SUBJECT_ONLY,
+      mode: 'description',
+      showFiles: true,
+      showViewSwitch: true,
+      changedFiles: ['src/a.ts'],
+    }).nativeElement as HTMLElement;
+
+    const description = el.querySelector<HTMLButtonElement>(
+      '[data-testid="toggle-segment-description"]',
+    );
+    expect(description?.disabled).toBe(false);
+    expect(description?.getAttribute('aria-pressed')).toBe('true');
+
+    // The subject is the description content; there is simply no body paragraph.
+    expect(text(el, 'commit-details-subject')).toBe('subject only, no body');
+    expect(el.querySelector('[data-testid="commit-details-description"]')).toBeNull();
+    expect(el.querySelector('[data-testid="commit-details-files-heading"]')).toBeNull();
   });
 
   it('keeps the subject visible in both modes (identity, never swapped out)', () => {
-    const fixture = render({ commit: COMMIT, showFiles: true, changedFiles: ['src/a.ts'] });
+    const fixture = render({
+      commit: COMMIT,
+      showFiles: true,
+      showViewSwitch: true,
+      changedFiles: ['src/a.ts'],
+    });
     const el = fixture.nativeElement as HTMLElement;
 
     expect(text(el, 'commit-details-subject')).toBe('feat(graph): details panel');
-    clickSegment(el, 'files');
+    fixture.componentRef.setInput('mode', 'files');
     fixture.detectChanges();
     expect(text(el, 'commit-details-subject')).toBe('feat(graph): details panel');
   });
@@ -443,20 +571,17 @@ describe('CommitDetailsPanel — changed files', () => {
     }).compileComponents();
   });
 
-  /**
-   * Render a commit with the switch, click into `files` mode and return the
-   * root element: the default mode is now `description`, so every files-block
-   * assertion needs the sector visible first.
-   */
+  /** Render with the files sector mounted (the host owns the mode input). */
   function renderFiles(fixture: ComponentFixture<CommitDetailsPanel>): HTMLElement {
-    const el = fixture.nativeElement as HTMLElement;
-    clickSegment(el, 'files');
-    fixture.detectChanges();
-    return el;
+    return fixture.nativeElement as HTMLElement;
   }
 
   it('never renders the files sector without showFiles (analyzer embed)', () => {
-    const el = render({ commit: COMMIT, changedFiles: ['src/a.ts'] }).nativeElement as HTMLElement;
+    const el = render({
+      commit: COMMIT,
+      mode: 'files',
+      changedFiles: ['src/a.ts'],
+    }).nativeElement as HTMLElement;
 
     // No switch and no files block: the File-status analyzer owns the file list.
     expect(el.querySelector('[data-testid="commit-details-view-switch"]')).toBeNull();
@@ -468,6 +593,7 @@ describe('CommitDetailsPanel — changed files', () => {
     const fixture = render({
       commit: COMMIT,
       showFiles: true,
+      mode: 'files',
       changedFiles: ['src/a.ts', 'src/b.ts'],
     });
     const el = renderFiles(fixture);
@@ -482,12 +608,12 @@ describe('CommitDetailsPanel — changed files', () => {
   });
 
   it('uses the singular heading for a single changed file', () => {
-    const fixture = render({ commit: COMMIT, showFiles: true, changedFiles: ['src/a.ts'] });
+    const fixture = render({ commit: COMMIT, showFiles: true, mode: 'files', changedFiles: ['src/a.ts'] });
     expect(text(renderFiles(fixture), 'commit-details-files-heading')).toBe('1 changed file');
   });
 
   it('renders the empty-state line when the commit has no changed files', () => {
-    const fixture = render({ commit: COMMIT, showFiles: true, changedFiles: [] });
+    const fixture = render({ commit: COMMIT, showFiles: true, mode: 'files', changedFiles: [] });
     const el = renderFiles(fixture);
 
     expect(text(el, 'commit-details-files-empty')).toContain('No changed files');
@@ -499,6 +625,7 @@ describe('CommitDetailsPanel — changed files', () => {
     const fixture = render({
       commit: COMMIT,
       showFiles: true,
+      mode: 'files',
       changedFiles: ['src/alpha.ts', 'src/beta.ts'],
     });
     const el = renderFiles(fixture);
@@ -516,6 +643,7 @@ describe('CommitDetailsPanel — changed files', () => {
     const bracket = render({
       commit: COMMIT,
       showFiles: true,
+      mode: 'files',
       changedFiles: ['src/[a].ts', 'src/ab.ts'],
     });
     const bracketEl = renderFiles(bracket);
@@ -530,6 +658,7 @@ describe('CommitDetailsPanel — changed files', () => {
     const star = render({
       commit: COMMIT,
       showFiles: true,
+      mode: 'files',
       changedFiles: ['src/*.ts', 'src/a.ts'],
     });
     const starEl = renderFiles(star);
@@ -545,6 +674,7 @@ describe('CommitDetailsPanel — changed files', () => {
     const fixture = render({
       commit: COMMIT,
       showFiles: true,
+      mode: 'files',
       changedFiles: ['src/alpha.ts', 'src/beta.ts'],
     });
     const el = renderFiles(fixture);
@@ -562,8 +692,38 @@ describe('CommitDetailsPanel — changed files', () => {
     expect(text(el, 'commit-details-files-heading')).toBe('2 changed files');
   });
 
+  it('keeps the files list inside the content region and the footer as a sibling', () => {
+    const changedFiles = Array.from({ length: 34 }, (_, index) => `src/dir/file-${index}.ts`);
+    const fixture = render({
+      commit: COMMIT,
+      showFiles: true,
+      showViewSwitch: true,
+      mode: 'files',
+      changedFiles,
+    });
+    const el = fixture.nativeElement as HTMLElement;
+    typeFilter(fixture, 'file-2');
+
+    const section = el.querySelector('[data-testid="commit-details"]')!;
+    const content = el.querySelector('[data-testid="commit-details-content"]')!;
+    const footer = el.querySelector('[data-testid="commit-details-footer"]')!;
+
+    // The list lives INSIDE the content region...
+    expect(content.querySelector('[data-testid="commit-details-files-heading"]')).not.toBeNull();
+    expect(content.querySelector('[data-testid="commit-details-files-filter"]')).not.toBeNull();
+    expect(content.querySelectorAll('[data-testid="commit-details-file-path"]').length).toBeGreaterThan(0);
+    expect(text(el, 'commit-details-files-heading')).toContain('of 34 changed files');
+
+    // ...and the footer is its SIBLING, never nested inside it: the file list
+    // can never paint over the metadata.
+    expect(content.contains(footer)).toBe(false);
+    expect(footer.parentElement).toBe(section);
+    expect(isBefore(content, footer)).toBe(true);
+    expect(footer.querySelector('[data-testid="commit-details-files-heading"]')).toBeNull();
+  });
+
   it('stays read-only: the changed-files block never mounts a diff surface', () => {
-    const fixture = render({ commit: COMMIT, showFiles: true, changedFiles: ['src/a.ts'] });
+    const fixture = render({ commit: COMMIT, showFiles: true, mode: 'files', changedFiles: ['src/a.ts'] });
     const el = renderFiles(fixture);
 
     // No `st-diff-viewer`, no Monaco, no hunk/code grid: paths only.
@@ -698,5 +858,116 @@ describe('CommitDetailsPanel — header actions', () => {
   it('hides the show-in-graph action unless showInGraph opts in', () => {
     const el = render({ commit: COMMIT }).nativeElement as HTMLElement;
     expect(el.querySelector('[data-testid="commit-details-show-in-graph"]')).toBeNull();
+  });
+});
+
+// -- Padlock tooltip: delayed, viewport-positioned, correctly described ------
+
+describe('CommitDetailsPanel — padlock tooltip', () => {
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      providers: [provideZonelessChangeDetection()],
+    }).compileComponents();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function lockAnchor(el: HTMLElement): HTMLElement {
+    const anchor = el.querySelector<HTMLElement>('.st-commit-details__lock');
+    if (!anchor) throw new Error('lock anchor not found');
+    return anchor;
+  }
+
+  function tooltip(el: HTMLElement): HTMLElement {
+    const node = el.querySelector<HTMLElement>('[data-testid="commit-details-lock-tooltip"]');
+    if (!node) throw new Error('tooltip not found');
+    return node;
+  }
+
+  function isHidden(el: HTMLElement): boolean {
+    return tooltip(el).classList.contains('st-commit-details__tooltip--hidden');
+  }
+
+  it('is always in the DOM (so aria-describedby resolves) but hidden until the delay', () => {
+    vi.useFakeTimers();
+    const fixture = render({ commit: COMMIT });
+    const el = fixture.nativeElement as HTMLElement;
+
+    // The description exists before the bubble becomes visible, and the
+    // padlock points at it from the very first render.
+    expect(isHidden(el)).toBe(true);
+    const lock = button(el, 'commit-details-lock');
+    expect(lock?.getAttribute('aria-describedby')).toBe('st-commit-details-lock-tooltip');
+
+    lockAnchor(el).dispatchEvent(new MouseEvent('mouseenter'));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS - 1);
+    fixture.detectChanges();
+    expect(isHidden(el)).toBe(true);
+
+    vi.advanceTimersByTime(1);
+    fixture.detectChanges();
+
+    const bubble = tooltip(el);
+    expect(isHidden(el)).toBe(false);
+    expect(bubble.getAttribute('role')).toBe('tooltip');
+    expect(bubble.getAttribute('id')).toBe('st-commit-details-lock-tooltip');
+    expect(bubble.textContent).toContain('Locking pins this commit');
+  });
+
+  it('hides on mouse leave but keeps aria-describedby', () => {
+    vi.useFakeTimers();
+    const fixture = render({ commit: COMMIT });
+    const el = fixture.nativeElement as HTMLElement;
+
+    const anchor = lockAnchor(el);
+    anchor.dispatchEvent(new MouseEvent('mouseenter'));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    fixture.detectChanges();
+    expect(isHidden(el)).toBe(false);
+
+    anchor.dispatchEvent(new MouseEvent('mouseleave'));
+    fixture.detectChanges();
+
+    expect(isHidden(el)).toBe(true);
+    // The node stays in the accessibility tree: hiding is visual only.
+    expect(tooltip(el).textContent).toContain('Locking pins this commit');
+    expect(button(el, 'commit-details-lock')?.getAttribute('aria-describedby')).toBe(
+      'st-commit-details-lock-tooltip',
+    );
+  });
+
+  it('treats keyboard focus exactly like hover and hides on blur', () => {
+    vi.useFakeTimers();
+    const fixture = render({ commit: COMMIT });
+    const el = fixture.nativeElement as HTMLElement;
+
+    const anchor = lockAnchor(el);
+    anchor.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    fixture.detectChanges();
+    expect(isHidden(el)).toBe(false);
+
+    anchor.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    fixture.detectChanges();
+    expect(isHidden(el)).toBe(true);
+  });
+
+  it('hides when the commit changes', () => {
+    vi.useFakeTimers();
+    const fixture = render({ commit: COMMIT });
+    const el = fixture.nativeElement as HTMLElement;
+
+    lockAnchor(el).dispatchEvent(new MouseEvent('mouseenter'));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    fixture.detectChanges();
+    expect(isHidden(el)).toBe(false);
+
+    fixture.componentRef.setInput('commit', SUBJECT_ONLY);
+    fixture.detectChanges();
+    TestBed.tick();
+
+    expect(isHidden(el)).toBe(true);
   });
 });

@@ -8,7 +8,12 @@ import { ButtonComponent } from './button';
   imports: [ButtonComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <st-button [pressed]="pressed()" [expanded]="expanded()" [haspopup]="haspopup()">
+    <st-button
+      [pressed]="pressed()"
+      [expanded]="expanded()"
+      [haspopup]="haspopup()"
+      [ariaDescribedby]="describedby()"
+    >
       <span>Label</span>
     </st-button>
   `,
@@ -17,6 +22,7 @@ class ButtonTestHost {
   readonly pressed = signal<boolean | null>(null);
   readonly expanded = signal<boolean | null>(null);
   readonly haspopup = signal<string | null>(null);
+  readonly describedby = signal<string | null>(null);
 }
 
 async function setup(): Promise<ComponentFixture<ButtonTestHost>> {
@@ -75,5 +81,19 @@ describe('ButtonComponent', () => {
 
     expect(inner(fixture).hasAttribute('aria-expanded')).toBe(false);
     expect(inner(fixture).hasAttribute('aria-haspopup')).toBe(false);
+  });
+
+  it('forwards aria-describedby to the inner button and omits it by default', async () => {
+    const fixture = await setup();
+
+    expect(inner(fixture).hasAttribute('aria-describedby')).toBe(false);
+
+    fixture.componentInstance.describedby.set('st-tooltip');
+    fixture.detectChanges();
+    expect(inner(fixture).getAttribute('aria-describedby')).toBe('st-tooltip');
+
+    fixture.componentInstance.describedby.set(null);
+    fixture.detectChanges();
+    expect(inner(fixture).hasAttribute('aria-describedby')).toBe(false);
   });
 });

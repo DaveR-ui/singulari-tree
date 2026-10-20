@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IpcBridge } from '@core/services/ipc-bridge.service';
 import type { RepoState } from '@core/services/repo-state.service';
 import { parseRemoteTracking } from './remote-models';
-import { FETCH_ALL_CONCURRENCY, RemoteOpsStore } from './remote-ops.store';
+import { RemoteOpsStore } from './remote-ops.store';
 
 // -- fixtures ---------------------------------------------------------------
 
@@ -645,124 +645,226 @@ describe('RemoteOpsStore', () => {
   });
 });
 
-describe('RemoteOpsStore.runFetchAll (ADR-024)', () => {
+describe('RemoteOpsStore per-repository fetch (ADR-024)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  const entries = [
-    { repoId: 'repo-a', name: 'A' },
-    { repoId: 'repo-b', name: 'B' },
-    { repoId: 'repo-c', name: 'C' },
-  ];
-
-  it('fetches every repo, tracks per-repo status and never aborts on failure', async () => {
-    const { bridge, invoke } = makeBridge({
-      fetch: (req) => {
-        const repoId = (req as { repoId: string }).repoId;
-        return repoId === 'repo-b'
-          ? Promise.reject({ code: 'FETCH_FAILED', message: 'network down' })
-          : Promise.resolve();
-      },
-    });
-    const repoState = makeRepoState();
-    const store = makeStore(bridge, repoState);
-
-    await store.runFetchAll(entries);
-
-    expect(callsTo(invoke, 'fetch')).toHaveLength(3);
-    for (const call of callsTo(invoke, 'fetch')) {
-      expect(call[1]).toEqual({
-        repoId: expect.any(String),
-        remote: '',
-        prune: false,
-        tags: false,
-        force: false,
-      });
-    }
-    expect(store.fetchAllStatus()).toEqual({
-      'repo-a': 'success',
-      'repo-b': 'failed',
-      'repo-c': 'success',
-    });
-    expect(store.fetchAllProgress()).toEqual({ done: 3, total: 3 });
-    expect(store.fetchAllError()?.code).toBe('FETCH_FAILED');
-    expect(store.fetchAllRunning()).toBe(false);
-    expect(repoState.loadRefs).toHaveBeenCalledTimes(1);
+  const request = (repoId: string) => ({
+    repoId,
+    remote: '',
+    prune: false,
+    tags: false,
+    force: false,
   });
 
-  it('does not refresh refs when every repo fails', async () => {
-    const { bridge } = makeBridge({
-      fetch: () => Promise.reject({ code: 'FETCH_FAILED', message: 'down' }),
-    });
-    const repoState = makeRepoState();
-    const store = makeStore(bridge, repoState);
-
-    await store.runFetchAll(entries);
-
-    expect(repoState.loadRefs).not.toHaveBeenCalled();
-    expect(store.fetchAllStatus()).toEqual({
-      'repo-a': 'failed',
-      'repo-b': 'failed',
-      'repo-c': 'failed',
-    });
-  });
-
-  it('deduplicates targets and ignores an empty list', async () => {
+  it('fetchRepo fetches exactly one repository and records success', async () => {
     const { bridge, invoke } = makeBridge();
     const store = makeStore(bridge);
 
-    await store.runFetchAll([]);
-    expect(invoke).not.toHaveBeenCalled();
-    expect(store.fetchAllProgress()).toBeNull();
+    await store.fetchRepo('repo-b');
 
-    await store.runFetchAll([entries[0], entries[0], entries[1]]);
-    expect(callsTo(invoke, 'fetch')).toHaveLength(2);
-    expect(store.fetchAllProgress()).toEqual({ done: 2, total: 2 });
+    expect(callsTo(invoke, 'fetch')).toEqual([['fetch', request('repo-b')]]);
+    expect(store.fetchStatus()).toEqual({ 'repo-b': 'success' });
+    expect(store.fetchRepoId()).toBe('repo-b');
+    expect(store.fetchError()).toBeNull();
+    // The multi-repo fan-out is gone, not merely unused.
+    expect('runFetchAll' in store).toBe(false);
   });
 
-  it('bounds concurrency to FETCH_ALL_CONCURRENCY', async () => {
-    let inFlight = 0;
-    let maxInFlight = 0;
+  it('fetchRepoIfStale skips an already-fetched repository and fetches a fresh one', async () => {
+    const { bridge, invoke } = makeBridge();
+    const store = makeStore(bridge);
+
+    await store.fetchRepoIfStale('repo-a');
+    await store.fetchRepoIfStale('repo-a');
+    await store.fetchRepoIfStale('repo-b');
+    // An explicit sync calls fetchRepo directly, bypassing the freshness marker.
+    await store.fetchRepo('repo-a');
+
+    expect(callsTo(invoke, 'fetch').map((call) => (call[1] as { repoId: string }).repoId)).toEqual([
+      'repo-a',
+      'repo-b',
+      'repo-a',
+    ]);
+  });
+
+  it('records a failure as failed plus the first error', async () => {
     const { bridge } = makeBridge({
-      fetch: async () => {
-        inFlight++;
-        maxInFlight = Math.max(maxInFlight, inFlight);
-        await new Promise((resolve) => setTimeout(resolve, 5));
-        inFlight--;
-      },
+      fetch: () => Promise.reject({ code: 'FETCH_FAILED', message: 'network down' }),
     });
     const store = makeStore(bridge);
-    const many = Array.from({ length: 6 }, (_, i) => ({ repoId: `repo-${i}`, name: `r${i}` }));
 
-    await store.runFetchAll(many);
+    await store.fetchRepo('repo-a');
 
-    expect(maxInFlight).toBe(FETCH_ALL_CONCURRENCY);
+    expect(store.fetchStatus()).toEqual({ 'repo-a': 'failed' });
+    expect(store.fetchError()).toEqual({
+      code: 'FETCH_FAILED',
+      message: 'network down',
+      details: {},
+    });
+    expect(store.fetchRepoId()).toBe('repo-a');
   });
 
-  it('guards re-entrancy while a fan-out is running', async () => {
-    let resolveFirst: (() => void) | undefined;
+  it('invalidateFetch makes an in-flight closed-repository fetch drop its result', async () => {
+    let resolveFetch: (() => void) | undefined;
+    const { bridge } = makeBridge({
+      fetch: () =>
+        new Promise<void>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    });
+    const repoState = makeRepoState('repo-1');
+    const store = makeStore(bridge, repoState);
+
+    const pending = store.fetchRepo('repo-1');
+    expect(store.fetchStatus()).toEqual({ 'repo-1': 'pending' });
+
+    store.invalidateFetch('repo-1');
+    expect(store.fetchStatus()).toEqual({});
+    expect(store.fetchRepoId()).toBeNull();
+
+    resolveFetch?.();
+    await pending;
+
+    // No status, error or refs refresh may be written after the close.
+    expect(store.fetchStatus()).toEqual({});
+    expect(store.fetchError()).toBeNull();
+    expect(repoState.loadRefs).not.toHaveBeenCalled();
+  });
+
+  it('still refreshes refs when the status line is dismissed mid-flight', async () => {
+    let resolveFetch: (() => void) | undefined;
+    const { bridge } = makeBridge({
+      fetch: () =>
+        new Promise<void>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    });
+    const repoState = makeRepoState('repo-a');
+    const store = makeStore(bridge, repoState);
+
+    const pending = store.fetchRepo('repo-a');
+    expect(store.fetchStatus()).toEqual({ 'repo-a': 'pending' });
+
+    // Dismissing the line nulls `fetchRepoId`, but the fetch is still running
+    // and the repository stays active.
+    store.clearFetch();
+    expect(store.fetchRepoId()).toBeNull();
+
+    resolveFetch?.();
+    await pending;
+
+    // No status repaint after the dismissal...
+    expect(store.fetchStatus()).toEqual({});
+    expect(store.fetchRepoId()).toBeNull();
+    // ...but the refs/badges still refresh for the still-active repository.
+    expect(repoState.loadRefs).toHaveBeenCalledTimes(1);
+  });
+
+  it('still flags the bridge as offline when the line was dismissed mid-flight', async () => {
+    let rejectFetch: ((error: unknown) => void) | undefined;
+    const { bridge } = makeBridge({
+      fetch: () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectFetch = reject;
+        }),
+    });
+    const repoState = makeRepoState('repo-a');
+    const store = makeStore(bridge, repoState);
+
+    const pending = store.fetchRepo('repo-a');
+    // Dismissing the line nulls the line owner; the offline indicator is NOT
+    // line state and must survive the dismissal.
+    store.clearFetch();
+
+    rejectFetch?.({ code: 'IPC_UNAVAILABLE' });
+    await pending;
+
+    expect(store.offline()).toBe(true);
+    expect(store.fetchStatus()).toEqual({});
+  });
+
+  it('does not stack two concurrent automatic fetches for one repository', async () => {
+    let resolveFetch: (() => void) | undefined;
     const { bridge, invoke } = makeBridge({
       fetch: () =>
         new Promise<void>((resolve) => {
-          resolveFirst = resolve;
+          resolveFetch = resolve;
         }),
     });
     const store = makeStore(bridge);
 
-    const first = store.runFetchAll([entries[0]]);
-    await store.runFetchAll([entries[1]]);
+    const first = store.fetchRepoIfStale('repo-a');
+    const second = store.fetchRepoIfStale('repo-a');
+    await second;
 
-    expect(store.fetchAllRunning()).toBe(true);
     expect(callsTo(invoke, 'fetch')).toHaveLength(1);
 
-    resolveFirst?.();
+    resolveFetch?.();
     await first;
 
-    expect(store.fetchAllRunning()).toBe(false);
+    expect(store.fetchStatus()).toEqual({ 'repo-a': 'success' });
   });
 
-  it('marks offline when a fan-out fetch finds no bridge', async () => {
+  it('does not repaint the status line when a fetch is left mid-flight for another repo', async () => {
+    const resolvers = new Map<string, () => void>();
+    const { bridge } = makeBridge({
+      fetch: (req) =>
+        new Promise<void>((resolve) => {
+          resolvers.set((req as { repoId: string }).repoId, resolve);
+        }),
+    });
+    const store = makeStore(bridge);
+
+    const first = store.fetchRepo('repo-a');
+    const second = store.fetchRepo('repo-b');
+    expect(store.fetchRepoId()).toBe('repo-b');
+
+    resolvers.get('repo-a')?.();
+    await first;
+    // repo-a was left mid-flight: repo-b's line stays untouched.
+    expect(store.fetchStatus()).toEqual({ 'repo-b': 'pending' });
+    expect(store.fetchRepoId()).toBe('repo-b');
+
+    resolvers.get('repo-b')?.();
+    await second;
+    expect(store.fetchStatus()).toEqual({ 'repo-b': 'success' });
+  });
+
+  it('refreshes refs only for the repository that is actually active', async () => {
+    const { bridge } = makeBridge();
+    const repoState = makeRepoState('repo-a');
+    const store = makeStore(bridge, repoState);
+
+    await store.fetchRepo('repo-a');
+    expect(repoState.loadRefs).toHaveBeenCalledTimes(1);
+
+    await store.fetchRepo('repo-b');
+    expect(repoState.loadRefs).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not refresh refs when the active repository changed mid-flight', async () => {
+    let resolveFetch: (() => void) | undefined;
+    const { bridge } = makeBridge({
+      fetch: () =>
+        new Promise<void>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    });
+    const repoState = makeRepoState('repo-a');
+    const store = makeStore(bridge, repoState);
+
+    const pending = store.fetchRepo('repo-a');
+    repoState.activeId.set('repo-b');
+    resolveFetch?.();
+    await pending;
+
+    expect(store.fetchStatus()).toEqual({ 'repo-a': 'success' });
+    expect(repoState.loadRefs).not.toHaveBeenCalled();
+  });
+
+  it('marks offline when a per-repository fetch finds no bridge', async () => {
     const { bridge } = makeBridge({
       fetch: () => {
         throw { code: 'IPC_UNAVAILABLE', message: 'no bridge' };
@@ -770,21 +872,23 @@ describe('RemoteOpsStore.runFetchAll (ADR-024)', () => {
     });
     const store = makeStore(bridge);
 
-    await store.runFetchAll([entries[0]]);
+    await store.fetchRepo('repo-a');
 
     expect(store.offline()).toBe(true);
-    expect(store.fetchAllError()).toBeNull();
+    expect(store.fetchError()).toBeNull();
+    expect(store.fetchStatus()).toEqual({ 'repo-a': 'failed' });
   });
 
-  it('clearFetchAll resets status, progress and error', async () => {
+  it('clearFetch resets status, target and error', async () => {
     const { bridge } = makeBridge();
     const store = makeStore(bridge);
-    await store.runFetchAll([entries[0]]);
+    await store.fetchRepo('repo-a');
 
-    store.clearFetchAll();
+    store.clearFetch();
 
-    expect(store.fetchAllStatus()).toEqual({});
-    expect(store.fetchAllProgress()).toBeNull();
-    expect(store.fetchAllError()).toBeNull();
+    expect(store.fetchStatus()).toEqual({});
+    expect(store.fetchRepoId()).toBeNull();
+    expect(store.fetchError()).toBeNull();
   });
 });
+

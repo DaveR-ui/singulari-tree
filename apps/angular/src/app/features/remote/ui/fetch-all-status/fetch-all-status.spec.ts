@@ -2,12 +2,12 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { AppError } from '@core/services/ipc-bridge.service';
-import type { FetchAllProgress, RepoFetchState } from '../../remote-models';
+import type { RepoFetchState } from '../../remote-models';
 import { FetchAllStatus } from './fetch-all-status';
 
 interface Options {
   open?: boolean;
-  progress?: FetchAllProgress | null;
+  repoName?: string;
   status?: Readonly<Record<string, RepoFetchState>>;
   error?: AppError | null;
 }
@@ -19,7 +19,7 @@ async function setup(opts: Options = {}): Promise<ComponentFixture<FetchAllStatu
   }).compileComponents();
   const fixture = TestBed.createComponent(FetchAllStatus);
   fixture.componentRef.setInput('open', opts.open ?? true);
-  fixture.componentRef.setInput('progress', opts.progress ?? null);
+  fixture.componentRef.setInput('repoName', opts.repoName ?? '');
   fixture.componentRef.setInput('status', opts.status ?? {});
   fixture.componentRef.setInput('error', opts.error ?? null);
   fixture.detectChanges();
@@ -41,17 +41,34 @@ describe('FetchAllStatus', () => {
     expect(query(fixture, 'fetch-all-status')).toBeNull();
   });
 
-  it('renders the compact counter on one line', async () => {
-    const fixture = await setup({
-      progress: { done: 1, total: 2 },
-      status: { a: 'success', b: 'pending' },
-    });
+  it('renders the single repository being fetched on one line', async () => {
+    const fixture = await setup({ repoName: 'local-1', status: { a: 'pending' } });
 
     const line = query<HTMLElement>(fixture, 'fetch-all-status')!;
-    expect(line.textContent).toContain('Fetching repositories');
-    expect(query(fixture, 'fetch-all-count')?.textContent?.trim()).toBe('1/2');
-    // No per-repo rows survive the compaction.
+    expect(line.textContent).toContain('Fetching repository');
+    expect(query(fixture, 'fetch-all-repo-name')?.textContent?.trim()).toBe('local-1');
+    // The fake N/M fan-out aggregate is gone.
+    expect(query(fixture, 'fetch-all-count')).toBeNull();
     expect(line.querySelector('[data-testid="fetch-all-row"]')).toBeNull();
+  });
+
+  it('settles the title to the success state instead of claiming a fetch forever', async () => {
+    const fixture = await setup({ repoName: 'local-1', status: { a: 'success' } });
+
+    expect(query(fixture, 'fetch-all-title')?.textContent?.trim()).toBe('Repository up to date');
+    // The reported repository still names the line.
+    expect(query(fixture, 'fetch-all-repo-name')?.textContent?.trim()).toBe('local-1');
+    expect(query(fixture, 'fetch-all-failed')).toBeNull();
+  });
+
+  it('reports a failed fetch in the title (error detail stays beside it)', async () => {
+    const fixture = await setup({
+      status: { a: 'failed' },
+      error: { code: 'FETCH_FAILED', message: 'network down' },
+    });
+
+    expect(query(fixture, 'fetch-all-title')?.textContent?.trim()).toBe('Fetch failed');
+    expect(query(fixture, 'fetch-all-error')?.textContent).toContain('network down');
   });
 
   it('shows the failed count only when a repository failed', async () => {

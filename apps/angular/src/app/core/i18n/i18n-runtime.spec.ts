@@ -137,6 +137,15 @@ describe('locale catalogues', () => {
     'Description',
     'Files',
     'Description or changed files',
+    // Commit-details redesign: metadata disclosure, padlock tooltip and the
+    // neighbouring sync affordance.
+    'Metadata',
+    'Locking pins this commit: the details panel keeps showing it after the graph reloads, and while the lock is on, selecting a different commit is refused.',
+    'Sync',
+    'Fetching repository',
+    // Settled per-repository fetch states.
+    'Repository up to date',
+    'Fetch failed',
   ];
 
   it.each(newMessages)('resolves the new message %j in both catalogues', (message) => {

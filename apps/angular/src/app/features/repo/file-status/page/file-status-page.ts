@@ -5,7 +5,6 @@ import {
   DiffViewer,
   ToggleGroupComponent,
   WorkspaceSplitComponent,
-  shortOidHex,
   type HunkActionSlot,
 } from '@singularitree/ui-kit';
 import { CommitFocusService } from '@core/services/commit-focus.service';
@@ -14,6 +13,7 @@ import type { DiffMode } from '@core/services/diff-mode.service';
 import { IpcBridge } from '@core/services/ipc-bridge.service';
 import { PreferencesService } from '@core/services/preferences.service';
 import { RepoState } from '@core/services/repo-state.service';
+import { CommitViewModeService } from '../../commit-view-mode.service';
 import { GraphStore, WIP_OID } from '../../graph/graph.store';
 import { CommitDetailsPanel } from '../../graph/ui/commit-details-panel';
 import { splitCommitMessage } from '../../graph/ui/commit-message';
@@ -32,8 +32,9 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
  * Three variants share that scaffold: **local** reuses the existing working-tree
  * `st-changes-panel` (with the pinned-commit `st-commit-details-panel` section
  * rendered above it as the contrast anchor / entry point), **commit** reuses
- * `st-commit-details-panel` as its header plus the changed-file list, and **pull
- * request** diffs a local ref against a base branch. The screen never talks to
+ * `st-commit-details-panel` as its description region (subject + body, with the
+ * shared `description | files` switch in the panel header) plus the changed-file
+ * list below it, and **pull request** diffs a local ref against a base branch. The screen never talks to
  * Git: every value comes from `FileStatusStore`, which composes the route-scoped
  * `StatusStore` and calls the existing `getStatus`/`getDiff`/`getBranches` RPCs
  * through `IpcBridge`.
@@ -125,15 +126,35 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
               />
             }
             @case ('commit') {
+              <!--
+                The PANEL owns the description region: it renders the subject
+                and, in description mode, the body in its own scrolling
+                content region. The PAGE keeps the files region (summary +
+                changed-file list) and renders it below the panel only while
+                the shared mode is "files"; the list is also the diff selector,
+                so it must stay reachable. The panel's header carries the
+                exclusive switch, wired to the route-scoped mode so the choice
+                survives the /repo ↔ /repo/file-status navigation. A commit
+                with no message at all is forced to files by both surfaces
+                (see effectiveAnalyzerMode).
+              -->
+              <st-commit-details-panel
+                [commit]="fs.activeCommit()"
+                [isWip]="false"
+                [showSubject]="true"
+                [showFiles]="false"
+                [showViewSwitch]="true"
+                [mode]="viewMode.mode()"
+                [changedFiles]="changedPaths()"
+                [navMode]="'release'"
+                [locked]="graph.lockedOid() === fs.activeCommit()?.oid?.hex"
+                [showInGraph]="true"
+                (modeChange)="viewMode.setMode($event)"
+                (release)="releaseCommit()"
+                (lockToggle)="toggleLock()"
+                (revealInGraph)="showInGraph()"
+              />
               @if (effectiveAnalyzerMode() === 'files') {
-                <!--
-                  Files mode: the change summary + the commit's changed-file
-                  list own the left column. In description mode both are hidden
-                  (the right-pane title sector shows the message instead), so
-                  exactly one of the two sectors is visible at a time. A commit
-                  with no message at all never reaches description mode — see
-                  the effectiveAnalyzerMode computed below.
-                -->
                 <p class="st-file-status__summary" data-testid="file-status-summary">
                   {{ summaryText() }}
                 </p>
@@ -143,28 +164,6 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
                   (fileSelect)="fs.selectFile($event)"
                 />
               }
-              <!--
-                The subject/body live in the right-pane title sector and the
-                file list in this column, both owned by the page's exclusive
-                mode; the panel therefore opts out of BOTH sectors
-                (showSubject/showFiles false) and renders identity +
-                metadata only, resting on the floor of this column
-                (margin-top: auto, scoped to the --commit body). The
-                pin/release/History/reveal actions live in the panel's toolbar,
-                driven by the shared graph lock.
-              -->
-              <st-commit-details-panel
-                [commit]="fs.activeCommit()"
-                [isWip]="false"
-                [showSubject]="false"
-                [showFiles]="false"
-                [navMode]="'release'"
-                [locked]="graph.lockedOid() === fs.activeCommit()?.oid?.hex"
-                [showInGraph]="true"
-                (release)="releaseCommit()"
-                (lockToggle)="toggleLock()"
-                (revealInGraph)="showInGraph()"
-              />
             }
             @case ('pr') {
               <p class="st-file-status__summary" data-testid="file-status-summary">
@@ -182,50 +181,6 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
 
       <!-- flexible RIGHT: the selected file's diff, always -->
       <div class="st-file-status__right" data-testid="file-status-diff">
-        @if (fs.variant() === 'commit' && hasMessage()) {
-          <header class="st-file-status__pane-title st-hairline" data-testid="file-status-title">
-            @if (effectiveAnalyzerMode() === 'description') {
-              <!--
-                Description mode: the subject in full (wrapping) when there is
-                one, plus the commit body when there is one — whichever the
-                message carries, so the sector is never empty. The page's
-                exclusive switch drives the choice.
-              -->
-              <div class="st-file-status__pane-title-description">
-                @if (commitTitle()) {
-                  <h2
-                    class="st-file-status__pane-title-text st-file-status__pane-title-text--wrap"
-                    [title]="commitTitle()"
-                  >
-                    {{ commitTitle() }}
-                  </h2>
-                }
-                @if (commitBody()) {
-                  <p class="st-file-status__pane-title-body" data-testid="file-status-title-body">
-                    {{ commitBody() }}
-                  </p>
-                }
-              </div>
-            } @else {
-              <!--
-                Files mode: the title bar keeps the commit identifiable by its
-                short sha alone, so the left column's file list and the diff own
-                the space while the context stays visible.
-              -->
-              <span class="st-file-status__pane-title-sha st-mono st-tabular-nums">{{
-                titleShortOid()
-              }}</span>
-            }
-            <st-toggle-group
-              class="st-file-status__pane-title-switch"
-              data-testid="file-status-view-switch"
-              [ariaLabel]="viewSwitchLabel"
-              [options]="analyzerModeOptions()"
-              [value]="effectiveAnalyzerMode()"
-              (valueChange)="onAnalyzerMode($event)"
-            />
-          </header>
-        }
         @if (untrackedSelected()) {
           <p class="st-file-status__notice" data-testid="file-status-untracked" i18n>
             Untracked file — nothing to diff until it is staged.
@@ -322,21 +277,22 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
       opacity: 0.75;
     }
 
-    /* The pinned-commit section is content-sized in every variant; the commit
-       variant alone pushes it to the floor of the column (the local variant
-       heads the column instead, above the changes panel). */
+    /* The pinned-commit section is content-sized in every variant; the local
+       variant heads the column above the changes panel. */
     :host st-commit-details-panel {
       flex: 0 1 auto;
       min-height: 0;
     }
 
-    /* Commit variant: the free space lands between the changed-file list and
-       the commit panel, so the panel rests on the floor of the column
-       (margin-top: auto) and shrinks to its compact head. min-height: 0 lets
-       it shrink below its content; when the column overflows, the auto margin
-       collapses to 0 and the body scrolls. */
+    /*
+      Commit variant: the panel is the FIRST child and its own content region
+      scrolls, so it must be bounded or a long description would push the
+      summary + file list out of reach. flex: 0 1 auto + min-height: 0
+      lets it shrink; the percentage cap keeps the files region visible below
+      it while the file list takes the remaining height.
+    */
     .st-file-status__body--commit st-commit-details-panel {
-      margin-top: auto;
+      max-height: 50%;
     }
 
     :host st-file-diff-list {
@@ -377,73 +333,6 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
       color: var(--st-color-muted);
     }
 
-    /* Commit variant: the moved subject, above the diff and below its own
-       hairline so it heads the right pane. */
-    .st-file-status__pane-title {
-      display: flex;
-      align-items: center;
-      gap: var(--st-space-2);
-      flex: none;
-      padding: 0 var(--st-space-3);
-      min-height: var(--st-size-row-tree-dense);
-      color: var(--st-color-muted);
-    }
-
-    .st-file-status__pane-title-text {
-      flex: 1 1 auto;
-      margin: 0;
-      min-width: 0;
-      font-size: var(--st-font-13);
-      font-weight: 600;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      word-break: break-word;
-    }
-
-    /* Collapsed title bar: just the commit's short sha, in the mono/muted style
-       already used for oids across the app. */
-    .st-file-status__pane-title-sha {
-      min-width: 0;
-      font-size: var(--st-font-12);
-    }
-
-    /* Exclusive view switch (description / changed files): far right of the
-       title header, replacing the old disclosure. */
-    .st-file-status__pane-title-switch {
-      flex: none;
-      margin-left: auto;
-    }
-
-    /* Description mode wrapper: stacks the wrapping subject over the body. */
-    .st-file-status__pane-title-description {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      flex: 1 1 auto;
-      min-width: 0;
-    }
-
-    /* Wrapping variant of the title text: drops the single-line clamp so the
-       full subject reads in description mode. Declared after the base rule so
-       it wins the equal-specificity tie. */
-    .st-file-status__pane-title-text--wrap {
-      white-space: normal;
-      overflow: visible;
-      text-overflow: clip;
-    }
-
-    /* Commit body under the subject in description mode: muted and pre-wrapped
-       so the author's line breaks survive. */
-    .st-file-status__pane-title-body {
-      margin: 0;
-      color: var(--st-color-muted);
-      font-size: var(--st-font-11);
-      line-height: var(--st-leading-ui);
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
     .st-file-status__diff-path {
       flex: 1 1 auto;
       min-width: 0;
@@ -474,6 +363,13 @@ export class FileStatusPage {
   readonly fs = inject(FileStatusStore);
   /** Renderer-local diff-layout preference (unified by default). */
   readonly diffMode = inject(DiffModeService);
+  /**
+   * Route-scoped `description | files` choice shared with the History aside.
+   * The mode is deliberately NOT component-local: the panel is unmounted across
+   * `/repo` ↔ `/repo/file-status`, so only the shared service lets a pick
+   * survive that navigation.
+   */
+  protected readonly viewMode = inject(CommitViewModeService);
 
   /**
    * Shared, route-scoped graph. Exposed to the template because the local and
@@ -493,23 +389,18 @@ export class FileStatusPage {
   private lastStatusRefresh = this.repoState.statusRefreshRequested();
 
   /**
-   * Exclusive analyzer mode: exactly one of `description` (the right-pane title
-   * sector: full subject + body) or `files` (the left column: summary + changed
-   * file list) is visible. Page view state; independent from the panel's own
-   * mode, so the two hosts never share it.
-   */
-  readonly analyzerMode = signal<'description' | 'files'>('description');
-
-  /**
-   * The mode actually rendered. `description` is the default and stays
-   * reachable whenever the commit carries any message content — the title
-   * sector then shows the subject and/or the body, so that sector is never
-   * empty and the segment is never a dead control. Only a commit with NO
-   * message at all forces `files`: there is nothing to describe, the file list
-   * is the only sector, and no title sector (nor switch) renders.
+   * The mode actually rendered by the commit analyzer. The shared mode is the
+   * single source of truth; a commit with NO message at all (empty subject AND
+   * body) can never land in `description`, so it is forced to `files` — the
+   * exact rule the panel applies to its own `effectiveMode`.
    */
   readonly effectiveAnalyzerMode = computed<'description' | 'files'>(() =>
-    this.hasMessage() ? this.analyzerMode() : 'files',
+    this.hasMessage() ? this.viewMode.mode() : 'files',
+  );
+
+  /** Changed paths of the active commit, feeding the panel switch's file count. */
+  readonly changedPaths = computed<readonly string[]>(() =>
+    this.fs.diffFiles().map((file) => file.path),
   );
 
   /**
@@ -581,20 +472,6 @@ export class FileStatusPage {
   /** Accessible name for the diff-pane layout toggle. */
   readonly diffModeLabel = $localize`Diff layout`;
 
-  /**
-   * Segments of the analyzer's exclusive view switch. Neither segment is ever
-   * disabled: the description sector shows whatever message exists (subject
-   * and/or body) and the files sector always lists the diff, so both are real
-   * choices. The files segment carries the changed-file count.
-   */
-  readonly analyzerModeOptions = computed(() => [
-    { value: 'description', label: $localize`Description` },
-    { value: 'files', label: $localize`Files`, count: this.fs.diffFiles().length },
-  ]);
-
-  /** Shared accessible name of the exclusive view switch (same id as the panel). */
-  readonly viewSwitchLabel = $localize`Description or changed files`;
-
   /** Accessible names of the inline per-hunk actions. */
   readonly a11yStageHunk = $localize`Stage hunk`;
   readonly a11yDiscardHunk = $localize`Discard hunk`;
@@ -612,11 +489,9 @@ export class FileStatusPage {
   });
 
   /**
-   * Subject of the active commit, shown as the right-pane title in the commit
-   * variant's `description` mode (the panel itself no longer renders it there).
-   * Empty when there is no active commit. Together with `commitBody` it decides
-   * whether the title sector renders at all (`hasMessage`); on its own it
-   * decides whether the subject line renders inside that sector.
+   * Subject of the active commit. The panel renders it in the commit variant's
+   * description region; here it only distinguishes "has a message" from "has
+   * none" (see `hasMessage`). Empty when there is no active commit.
    */
   readonly commitTitle = computed(() => {
     const commit = this.fs.activeCommit();
@@ -624,9 +499,10 @@ export class FileStatusPage {
   });
 
   /**
-   * Body of the active commit (everything after the first blank line), shown
-   * under the subject in the right-pane title's `description` mode. Empty when
-   * there is no active commit or no body.
+   * Body of the active commit (everything after the first blank line). The
+   * panel renders it under the subject in `description` mode; here it only
+   * completes the `hasMessage` test so a body-only message is never mistaken
+   * for a message-less commit.
    */
   readonly commitBody = computed(() => {
     const commit = this.fs.activeCommit();
@@ -635,18 +511,15 @@ export class FileStatusPage {
 
   /**
    * Whether the commit carries ANY message content — a subject or a body. The
-   * title sector (and its switch) renders on this, not on the subject alone: a
-   * commit whose message starts with a blank line has an empty subject but a
-   * real body, and that body must stay reachable. A commit with no message at
-   * all renders no title sector and no switch, and `files` is forced (see
-   * `effectiveAnalyzerMode`), so the left column is never left empty either.
+   * analyzer keys its forced-`files` fallback on this, never on the subject
+   * alone: a commit whose message starts with a blank line has an empty subject
+   * but a real body, and that body must stay reachable. A commit with no
+   * message at all renders no description content, so `files` is forced (see
+   * `effectiveAnalyzerMode`) and the file list is never left hidden.
    */
   readonly hasMessage = computed(
     () => this.commitTitle().length > 0 || this.commitBody().length > 0,
   );
-
-  /** Short sha shown when the right-pane title is in `files` mode. */
-  readonly titleShortOid = computed(() => shortOidHex(this.fs.activeCommit()?.oid?.hex));
 
   // -- inline hunk actions (viewer-driven, ADR-0020) ------------------------
 
@@ -781,12 +654,6 @@ export class FileStatusPage {
       // Keep the user's file selection across the refresh.
       if (selected) this.fs.selectFile(selected);
     });
-  }
-
-  /** Pick the visible analyzer sector. Unknown values are ignored. */
-  onAnalyzerMode(value: string): void {
-    if (value !== 'description' && value !== 'files') return;
-    this.analyzerMode.set(value);
   }
 
   /** Switch variant through the store; only the store owns the variant state. */

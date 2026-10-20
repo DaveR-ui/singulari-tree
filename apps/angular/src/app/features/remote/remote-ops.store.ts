@@ -5,7 +5,6 @@ import { IpcBridge, toAppError, type AppError } from '@core/services/ipc-bridge.
 import { RepoState } from '@core/services/repo-state.service';
 import {
   parseRemoteTracking,
-  type FetchAllProgress,
   type FetchIntent,
   type PullIntent,
   type PushIntent,
@@ -14,12 +13,8 @@ import {
   type RemoteDialogKind,
   type RemoteOpProgress,
   type RemoteOption,
-  type RepoFetchEntry,
   type RepoFetchState,
 } from './remote-models';
-
-/** Maximum concurrent per-repo fetch calls during a "fetch all" fan-out. */
-export const FETCH_ALL_CONCURRENCY = 3;
 
 function isIpcUnavailable(err: unknown): boolean {
   return (
@@ -28,18 +23,6 @@ function isIpcUnavailable(err: unknown): boolean {
     'code' in err &&
     (err as { code?: unknown }).code === 'IPC_UNAVAILABLE'
   );
-}
-
-/** Deduplicate fan-out targets by repo id, preserving first-seen order. */
-function dedupeByRepoId(repos: readonly RepoFetchEntry[]): RepoFetchEntry[] {
-  const seen = new Set<string>();
-  const out: RepoFetchEntry[] = [];
-  for (const repo of repos) {
-    if (seen.has(repo.repoId)) continue;
-    seen.add(repo.repoId);
-    out.push(repo);
-  }
-  return out;
 }
 
 /**
@@ -59,6 +42,14 @@ export class RemoteOpsStore {
 
   /** Monotonic token for `loadRefs` (discards late responses). */
   private refsGeneration = 0;
+
+  // -- per-repository fetch bookkeeping ------------------------------------
+  /** Monotonic token per repository; an explicit token bump drops late results. */
+  private readonly fetchGenerations = new Map<string, number>();
+  /** Repositories with an automatic fetch in flight (single-flight guard). */
+  private readonly fetchInFlight = new Set<string>();
+  /** Repositories already fetched successfully in this session (freshness marker). */
+  private readonly fetchedThisSession = new Set<string>();
 
   constructor(
     bridge: IpcBridge = inject(IpcBridge),
@@ -94,15 +85,13 @@ export class RemoteOpsStore {
   readonly progress = signal<RemoteOpProgress | null>(null);
   readonly opError = signal<AppError | null>(null);
 
-  // -- multi-repo fetch (ADR-024, renderer-orchestrated) -------------------
-  /** True while a "fetch all" fan-out is in flight (re-entrancy guard). */
-  readonly fetchAllRunning = signal(false);
-  /** Per-repository status of the last/current fan-out, keyed by repo id. */
-  readonly fetchAllStatus = signal<Readonly<Record<string, RepoFetchState>>>({});
-  /** Aggregate progress of the fan-out, or null when idle/cleared. */
-  readonly fetchAllProgress = signal<FetchAllProgress | null>(null);
-  /** Last fan-out failure (the per-repo statuses stay independent). */
-  readonly fetchAllError = signal<AppError | null>(null);
+  // -- per-repository fetch (ADR-024, renderer-orchestrated) ---------------
+  /** Per-repository status of the current fetch, keyed by repo id (one at a time). */
+  readonly fetchStatus = signal<Readonly<Record<string, RepoFetchState>>>({});
+  /** Repository whose status the fetch line currently reports, or null. */
+  readonly fetchRepoId = signal<string | null>(null);
+  /** Last real fetch failure, or null (a missing bridge sets `offline` instead). */
+  readonly fetchError = signal<AppError | null>(null);
 
   // -- derived -------------------------------------------------------------
   readonly remoteOptions = computed<RemoteOption[]>(() =>
@@ -349,78 +338,121 @@ export class RemoteOpsStore {
     }
   }
 
-  // -- multi-repo fetch (ADR-024) ------------------------------------------
+  // -- per-repository fetch (ADR-024) --------------------------------------
 
   /**
-   * Fetch every open repository (ADR-024): a renderer-orchestrated fan-out of
-   * the existing per-repo streaming `fetch`, bounded to a small worker pool. No
-   * core "fetch all" RPC exists — the renderer iterates the tabs. One repo's
-   * failure never aborts the others; each repo's status is tracked independently
-   * and the last failure is surfaced. Re-entrant calls are ignored while a
-   * fan-out is already running.
+   * Fetch exactly one repository over the existing per-repo streaming `fetch`.
+   * No core "fetch all" RPC exists: the renderer asks the core for one repo at a
+   * time, so a slow repository can never block or freeze the UI.
+   *
+   * The request shape is unchanged from the former fan-out (`remote: ''`,
+   * `prune: false`, `tags: false`, `force: false`); an explicit user sync is
+   * expressed by the caller, which simply calls this method directly instead of
+   * `fetchRepoIfStale` and therefore bypasses the freshness marker.
+   *
+   * A fetch captures a generation token. After the await it drops its result
+   * (status, error and refs refresh) unless the token is still current — which
+   * `invalidateFetch` (tab closed) and a newer explicit fetch both invalidate.
    */
-  async runFetchAll(repos: readonly RepoFetchEntry[]): Promise<void> {
-    if (this.fetchAllRunning()) return;
-    const targets = dedupeByRepoId(repos);
-    if (targets.length === 0) return;
+  async fetchRepo(repoId: string, opts: { force?: boolean } = {}): Promise<void> {
+    const generation = this.bumpFetchGeneration(repoId);
+    // An explicit (forced) sync bypasses the session freshness marker.
+    if (opts.force) this.fetchedThisSession.delete(repoId);
+    this.fetchInFlight.add(repoId);
+    this.fetchRepoId.set(repoId);
+    // Report a single repository at a time: a new fetch replaces the previous
+    // line instead of accumulating a fake N/M aggregate.
+    this.fetchStatus.set({ [repoId]: 'pending' });
+    this.fetchError.set(null);
 
-    this.fetchAllRunning.set(true);
-    this.fetchAllError.set(null);
-    const initial: Record<string, RepoFetchState> = {};
-    for (const target of targets) initial[target.repoId] = 'pending';
-    this.fetchAllStatus.set(initial);
-    this.fetchAllProgress.set({ done: 0, total: targets.length });
-
-    let failed = 0;
-    let cursor = 0;
-    const worker = async (): Promise<void> => {
-      while (cursor < targets.length) {
-        const target = targets[cursor++];
-        try {
-          await this.bridge.invoke('fetch', {
-            repoId: target.repoId,
-            // Empty remote => `git fetch` for the repository's configured default
-            // (all its remotes are covered by the repo's own refspecs).
-            remote: '',
-            prune: false,
-            tags: false,
-            force: false,
-          } satisfies FetchRequest);
-          this.setFetchStatus(target.repoId, 'success');
-        } catch (err) {
-          failed++;
-          this.setFetchStatus(target.repoId, 'failed');
-          if (isIpcUnavailable(err)) {
-            this.offline.set(true);
-          } else if (this.fetchAllError() === null) {
-            // Keep the first failure (most likely the root cause) rather than
-            // letting a later one overwrite it; the per-repo statuses already
-            // count every failure.
-            this.fetchAllError.set(toAppError(err));
-          }
-        } finally {
-          this.fetchAllProgress.update((p) => (p ? { done: p.done + 1, total: p.total } : p));
-        }
+    try {
+      await this.bridge.invoke('fetch', {
+        repoId,
+        // Empty remote => `git fetch` for the repository's configured default
+        // (all its remotes are covered by the repo's own refspecs).
+        remote: '',
+        prune: false,
+        tags: false,
+        force: false,
+      } satisfies FetchRequest);
+      if (!this.isFetchCurrent(repoId, generation)) return;
+      this.fetchedThisSession.add(repoId);
+      // The STATUS write belongs to whoever owns the line: a newer repository
+      // (or a dismissed line) must never be repainted by this fetch.
+      if (this.fetchRepoId() === repoId) this.setFetchStatus(repoId, 'success');
+      // The refs refresh must NOT depend on the line owner: dismissing the
+      // status line while the fetch is in flight still leaves the repository
+      // marked session-fresh, so skipping this would leave its badges stale for
+      // the rest of the session. Only the active repository may refresh.
+      if (this.repoState.activeId() === repoId) await this.repoState.loadRefs();
+    } catch (err) {
+      if (!this.isFetchCurrent(repoId, generation)) return;
+      this.fetchedThisSession.delete(repoId);
+      // The OFFLINE indicator is global, not line state: a dismissed status line
+      // must never hide that the bridge is gone.
+      if (isIpcUnavailable(err)) {
+        this.offline.set(true);
       }
-    };
-
-    await Promise.all(
-      Array.from({ length: Math.min(FETCH_ALL_CONCURRENCY, targets.length) }, () => worker()),
-    );
-    this.fetchAllRunning.set(false);
-    // Refresh the active repository's refs/badges when at least one fetch worked.
-    if (failed < targets.length) await this.repoState.loadRefs();
+      // The line-owned writes (status + error) belong to whoever owns the line.
+      if (this.fetchRepoId() !== repoId) return;
+      this.setFetchStatus(repoId, 'failed');
+      if (!isIpcUnavailable(err)) {
+        this.fetchError.set(toAppError(err));
+      }
+    } finally {
+      // Only the token that is still current owns the in-flight slot; a stale
+      // fetch must not clear a newer fetch's guard.
+      if (this.isFetchCurrent(repoId, generation)) this.fetchInFlight.delete(repoId);
+    }
   }
 
-  /** Dismiss the fan-out status panel and drop its transient state. */
-  clearFetchAll(): void {
-    this.fetchAllStatus.set({});
-    this.fetchAllProgress.set(null);
-    this.fetchAllError.set(null);
+  /**
+   * Lazy fetch used when a repository tab becomes active: skip repositories
+   * already fetched successfully in this session, and stay single-flight so two
+   * quick activations cannot stack a second concurrent call.
+   */
+  async fetchRepoIfStale(repoId: string): Promise<void> {
+    if (this.fetchInFlight.has(repoId)) return;
+    if (this.fetchedThisSession.has(repoId)) return;
+    await this.fetchRepo(repoId);
+  }
+
+  /**
+   * Invalidate every in-flight fetch for `repoId` (its tab was closed). Bumps
+   * the generation so a late response can never write status, error or refs,
+   * and drops the reported line when it belonged to that repository.
+   */
+  invalidateFetch(repoId: string): void {
+    this.bumpFetchGeneration(repoId);
+    this.fetchInFlight.delete(repoId);
+    this.fetchedThisSession.delete(repoId);
+    if (this.fetchRepoId() === repoId) {
+      this.fetchStatus.set({});
+      this.fetchRepoId.set(null);
+      this.fetchError.set(null);
+    }
+  }
+
+  /** Dismiss the fetch status line and drop its transient state. */
+  clearFetch(): void {
+    this.fetchStatus.set({});
+    this.fetchRepoId.set(null);
+    this.fetchError.set(null);
   }
 
   private setFetchStatus(repoId: string, state: RepoFetchState): void {
-    this.fetchAllStatus.update((prev) => ({ ...prev, [repoId]: state }));
+    // One source of truth, one repository at a time.
+    this.fetchStatus.set({ [repoId]: state });
+  }
+
+  private bumpFetchGeneration(repoId: string): number {
+    const generation = (this.fetchGenerations.get(repoId) ?? 0) + 1;
+    this.fetchGenerations.set(repoId, generation);
+    return generation;
+  }
+
+  private isFetchCurrent(repoId: string, generation: number): boolean {
+    return this.fetchGenerations.get(repoId) === generation;
   }
 
   private handleRunError(err: unknown): void {

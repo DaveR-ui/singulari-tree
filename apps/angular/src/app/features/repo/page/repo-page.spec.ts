@@ -16,6 +16,7 @@ import { CommitFocusService } from '@core/services/commit-focus.service';
 import { IpcBridge, type AppError } from '@core/services/ipc-bridge.service';
 import { RepoState } from '@core/services/repo-state.service';
 import { WorkspacesStore } from '@core/services/workspaces.store';
+import { CommitViewModeService } from '../commit-view-mode.service';
 import { GraphStore, WIP_OID } from '../graph/graph.store';
 import { StatusStore } from '../status/status.store';
 import type { CommitRow } from '../repo-models';
@@ -171,6 +172,7 @@ async function setup(initial: Repository | null = REPO_A, initialGraphReload = 0
       { provide: GraphStore, useValue: graphStore },
       { provide: StatusStore, useValue: status },
       { provide: IpcBridge, useValue: bridge },
+      CommitViewModeService,
     ],
   }).compileComponents();
 
@@ -443,11 +445,14 @@ class CommitDetailsPanelStub {
   readonly locked = input(false);
   readonly showInGraph = input(false);
   readonly changedFiles = input<readonly string[]>([]);
+  readonly mode = input<'description' | 'files'>('description');
+  readonly showViewSwitch = input(false);
   readonly reviewChanges = output<void>();
   readonly lockToggle = output<void>();
   readonly release = output<void>();
   readonly openHistory = output<void>();
   readonly revealInGraph = output<void>();
+  readonly modeChange = output<'description' | 'files'>();
 }
 
 /**
@@ -558,6 +563,9 @@ async function render(
       { provide: StatusStore, useValue: status },
       { provide: IpcBridge, useValue: bridge },
       { provide: Router, useValue: router },
+      // Route-scoped in the app; the routed host injects it, so the test must
+      // provide it explicitly.
+      CommitViewModeService,
     ],
   })
     .overrideComponent(RepoPage, {
@@ -820,6 +828,32 @@ describe('RepoPage workspace split', () => {
     // Unlock keeps the selection: the pane stays pinned on the same commit.
     expect(graphStore.selectedOid()).toBe(COMMIT_OID);
     expect(detailsStub(fixture).locked()).toBe(false);
+  });
+
+  it('drives the panel switch from the shared view-mode service', async () => {
+    const { fixture, graphStore } = await renderWithGraph();
+    const viewMode = TestBed.inject(CommitViewModeService);
+    graphStore.select(COMMIT_OID);
+    fixture.detectChanges();
+
+    const panel = detailsStub(fixture);
+    // The History aside opts into the header switch.
+    expect(panel.showViewSwitch()).toBe(true);
+    // The panel's mode is HOST-owned: it starts at the service default…
+    expect(panel.mode()).toBe('description');
+
+    // …follows an external change (e.g. a pick made on the analyzer)…
+    viewMode.setMode('files');
+    fixture.detectChanges();
+    expect(panel.mode()).toBe('files');
+
+    // …and an emitted pick changes nothing locally: the host feeds it back.
+    viewMode.setMode('description');
+    fixture.detectChanges();
+    panel.modeChange.emit('files');
+    fixture.detectChanges();
+    expect(viewMode.mode()).toBe('files');
+    expect(panel.mode()).toBe('files');
   });
 
   it('keeps rendering the locked commit after the window reloads without it', async () => {
