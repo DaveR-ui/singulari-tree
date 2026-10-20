@@ -6,6 +6,8 @@
 > Module alias: **Singularitree** (Go module `github.com/SingulariTree/go-core`, proto package `singularitree.v1` aka `gitclient.v1` for compatibility).
 
 > **Agent-facing documentation:** entry point [`docs/project.md`](docs/project.md) · generated index [`docs/index.md`](docs/index.md) · contract in [`docs/context/documentation-system.md`](docs/context/documentation-system.md).
+>
+> **Website:** [daver-ui.github.io/singulari-tree](https://daver-ui.github.io/singulari-tree/) — static landing page (Spanish), source in `website/`. See [Website](#website).
 
 Necomat `frontend/` (Angular 21 SPA `spa-necomat`) and `backend/` (Go 1.24 API `github.com/DavidRomaniuk/golang-api`) are **untouched** by this scaffold. SingulariTree is additive — see `docs/context/git-client/INDEX.md`.
 
@@ -32,6 +34,7 @@ SingulariTree/                         <- monorepo root (physical folder Singula
 ├── tools/
 │   ├── scripts/{gen-contracts,build-go-core}.sh
 │   └── ci/verify-contracts.sh
+├── website/                           <- static landing page for GitHub Pages (no build step)
 ├── go.work                            <- Go workspace (use ./apps/go-core)
 └── README.md
 ```
@@ -71,6 +74,18 @@ Behavior in `--headless`:
 - Proto package: `singularitree.v1` (alias `gitclient.v1` for compatibility — see `libs/contracts/proto/*.proto` header comments)
 - Generation: `buf generate --template buf.gen.yaml` -> `libs/contracts/gen/go` + `libs/contracts/gen/ts`
 - Breaking check: `buf breaking` via `tools/ci/verify-contracts.sh`
+
+## Website
+
+Static landing page (Spanish) — plain HTML/CSS, **no build step**.
+
+- Source: `website/` (`index.html`, `styles.css`, `assets/`)
+- Live: <https://daver-ui.github.io/singulari-tree/>
+- Deploy: `.github/workflows/pages.yml` uploads `website/` with `actions/upload-pages-artifact` and publishes with `actions/deploy-pages` on pushes to `main` that touch `website/**` or the workflow; manual runs via `workflow_dispatch`.
+- One-time setup: **Settings → Pages → Source: GitHub Actions** (already enabled; `build_type: workflow`).
+- Illustrative only: the page states that there is **no public release yet** and that all builds are unsigned/preliminary.
+
+Local preview: open `website/index.html` in a browser (relative asset paths, no server needed).
 
 ## Necomat Isolation
 
