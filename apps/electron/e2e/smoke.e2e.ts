@@ -368,7 +368,8 @@ test.describe('SingulariTree Electron smoke: open repo → graph → stage → c
     await expect(wipFile).toBeVisible();
     await expect(window.getByTestId('status-error')).toHaveCount(0);
 
-    // The History-only WIP placeholder is gone: History no longer owns status.
+    // The local variant pins `isWip` to false, so the panel's WIP branch exists
+    // only in History's aside — File status never mounts that placeholder.
     await expect(window.getByTestId('commit-details-wip')).toHaveCount(0);
   });
 
@@ -377,8 +378,8 @@ test.describe('SingulariTree Electron smoke: open repo → graph → stage → c
     if (!window || !fixture) throw new Error('e2e setup did not initialise');
 
     // Entry steps (self-contained): open the repo if needed, go to History, then
-    // navigate to the File status screen through the sidebar WORKSPACE "Local
-    // changes" entry. This test performs its own navigation instead of inheriting
+    // navigate to the File status screen through the sidebar WORKSPACE "Commit
+    // analyzer" entry. This test performs its own navigation instead of inheriting
     // test 2's WIP hand-off. With no real commit selected (WIP or nothing
     // selected), FileStatusPage's selection-following effect dispatches
     // `openLocal()`, so the screen lands on the `local` variant. Verified: the
@@ -459,7 +460,14 @@ test.describe('SingulariTree Electron smoke: open repo → graph → stage → c
     await expect(filesSegment).toBeVisible();
     await filesSegment.click();
 
-    const changedRow = window.getByTestId('file-diff-row').filter({ hasText: 'wip.txt' });
+    // In Files mode the changed-file list belongs to the commit-details PANEL,
+    // not to the page: its rows are PATHS ONLY (no status badge, no +/- counts —
+    // those live on `st-file-diff-list`, which now renders only in the `pr`
+    // variant) and, because the analyzer opts into `filesSelectable`, each row
+    // emits the picked path so the right pane projects that one file's diff.
+    const changedRow = window
+      .getByTestId('commit-details-file-path')
+      .filter({ hasText: 'wip.txt' });
     await expect(changedRow).toHaveCount(1, { timeout: 30_000 });
     await expect(changedRow).toBeVisible();
     await changedRow.click();
