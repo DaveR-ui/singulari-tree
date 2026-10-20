@@ -32,9 +32,9 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
  * Three variants share that scaffold: **local** reuses the existing working-tree
  * `st-changes-panel` (with the pinned-commit `st-commit-details-panel` section
  * rendered above it as the contrast anchor / entry point), **commit** reuses
- * `st-commit-details-panel` as its description region (subject + body, with the
- * shared `description | files` switch in the panel header) plus the changed-file
- * list below it, and **pull request** diffs a local ref against a base branch. The screen never talks to
+ * `st-commit-details-panel` as the WHOLE commit view — subject + body, or the
+ * panel's own paths-only changed-file list, plus its metadata footer — and
+ * **pull request** diffs a local ref against a base branch. The screen never talks to
  * Git: every value comes from `FileStatusStore`, which composes the route-scoped
  * `StatusStore` and calls the existing `getStatus`/`getDiff`/`getBranches` RPCs
  * through `IpcBridge`.
@@ -127,43 +127,35 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
             }
             @case ('commit') {
               <!--
-                The PANEL owns the description region: it renders the subject
-                and, in description mode, the body in its own scrolling
-                content region. The PAGE keeps the files region (summary +
-                changed-file list) and renders it below the panel only while
-                the shared mode is "files"; the list is also the diff selector,
-                so it must stay reachable. The panel's header carries the
-                exclusive switch, wired to the route-scoped mode so the choice
-                survives the /repo ↔ /repo/file-status navigation. A commit
-                with no message at all is forced to files by both surfaces
-                (see effectiveAnalyzerMode).
+                The PANEL owns the whole commit view, exactly like History: its
+                content region holds the subject/body (description mode) or the
+                changed-file list (files mode, paths only), and its metadata
+                footer is the last element of the column. The panel is the SOLE
+                scroller here: the page renders no summary and no separate file
+                list. The rows are selectable because the right pane projects a
+                single file, so picking a row is how the diff changes. The
+                header's contextual action is "History": following the commit
+                hands it to the graph via CommitFocusService.
               -->
               <st-commit-details-panel
                 [commit]="fs.activeCommit()"
                 [isWip]="false"
                 [showSubject]="true"
-                [showFiles]="false"
+                [showFiles]="true"
+                [filesSelectable]="true"
+                [selectedPath]="fs.selectedPath()"
                 [showViewSwitch]="true"
                 [mode]="viewMode.mode()"
                 [changedFiles]="changedPaths()"
-                [navMode]="'release'"
+                [navMode]="'history'"
                 [locked]="graph.lockedOid() === fs.activeCommit()?.oid?.hex"
                 [showInGraph]="true"
                 (modeChange)="viewMode.setMode($event)"
-                (release)="releaseCommit()"
+                (fileSelect)="fs.selectFile($event)"
+                (openHistory)="goHistory()"
                 (lockToggle)="toggleLock()"
                 (revealInGraph)="showInGraph()"
               />
-              @if (effectiveAnalyzerMode() === 'files') {
-                <p class="st-file-status__summary" data-testid="file-status-summary">
-                  {{ summaryText() }}
-                </p>
-                <st-file-diff-list
-                  [files]="fs.diffFiles()"
-                  [selectedPath]="fs.selectedPath()"
-                  (fileSelect)="fs.selectFile($event)"
-                />
-              }
             }
             @case ('pr') {
               <p class="st-file-status__summary" data-testid="file-status-summary">
@@ -285,14 +277,18 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
     }
 
     /*
-      Commit variant: the panel is the FIRST child and its own content region
-      scrolls, so it must be bounded or a long description would push the
-      summary + file list out of reach. flex: 0 1 auto + min-height: 0
-      lets it shrink; the percentage cap keeps the files region visible below
-      it while the file list takes the remaining height.
+      Commit variant: the panel IS the column. Its own content region scrolls,
+      so the column must not scroll too (that would nest two scrollers and
+      detach the panel's pinned metadata footer). The panel stretches to fill
+      the leftover height: flex: 1 1 auto + min-height: 0.
     */
+    .st-file-status__body--commit {
+      overflow: hidden;
+    }
+
     .st-file-status__body--commit st-commit-details-panel {
-      max-height: 50%;
+      flex: 1 1 auto;
+      min-height: 0;
     }
 
     :host st-file-diff-list {
@@ -699,8 +695,11 @@ export class FileStatusPage {
     else this.graph.lock();
   }
 
-  /** Return to the History screen so the user can pick a commit. */
+  /** Navigate to History, following the commit in view when there is one. */
   goHistory(): void {
+    const oid = this.fs.activeCommit()?.oid?.hex ?? this.graph.lockedCommit()?.oid?.hex;
+    const repoId = this.graph.repoId();
+    if (oid && repoId) this.commitFocus.request(repoId, oid);
     void this.router?.navigate(['/repo']);
   }
 

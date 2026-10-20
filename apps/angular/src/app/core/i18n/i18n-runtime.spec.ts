@@ -146,6 +146,11 @@ describe('locale catalogues', () => {
     // Settled per-repository fetch states.
     'Repository up to date',
     'Fetch failed',
+    // Commit-details UX pass: the release control's new label and the two
+    // delayed nav tooltips.
+    'Close',
+    'collapse panel',
+    'follow commit',
   ];
 
   it.each(newMessages)('resolves the new message %j in both catalogues', (message) => {

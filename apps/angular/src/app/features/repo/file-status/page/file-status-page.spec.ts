@@ -379,8 +379,10 @@ describe('FileStatusPage', () => {
     const details = fixture.debugElement.query(By.css('st-commit-details-panel'))
       ?.componentInstance as CommitDetailsPanel;
     expect(details.showSubject()).toBe(true);
-    expect(details.showFiles()).toBe(false);
+    expect(details.showFiles()).toBe(true);
+    expect(details.filesSelectable()).toBe(true);
     expect(details.showViewSwitch()).toBe(true);
+    expect(details.navMode()).toBe('history');
 
     // The subject and the body render in the panel's own content region.
     const subject = query(fixture, 'commit-details-subject');
@@ -429,7 +431,7 @@ describe('FileStatusPage', () => {
     expect(query(fixture, 'commit-details-file-path')).toBeNull();
   });
 
-  it('switches the analyzer to files mode from the panel switch: left-column list appears', async () => {
+  it('switches the analyzer to files mode from the panel switch: the panel list appears', async () => {
     const { fixture, fs, viewMode } = await setup({ selection: HEAD_HEX });
     await waitForDiff(fixture, fs);
     await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
@@ -452,10 +454,19 @@ describe('FileStatusPage', () => {
     expect(query(fixture, 'commit-details-description')).toBeNull();
     expect(query(fixture, 'file-status-title-body')).toBeNull();
 
-    // The left column's summary + file list render.
-    expect(query(fixture, 'file-status-summary')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('st-file-diff-list')).not.toBeNull();
-    expect(all(fixture, 'file-diff-row')).toHaveLength(2);
+    // The PANEL's own files sector renders: heading + one row per changed path,
+    // all inside the panel's single scrolling content region.
+    const content = query(fixture, 'commit-details-content')!;
+    const heading = query(fixture, 'commit-details-files-heading')!;
+    expect(heading.textContent?.trim()).toBe('2 changed files');
+    expect(content.contains(heading)).toBe(true);
+    const rows = all(fixture, 'commit-details-file-path');
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.textContent?.trim())).toEqual(['a.ts', 'b.ts']);
+    expect(rows.every((row) => content.contains(row))).toBe(true);
+    // The page's old summary and diff list are gone from the commit variant.
+    expect(query(fixture, 'file-status-summary')).toBeNull();
+    expect(fixture.nativeElement.querySelector('st-file-diff-list')).toBeNull();
 
     // Switching back restores the description sector.
     query(fixture, 'commit-details-view-switch')!
@@ -464,7 +475,7 @@ describe('FileStatusPage', () => {
     fixture.detectChanges();
     expect(viewMode.mode()).toBe('description');
     expect(query(fixture, 'commit-details-description')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('st-file-diff-list')).toBeNull();
+    expect(query(fixture, 'commit-details-files-heading')).toBeNull();
   });
 
   it('renders exactly one sector at a time with the switch inside the panel header', async () => {
@@ -485,14 +496,14 @@ describe('FileStatusPage', () => {
     expect(query(fixture, 'file-status-view-switch')).toBeNull();
 
     const bodyVisible = () => query(fixture, 'commit-details-description') !== null;
-    const listVisible = () => fixture.nativeElement.querySelector('st-file-diff-list') !== null;
-    // Description mode: body XOR list.
+    const listVisible = () => query(fixture, 'commit-details-files-heading') !== null;
+    // Description mode: body XOR files sector.
     expect(bodyVisible() && listVisible()).toBe(false);
     expect(bodyVisible() || listVisible()).toBe(true);
 
     viewSwitch.querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!.click();
     fixture.detectChanges();
-    // Files mode: still exactly one of the two, and it is the list.
+    // Files mode: still exactly one of the two, and it is the files sector.
     expect(bodyVisible() && listVisible()).toBe(false);
     expect(bodyVisible() || listVisible()).toBe(true);
     expect(listVisible()).toBe(true);
@@ -528,20 +539,20 @@ describe('FileStatusPage', () => {
     expect(description.disabled).toBe(false);
     expect(description.getAttribute('aria-pressed')).toBe('true');
 
-    // Exactly one sector: the left column's file list is absent.
-    expect(fixture.nativeElement.querySelector('st-file-diff-list')).toBeNull();
+    // Exactly one sector: the panel's files sector is absent.
+    expect(query(fixture, 'commit-details-files-heading')).toBeNull();
 
     // Files mode is one click away, and description comes straight back.
     viewSwitch.querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!.click();
     fixture.detectChanges();
     expect(page.effectiveAnalyzerMode()).toBe('files');
-    expect(fixture.nativeElement.querySelector('st-file-diff-list')).not.toBeNull();
+    expect(query(fixture, 'commit-details-files-heading')).not.toBeNull();
     query(fixture, 'commit-details-view-switch')!
       .querySelector<HTMLButtonElement>('[data-testid="toggle-segment-description"]')!
       .click();
     fixture.detectChanges();
     expect(page.effectiveAnalyzerMode()).toBe('description');
-    expect(fixture.nativeElement.querySelector('st-file-diff-list')).toBeNull();
+    expect(query(fixture, 'commit-details-files-heading')).toBeNull();
   });
 
   it('shows the body when the commit subject is empty (never neither sector)', async () => {
@@ -569,8 +580,8 @@ describe('FileStatusPage', () => {
     const body = query(fixture, 'commit-details-description');
     expect(body?.textContent?.trim()).toBe('body only, no subject');
 
-    // Exactly one sector: the left column's file list is absent.
-    expect(fixture.nativeElement.querySelector('st-file-diff-list')).toBeNull();
+    // Exactly one sector: the panel's files sector is absent.
+    expect(query(fixture, 'commit-details-files-heading')).toBeNull();
 
     // One click reaches the files sector and its list.
     query(fixture, 'commit-details-view-switch')!
@@ -579,7 +590,7 @@ describe('FileStatusPage', () => {
     fixture.detectChanges();
     expect(page.effectiveAnalyzerMode()).toBe('files');
     expect(query(fixture, 'commit-details-description')).toBeNull();
-    expect(fixture.nativeElement.querySelector('st-file-diff-list')).not.toBeNull();
+    expect(query(fixture, 'commit-details-files-heading')).not.toBeNull();
   });
 
   it('forces files mode for a message-less commit (disabled description segment)', async () => {
@@ -607,7 +618,8 @@ describe('FileStatusPage', () => {
         ?.disabled,
     ).toBe(true);
     expect(query(fixture, 'commit-details-description')).toBeNull();
-    expect(fixture.nativeElement.querySelector('st-file-diff-list')).not.toBeNull();
+    expect(query(fixture, 'commit-details-files-heading')).not.toBeNull();
+    expect(all(fixture, 'commit-details-file-path')).toHaveLength(2);
   });
 
   it('shares the mode with the embedded panel through the route-scoped service', async () => {
@@ -627,14 +639,15 @@ describe('FileStatusPage', () => {
 
     expect(details.mode()).toBe('files');
     expect(fixture.componentInstance.effectiveAnalyzerMode()).toBe('files');
-    // The panel opted out of its own files block: the page owns the list.
-    expect(details.showFiles()).toBe(false);
-    expect(fixture.nativeElement.querySelector('st-file-diff-list')).not.toBeNull();
+    // The panel owns the files block in the analyzer too (no page list).
+    expect(details.showFiles()).toBe(true);
+    expect(query(fixture, 'commit-details-files-heading')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('st-file-diff-list')).toBeNull();
 
     viewMode.setMode('description');
     fixture.detectChanges();
     expect(details.mode()).toBe('description');
-    expect(fixture.nativeElement.querySelector('st-file-diff-list')).toBeNull();
+    expect(query(fixture, 'commit-details-files-heading')).toBeNull();
   });
 
   it('wires the commit-variant panel to the redesigned contract', async () => {
@@ -647,15 +660,22 @@ describe('FileStatusPage', () => {
       ?.componentInstance as CommitDetailsPanel;
     expect(panel.commit()?.oid?.hex).toBe(HEAD_HEX);
     expect(panel.isWip()).toBe(false);
-    // The panel owns the description; the page keeps the files region.
+    // The panel owns the WHOLE commit view: description AND files sector.
     expect(panel.showSubject()).toBe(true);
-    expect(panel.showFiles()).toBe(false);
+    expect(panel.showFiles()).toBe(true);
+    // The rows are selectable so the right pane can project the picked file.
+    expect(panel.filesSelectable()).toBe(true);
+    expect(panel.selectedPath()).toBeNull();
     // The header switch is wired to the shared mode.
     expect(panel.showViewSwitch()).toBe(true);
     expect(panel.mode()).toBe('description');
     // The switch's file count comes from the active commit's diff.
     expect(panel.changedFiles()).toEqual(['a.ts', 'b.ts']);
-    expect(panel.navMode()).toBe('release');
+    // The commit variant's contextual action follows the commit into History:
+    // the release/Close control is not rendered there.
+    expect(panel.navMode()).toBe('history');
+    expect(query(fixture, 'commit-details-release')).toBeNull();
+    expect(query(fixture, 'commit-details-history')).not.toBeNull();
     expect(panel.showInGraph()).toBe(true);
     // The padlock reflects the shared graph lock.
     expect(panel.locked()).toBe(false);
@@ -823,13 +843,13 @@ describe('FileStatusPage', () => {
     expect(openCommit).not.toHaveBeenCalled();
   });
 
-  it('orders the commit column as panel, then summary, then file list', async () => {
+  it('makes the panel the commit column’s sole scroller, with the file rows inside its content', async () => {
     const { fixture, fs } = await setup({ selection: HEAD_HEX });
     await waitForDiff(fixture, fs);
     await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
     fixture.detectChanges();
 
-    // The summary and file list live in the files sector; the default is
+    // The file rows live in the panel's files sector; the default is
     // description, so switch first (from the panel's own header).
     query(fixture, 'commit-details-view-switch')!
       .querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!
@@ -837,30 +857,41 @@ describe('FileStatusPage', () => {
     fixture.detectChanges();
 
     const host = fixture.nativeElement as HTMLElement;
+    const body = host.querySelector('.st-file-status__body--commit');
     const details = host.querySelector('st-commit-details-panel');
-    const summary = query(fixture, 'file-status-summary');
-    const list = host.querySelector('st-file-diff-list');
+    const content = query(fixture, 'commit-details-content');
+    const footer = query(fixture, 'commit-details-footer');
+    const heading = query(fixture, 'commit-details-files-heading');
+    expect(body).not.toBeNull();
     expect(details).not.toBeNull();
-    expect(summary).not.toBeNull();
-    expect(list).not.toBeNull();
+    expect(content).not.toBeNull();
+    expect(footer).not.toBeNull();
 
-    // The three stack as siblings in the variant body: the panel is FIRST
-    // (right under the variant bar), then the summary and the changed-file list.
-    expect(details!.parentElement).toBe(summary!.parentElement);
-    expect(summary!.parentElement).toBe(list!.parentElement);
-    expect(
-      details!.compareDocumentPosition(summary!) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      summary!.compareDocumentPosition(list!) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    // The panel is the column's ONLY child: no summary, no page file list.
+    expect(details!.parentElement).toBe(body);
+    expect(body!.children).toHaveLength(1);
+    expect(query(fixture, 'file-status-summary')).toBeNull();
+    expect(host.querySelector('st-file-diff-list')).toBeNull();
 
-    // The panel is bounded and content-sized (never floor-pinned); the list
-    // takes the remaining height so it stays reachable.
-    expect(getComputedStyle(details as Element).flexGrow).toBe('0');
-    expect(getComputedStyle(details as Element).marginTop).not.toBe('auto');
-    expect(getComputedStyle(details as Element).maxHeight).not.toBe('none');
-    expect(getComputedStyle(list as Element).flexGrow).toBe('1');
+    // The panel stretches and owns the scroll; the body must not scroll too.
+    expect(getComputedStyle(details as Element).flexGrow).toBe('1');
+    expect(getComputedStyle(details as Element).maxHeight).not.toBe('50%');
+    expect(getComputedStyle(body as Element).overflow).toBe('hidden');
+
+    // The changed-file rows live INSIDE the panel's content region, under the
+    // heading, while the metadata footer stays its sibling (History's order).
+    const rows = all(fixture, 'commit-details-file-path');
+    expect(rows).toHaveLength(2);
+    expect(heading).not.toBeNull();
+    expect(content!.contains(heading!)).toBe(true);
+    rows.forEach((row) => {
+      expect(content!.contains(row)).toBe(true);
+    });
+    expect(content!.contains(footer!)).toBe(false);
+    expect(details!.contains(footer!)).toBe(true);
+    expect(
+      content!.compareDocumentPosition(footer!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it('switches variant from the variant bar', async () => {
@@ -911,20 +942,21 @@ describe('FileStatusPage', () => {
     expect(diff?.hunks?.[0].lines[0].text).toBe('a-line');
   });
 
-  it('re-projects when a file row is clicked', async () => {
+  it('re-projects the right pane when a panel file row is clicked', async () => {
     const { fixture, fs } = await setup({ selection: HEAD_HEX });
     await waitForDiff(fixture, fs);
     await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
     fixture.detectChanges();
 
-    // The file rows live in the files sector; the default is description.
+    // The file rows live in the panel's files sector; the default is description.
     query(fixture, 'commit-details-view-switch')!
       .querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!
       .click();
     fixture.detectChanges();
 
-    const rows = all(fixture, 'file-diff-row');
+    const rows = all(fixture, 'commit-details-file-path');
     expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.getAttribute('data-path'))).toEqual(['a.ts', 'b.ts']);
     rows[1].click();
     fixture.detectChanges();
 
@@ -1020,21 +1052,34 @@ describe('FileStatusPage', () => {
     expect(reload).toHaveBeenCalled();
   });
 
-  it('renders the one-line change summary of the commit diff', async () => {
+  it('drops the page summary from the commit variant but keeps it in the PR variant', async () => {
     const { fixture, fs } = await setup({ selection: HEAD_HEX });
     await waitForDiff(fixture, fs);
     await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
     fixture.detectChanges();
 
-    // The summary is part of the files sector; switch to it first.
+    // Files mode in the commit variant: the panel's own heading carries the
+    // count; the page summary is gone (History's distribution).
     query(fixture, 'commit-details-view-switch')!
       .querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!
       .click();
     fixture.detectChanges();
 
+    expect(query(fixture, 'file-status-summary')).toBeNull();
+    expect(query(fixture, 'commit-details-files-heading')?.textContent?.trim()).toBe(
+      '2 changed files',
+    );
+
+    // The PR variant keeps the page summary and file list untouched.
+    all(fixture, 'toggle-segment-pr')[0].click();
+    await vi.waitFor(() => expect(fs.variant()).toBe('pr'));
+    await vi.waitFor(() => expect(fs.commitDiff()).not.toBeNull());
+    fixture.detectChanges();
+
     expect(query(fixture, 'file-status-summary')?.textContent?.trim()).toBe(
       '+10 \u22124 across 2 files',
     );
+    expect(fixture.nativeElement.querySelector('st-file-diff-list')).not.toBeNull();
   });
 
   it('refreshes the working tree on fs:changed but never the commit diff', async () => {
@@ -1465,11 +1510,46 @@ describe('FileStatusPage', () => {
     const page = fixture.componentInstance;
     page.goHistory();
     expect(router.navigate).toHaveBeenCalledWith(['/repo']);
+    // The analyzer's History control follows the commit in view.
+    expect(commitFocus.pending()).toEqual({ repoId: 'repo-1', oid: HEAD_HEX });
 
     page.showInGraph();
     // The focus hand-off lets RepoPage page to a commit outside the window.
     expect(commitFocus.pending()).toEqual({ repoId: 'repo-1', oid: HEAD_HEX });
     expect(router.navigate).toHaveBeenLastCalledWith(['/repo']);
+  });
+
+  it('follows the commit when the analyzer History control is clicked', async () => {
+    const { fixture, fs, router, commitFocus } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+    fixture.detectChanges();
+
+    // The commit variant renders the History control, never the release/Close one.
+    expect(query(fixture, 'commit-details-release')).toBeNull();
+    const history = query(fixture, 'commit-details-history');
+    expect(history).not.toBeNull();
+
+    history!.querySelector('button')!.click();
+    fixture.detectChanges();
+
+    expect(commitFocus.pending()).toEqual({ repoId: 'repo-1', oid: HEAD_HEX });
+    expect(router.navigate).toHaveBeenLastCalledWith(['/repo']);
+  });
+
+  it('navigates without a focus request when there is no commit to follow', async () => {
+    const { fixture, fs, router, commitFocus } = await setup({ selection: WIP_OID });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('local'));
+    fixture.detectChanges();
+
+    // The local variant's empty branch renders the same History shortcut.
+    expect(query(fixture, 'commit-details-history')).not.toBeNull();
+
+    fixture.componentInstance.goHistory();
+
+    expect(commitFocus.pending()).toBeNull();
+    expect(router.navigate).toHaveBeenCalledWith(['/repo']);
   });
 
   it('reloads the graph window when the working tree changes externally', async () => {
