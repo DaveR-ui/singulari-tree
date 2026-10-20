@@ -36,6 +36,8 @@ type PanelInputs = {
   locked?: boolean;
   showInGraph?: boolean;
   changedFiles?: readonly string[];
+  filesSelectable?: boolean;
+  selectedPath?: string | null;
 };
 
 function render(inputs: PanelInputs = {}): ComponentFixture<CommitDetailsPanel> {
@@ -51,6 +53,8 @@ function render(inputs: PanelInputs = {}): ComponentFixture<CommitDetailsPanel> 
   fixture.componentRef.setInput('locked', inputs.locked ?? false);
   fixture.componentRef.setInput('showInGraph', inputs.showInGraph ?? false);
   fixture.componentRef.setInput('changedFiles', inputs.changedFiles ?? []);
+  fixture.componentRef.setInput('filesSelectable', inputs.filesSelectable ?? false);
+  fixture.componentRef.setInput('selectedPath', inputs.selectedPath ?? null);
   fixture.detectChanges();
   return fixture;
 }
@@ -353,13 +357,13 @@ describe('CommitDetailsPanel', () => {
     expect(el.querySelector('[data-testid="commit-details-review"]')).not.toBeNull();
   });
 
-  it('hides the subject headline when showSubject is false (File-status embed)', () => {
+  it('hides the subject headline when showSubject is false (local embed)', () => {
     // History keeps the subject inside the panel.
     const shown = render({ commit: COMMIT }).nativeElement as HTMLElement;
     expect(text(shown, 'commit-details-subject')).toBe('feat(graph): details panel');
 
-    // The File-status commit embed moves the subject to the right-pane title, so
-    // the panel must not duplicate it. The identity head (hash) is unaffected.
+    // The File-status LOCAL variant owns this screen's identity, so the panel
+    // must not duplicate it. The identity head (hash) is unaffected.
     const hidden = render({ commit: COMMIT, showSubject: false }).nativeElement as HTMLElement;
     expect(hidden.querySelector('[data-testid="commit-details-subject"]')).toBeNull();
     expect(text(hidden, 'commit-details-short-oid')).toBe('aaaaaaa');
@@ -576,14 +580,14 @@ describe('CommitDetailsPanel — changed files', () => {
     return fixture.nativeElement as HTMLElement;
   }
 
-  it('never renders the files sector without showFiles (analyzer embed)', () => {
+  it('never renders the files sector without showFiles', () => {
     const el = render({
       commit: COMMIT,
       mode: 'files',
       changedFiles: ['src/a.ts'],
     }).nativeElement as HTMLElement;
 
-    // No switch and no files block: the File-status analyzer owns the file list.
+    // No switch and no files block: the host did not opt into the panel's list.
     expect(el.querySelector('[data-testid="commit-details-view-switch"]')).toBeNull();
     expect(el.querySelector('[data-testid="commit-details-files-heading"]')).toBeNull();
     expect(el.querySelector('[data-testid="commit-details-file-path"]')).toBeNull();
@@ -731,6 +735,62 @@ describe('CommitDetailsPanel — changed files', () => {
     expect(el.querySelector('[data-testid="diff-viewer"]')).toBeNull();
     expect(el.querySelector('.st-diff-viewer')).toBeNull();
   });
+
+  it('keeps the path rows plain and inert by default (History host)', () => {
+    const fixture = render({
+      commit: COMMIT,
+      showFiles: true,
+      mode: 'files',
+      changedFiles: ['src/a.ts'],
+    });
+    const el = fixture.nativeElement as HTMLElement;
+    let picked: string | null = null;
+    fixture.componentInstance.fileSelect.subscribe((path) => (picked = path));
+
+    const row = el.querySelector<HTMLElement>('[data-testid="commit-details-file-path"]')!;
+    expect(row.classList.contains('st-commit-details__file-path')).toBe(true);
+    expect(row.classList.contains('st-mono')).toBe(true);
+    // Exactly History's DOM: no directive classes and no tab stop.
+    expect(row.classList.contains('st-selectable-row')).toBe(false);
+    expect(row.hasAttribute('tabindex')).toBe(false);
+    expect(row.hasAttribute('data-selected')).toBe(false);
+
+    row.click();
+    expect(picked).toBeNull();
+  });
+
+  it('makes the path rows selectable and emits the picked path when the host opts in', () => {
+    const fixture = render({
+      commit: COMMIT,
+      showFiles: true,
+      mode: 'files',
+      changedFiles: ['src/a.ts', 'src/b.ts'],
+      filesSelectable: true,
+      selectedPath: 'src/b.ts',
+    });
+    const el = fixture.nativeElement as HTMLElement;
+    const picks: string[] = [];
+    fixture.componentInstance.fileSelect.subscribe((path) => picks.push(path));
+
+    const rows = Array.from(
+      el.querySelectorAll<HTMLElement>('[data-testid="commit-details-file-path"]'),
+    );
+    expect(rows).toHaveLength(2);
+    // The shared directive marks the row the host's right pane is showing.
+    expect(rows[0].classList.contains('st-selectable-row')).toBe(true);
+    expect(rows[0].hasAttribute('tabindex')).toBe(true);
+    expect(rows[0].getAttribute('data-selected')).toBe('false');
+    expect(rows[0].classList.contains('st-selectable-row--selected')).toBe(false);
+    expect(rows[1].getAttribute('data-selected')).toBe('true');
+    expect(rows[1].classList.contains('st-selectable-row--selected')).toBe(true);
+
+    rows[0].click();
+    expect(picks).toEqual(['src/a.ts']);
+
+    // Keyboard activation follows the same directive contract.
+    rows[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(picks).toEqual(['src/a.ts', 'src/b.ts']);
+  });
 });
 
 // -- Header actions: padlock, contextual nav and show-in-graph ----------------
@@ -793,7 +853,7 @@ describe('CommitDetailsPanel — header actions', () => {
     expect(el.querySelector('[data-testid="commit-details-history"]')).toBeNull();
   });
 
-  it('renders the release ("Back") action in release mode and emits release', () => {
+  it('renders the release ("Close") action in release mode and emits release', () => {
     const fixture = render({ commit: COMMIT, navMode: 'release' });
     const el = fixture.nativeElement as HTMLElement;
     let released = 0;
@@ -801,7 +861,8 @@ describe('CommitDetailsPanel — header actions', () => {
 
     const release = el.querySelector<HTMLElement>('[data-testid="commit-details-release"]');
     expect(release).not.toBeNull();
-    expect(release?.textContent).toContain('Back');
+    expect(release?.textContent).toContain('Close');
+    expect(release?.textContent).not.toContain('Back');
     expect(el.querySelector('[data-testid="commit-details-history"]')).toBeNull();
 
     release?.querySelector('button')?.click();
@@ -858,6 +919,186 @@ describe('CommitDetailsPanel — header actions', () => {
   it('hides the show-in-graph action unless showInGraph opts in', () => {
     const el = render({ commit: COMMIT }).nativeElement as HTMLElement;
     expect(el.querySelector('[data-testid="commit-details-show-in-graph"]')).toBeNull();
+  });
+});
+
+// -- Contextual nav tooltip: delayed, copy per action -----------------------
+
+describe('CommitDetailsPanel — contextual nav tooltip', () => {
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      providers: [provideZonelessChangeDetection()],
+    }).compileComponents();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function tooltip(el: HTMLElement): HTMLElement {
+    const node = el.querySelector<HTMLElement>('[data-testid="commit-details-nav-tooltip"]');
+    if (!node) throw new Error('nav tooltip not found');
+    return node;
+  }
+
+  function isHidden(el: HTMLElement): boolean {
+    return tooltip(el).classList.contains('st-commit-details__tooltip--hidden');
+  }
+
+  it('is in the DOM from the first render, hidden, and described by the control', () => {
+    const el = render({ commit: COMMIT, navMode: 'release' }).nativeElement as HTMLElement;
+
+    expect(tooltip(el).getAttribute('role')).toBe('tooltip');
+    expect(tooltip(el).getAttribute('id')).toBe('st-commit-details-nav-tooltip');
+    expect(isHidden(el)).toBe(true);
+    // The description resolves before the delayed bubble appears.
+    expect(
+      el
+        .querySelector('[data-testid="commit-details-release"] button')
+        ?.getAttribute('aria-describedby'),
+    ).toBe('st-commit-details-nav-tooltip');
+  });
+
+  it('reveals "collapse panel" after the delay on continuous hover in release mode', () => {
+    vi.useFakeTimers();
+    const fixture = render({ commit: COMMIT, navMode: 'release' });
+    const el = fixture.nativeElement as HTMLElement;
+    const anchor = el.querySelector<HTMLElement>('[data-testid="commit-details-release"]')!;
+
+    anchor.dispatchEvent(new MouseEvent('mouseenter'));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS - 1);
+    fixture.detectChanges();
+    expect(isHidden(el)).toBe(true);
+
+    vi.advanceTimersByTime(1);
+    fixture.detectChanges();
+    expect(isHidden(el)).toBe(false);
+    expect(tooltip(el).textContent?.trim()).toBe('collapse panel');
+  });
+
+  it('treats keyboard focus exactly like hover and hides on blur', () => {
+    vi.useFakeTimers();
+    const fixture = render({ commit: COMMIT, navMode: 'release' });
+    const el = fixture.nativeElement as HTMLElement;
+    const anchor = el.querySelector<HTMLElement>('[data-testid="commit-details-release"]')!;
+
+    anchor.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    fixture.detectChanges();
+    expect(isHidden(el)).toBe(false);
+    expect(tooltip(el).textContent?.trim()).toBe('collapse panel');
+
+    anchor.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    fixture.detectChanges();
+    expect(isHidden(el)).toBe(true);
+  });
+
+  it('hides when hover ends before the delay elapses', () => {
+    vi.useFakeTimers();
+    const fixture = render({ commit: COMMIT, navMode: 'release' });
+    const el = fixture.nativeElement as HTMLElement;
+    const anchor = el.querySelector<HTMLElement>('[data-testid="commit-details-release"]')!;
+
+    anchor.dispatchEvent(new MouseEvent('mouseenter'));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS - 100);
+    anchor.dispatchEvent(new MouseEvent('mouseleave'));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    fixture.detectChanges();
+
+    expect(isHidden(el)).toBe(true);
+  });
+
+  it('anchors the bubble under the control that triggered it', () => {
+    vi.useFakeTimers();
+    const fixture = render({ commit: COMMIT, navMode: 'release' });
+    const el = fixture.nativeElement as HTMLElement;
+    const anchor = el.querySelector<HTMLElement>('[data-testid="commit-details-release"]')!;
+    // The anchor's rect is captured at DISPATCH time: `event.currentTarget` is
+    // null once the event has been dispatched, so reading it inside the timer
+    // would strand the bubble in the viewport's corner.
+    anchor.getBoundingClientRect = () =>
+      ({
+        left: 120,
+        bottom: 40,
+        top: 20,
+        right: 200,
+        width: 80,
+        height: 20,
+        x: 120,
+        y: 20,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    anchor.dispatchEvent(new MouseEvent('mouseenter'));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    fixture.detectChanges();
+
+    const bubble = tooltip(el);
+    expect(bubble.style.left).toBe('120px');
+    expect(bubble.style.top).toBe('46px');
+  });
+
+  it('hides the bubble when the pointer leaves AFTER the reveal', () => {
+    vi.useFakeTimers();
+    const fixture = render({ commit: COMMIT, navMode: 'release' });
+    const el = fixture.nativeElement as HTMLElement;
+    const anchor = el.querySelector<HTMLElement>('[data-testid="commit-details-release"]')!;
+
+    anchor.dispatchEvent(new MouseEvent('mouseenter'));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    fixture.detectChanges();
+    expect(isHidden(el)).toBe(false);
+
+    // The pointer leaving must take the bubble down, not leave it stuck.
+    anchor.dispatchEvent(new MouseEvent('mouseleave'));
+    fixture.detectChanges();
+    expect(isHidden(el)).toBe(true);
+  });
+
+  it('renders no bubble at all when there is no contextual nav control', () => {
+    const el = render({ commit: COMMIT, navMode: 'none' }).nativeElement as HTMLElement;
+
+    // No control, no bubble: an unreferenced tooltip node would only be noise.
+    expect(el.querySelector('[data-testid="commit-details-nav-tooltip"]')).toBeNull();
+    expect(el.querySelector('[data-testid="commit-details-release"]')).toBeNull();
+    expect(el.querySelector('[data-testid="commit-details-history"]')).toBeNull();
+  });
+
+  it('reads "follow commit" in history mode and describes the History control', () => {
+    vi.useFakeTimers();
+    const fixture = render({ commit: COMMIT, navMode: 'history' });
+    const el = fixture.nativeElement as HTMLElement;
+    const anchor = el.querySelector<HTMLElement>('[data-testid="commit-details-history"]')!;
+
+    expect(anchor.querySelector('button')?.getAttribute('aria-describedby')).toBe(
+      'st-commit-details-nav-tooltip',
+    );
+
+    anchor.dispatchEvent(new MouseEvent('mouseenter'));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    fixture.detectChanges();
+
+    expect(isHidden(el)).toBe(false);
+    expect(tooltip(el).textContent?.trim()).toBe('follow commit');
+  });
+
+  it('hides when the nav mode changes', () => {
+    vi.useFakeTimers();
+    const fixture = render({ commit: COMMIT, navMode: 'release' });
+    const el = fixture.nativeElement as HTMLElement;
+
+    el.querySelector<HTMLElement>('[data-testid="commit-details-release"]')!.dispatchEvent(
+      new MouseEvent('mouseenter'),
+    );
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    fixture.detectChanges();
+    expect(isHidden(el)).toBe(false);
+
+    fixture.componentRef.setInput('navMode', 'history');
+    fixture.detectChanges();
+    TestBed.tick();
+
+    expect(isHidden(el)).toBe(true);
   });
 });
 

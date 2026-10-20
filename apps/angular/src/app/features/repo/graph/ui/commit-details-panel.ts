@@ -17,6 +17,7 @@ import {
   ButtonComponent,
   IconComponent,
   InputComponent,
+  SelectableRowDirective,
   isMainlineBranch,
   normalizeRefKind,
   shortOidHex,
@@ -59,12 +60,16 @@ export const TOOLTIP_MAX_WIDTH = 320;
  * `showSubject` gates the ENTIRE description sector (subject + body) and
  * `showFiles` the files sector. The History aside and the analyzer's commit
  * variant render the description sector in the panel; only the analyzer's LOCAL
- * variant leaves it off (that page owns the identity), and neither the local
- * variant nor the analyzer's commit variant renders the panel's file list.
+ * variant leaves it off (that page owns the identity). The History aside and the
+ * analyzer's commit variant both render the panel's changed-file list; only the
+ * local variant leaves it off.
  * `navMode` chooses which contextual action renders in the header — `release`
- * (History "Back") or `history` (the analyzer's "History" shortcut, which also
- * renders in the empty branch).
+ * (History's "Close" control) or `history` (the analyzer's "History" shortcut,
+ * which also renders in the empty branch). Both carry a delayed tooltip that
+ * explains what they do ("collapse panel" / "follow commit").
  * `locked`/`showInGraph` drive the padlock and the analyzer-only reveal action.
+ * `filesSelectable` opts a host into making the path rows selectable, so a host
+ * whose right pane projects a single file can let the user pick which one.
  */
 @Component({
   selector: 'st-commit-details-panel',
@@ -74,6 +79,7 @@ export const TOOLTIP_MAX_WIDTH = 320;
     ButtonComponent,
     IconComponent,
     InputComponent,
+    SelectableRowDirective,
     ToggleGroupComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -173,16 +179,26 @@ export const TOOLTIP_MAX_WIDTH = 320;
                   variant="ghost"
                   size="sm"
                   data-testid="commit-details-release"
+                  [ariaDescribedby]="navTooltipId"
+                  (mouseenter)="onNavEnter($event)"
+                  (mouseleave)="onNavLeave()"
+                  (focusin)="onNavFocus($event)"
+                  (focusout)="onNavBlur()"
                   (click)="release.emit()"
                 >
-                  <st-icon name="chevron-left" />
-                  <span i18n>Back</span>
+                  <st-icon name="close" />
+                  <span i18n>Close</span>
                 </st-button>
               } @else if (navMode() === 'history') {
                 <st-button
                   variant="ghost"
                   size="sm"
                   data-testid="commit-details-history"
+                  [ariaDescribedby]="navTooltipId"
+                  (mouseenter)="onNavEnter($event)"
+                  (mouseleave)="onNavLeave()"
+                  (focusin)="onNavFocus($event)"
+                  (focusout)="onNavBlur()"
                   (click)="openHistory.emit()"
                 >
                   <st-icon name="history" />
@@ -306,12 +322,32 @@ export const TOOLTIP_MAX_WIDTH = 320;
                   } @else {
                     <ul class="st-commit-details__files-list">
                       @for (path of filteredFiles(); track path) {
-                        <li
-                          class="st-commit-details__file-path st-mono"
-                          data-testid="commit-details-file-path"
-                        >
-                          {{ path }}
-                        </li>
+                        @if (filesSelectable()) {
+                          <!--
+                            Host opted into picking: the row carries the shared
+                            selectable-row directive so the host can project that
+                            single file's diff. Still paths only — no hunks, no
+                            stats.
+                          -->
+                          <li
+                            stSelectableRow
+                            class="st-commit-details__file-path st-commit-details__file-path--selectable st-mono"
+                            data-testid="commit-details-file-path"
+                            [attr.data-path]="path"
+                            [attr.data-selected]="path === selectedPath()"
+                            [selected]="path === selectedPath()"
+                            (rowActivated)="fileSelect.emit(path)"
+                          >
+                            {{ path }}
+                          </li>
+                        } @else {
+                          <li
+                            class="st-commit-details__file-path st-mono"
+                            data-testid="commit-details-file-path"
+                          >
+                            {{ path }}
+                          </li>
+                        }
                       }
                     </ul>
                   }
@@ -411,6 +447,28 @@ export const TOOLTIP_MAX_WIDTH = 320;
         >
           {{ lockTooltip }}
         </div>
+
+        <!--
+          Contextual nav tooltip: same contract as the padlock one — always in
+          the DOM so aria-describedby resolves from the first render, hidden
+          visually (never from the a11y tree) until the delayed reveal. The
+          guard mirrors EXACTLY when a nav control renders (the release control
+          needs a commit, the History control renders even in the empty branch),
+          so the bubble never exists without the control that describes it.
+        -->
+        @if ((commit() && navMode() === 'release') || navMode() === 'history') {
+          <div
+            class="st-commit-details__tooltip"
+            [class.st-commit-details__tooltip--hidden]="!navTooltipVisible()"
+            role="tooltip"
+            [id]="navTooltipId"
+            data-testid="commit-details-nav-tooltip"
+            [style.left.px]="navTooltipLeft()"
+            [style.top.px]="navTooltipTop()"
+          >
+            {{ navTooltipLabel() }}
+          </div>
+        }
       </section>
     }
   `,
@@ -610,6 +668,13 @@ export const TOOLTIP_MAX_WIDTH = 320;
       word-break: break-all;
     }
 
+    /* Host-opted-in picking: the shared selectable-row directive owns the
+       hover/selected treatment; this only adds the inline-row geometry. */
+    .st-commit-details__file-path--selectable {
+      padding: 2px 4px;
+      border-radius: var(--st-radius-1);
+    }
+
     .st-commit-details__files-empty {
       margin: 0;
       font-size: var(--st-font-11);
@@ -796,9 +861,9 @@ export class CommitDetailsPanel {
    */
   readonly showSubject = input(true);
   /**
-   * Gates the inline changed-files sector. The History aside opts in; the
-   * File-status analyzer embed leaves it off because it lists the commit's files
-   * itself in its left column, so a second list would be noise.
+   * Gates the inline changed-files sector. The History aside and the analyzer's
+   * commit variant opt in (the analyzer's Files tab IS this block); only the
+   * analyzer's LOCAL variant leaves it off.
    */
   readonly showFiles = input(false);
   /**
@@ -816,7 +881,7 @@ export class CommitDetailsPanel {
   readonly showViewSwitch = input(false);
   /**
    * Which contextual action the header's action group renders: `release` (the
-   * History "Back" control), `history` (the analyzer shortcut back to the graph,
+   * History "Close" control), `history` (the analyzer shortcut back to the graph,
    * also shown in the empty branch) or `none`.
    */
   readonly navMode = input<'none' | 'release' | 'history'>('none');
@@ -830,6 +895,14 @@ export class CommitDetailsPanel {
    * that does not wire it simply shows the empty-state line.
    */
   readonly changedFiles = input<readonly string[]>([]);
+  /**
+   * Host opt-in: when true each row becomes a selectable row emitting
+   * `fileSelect`, so a host whose right pane projects ONE file can let the user
+   * pick it. Default false keeps History's plain, inert path rows.
+   */
+  readonly filesSelectable = input(false);
+  /** Path the host's right pane is currently showing (selectable mode only). */
+  readonly selectedPath = input<string | null>(null);
 
   /** Single primary intent: the owning page routes it to `/repo/file-status`. */
   readonly reviewChanges = output<void>();
@@ -839,6 +912,8 @@ export class CommitDetailsPanel {
   readonly release = output<void>();
   /** Return to the graph from the analyzer embed. */
   readonly openHistory = output<void>();
+  /** The user picked a changed-file path (only when `filesSelectable`). */
+  readonly fileSelect = output<string>();
   /** Reveal the commit in the graph (analyzer). */
   readonly revealInGraph = output<void>();
   /** The user picked a segment: the host owns the mode and feeds it back. */
@@ -904,12 +979,31 @@ export class CommitDetailsPanel {
   /** Stable tooltip id referenced by the padlock's `aria-describedby`. */
   readonly tooltipId = 'st-commit-details-lock-tooltip';
 
+  /** Stable id shared by the contextual nav control's tooltip. */
+  readonly navTooltipId = 'st-commit-details-nav-tooltip';
+
+  /**
+   * Copy of the contextual nav tooltip: the release control collapses the panel,
+   * the analyzer's History control follows the commit back into the graph.
+   */
+  readonly navTooltipLabel = computed(() => {
+    if (this.navMode() === 'release') return $localize`collapse panel`;
+    if (this.navMode() === 'history') return $localize`follow commit`;
+    return '';
+  });
+
   // -- padlock tooltip (delayed, continuous hover/focus) --------------------
   private readonly lockAnchor = viewChild<ElementRef<HTMLElement>>('lockAnchor');
   private tooltipTimer: ReturnType<typeof setTimeout> | null = null;
   readonly tooltipVisible = signal(false);
   readonly tooltipLeft = signal(0);
   readonly tooltipTop = signal(0);
+
+  // -- contextual nav tooltip (same delayed contract) -----------------------
+  private navTooltipTimer: ReturnType<typeof setTimeout> | null = null;
+  readonly navTooltipVisible = signal(false);
+  readonly navTooltipLeft = signal(0);
+  readonly navTooltipTop = signal(0);
 
   /** Footer starts collapsed: the metadata markup is not in the DOM. */
   readonly footerExpanded = signal(false);
@@ -919,8 +1013,18 @@ export class CommitDetailsPanel {
     effect(() => {
       this.commit();
       this.hideLockTooltip();
+      this.hideNavTooltip();
     });
-    this.destroyRef.onDestroy(() => this.clearTooltipTimer());
+    // A different nav action describes a different tooltip: never carry the
+    // previous copy/bubble over.
+    effect(() => {
+      this.navMode();
+      this.hideNavTooltip();
+    });
+    this.destroyRef.onDestroy(() => {
+      this.clearTooltipTimer();
+      this.clearNavTooltipTimer();
+    });
   }
 
   readonly refs = computed(() => this.commit()?.refs ?? []);
@@ -1030,6 +1134,68 @@ export class CommitDetailsPanel {
     const left = Math.max(margin, Math.min(rect.left, viewportWidth - maxWidth - margin));
     this.tooltipLeft.set(left);
     this.tooltipTop.set(rect.bottom + 6);
+  }
+
+  // -- contextual nav tooltip -----------------------------------------------
+
+  onNavEnter(event: Event): void {
+    this.scheduleNavTooltip(event.currentTarget as HTMLElement | null);
+  }
+
+  onNavFocus(event: Event): void {
+    this.scheduleNavTooltip(event.currentTarget as HTMLElement | null);
+  }
+
+  onNavLeave(): void {
+    this.hideNavTooltip();
+  }
+
+  onNavBlur(): void {
+    this.hideNavTooltip();
+  }
+
+  /**
+   * Schedule the bubble. The anchor element is captured NOW, at dispatch time:
+   * `event.currentTarget` is only valid WHILE the event is being dispatched, so
+   * reading it a second later (inside the timer) would always yield `null` and
+   * the bubble would land in the viewport's corner instead of under the
+   * control.
+   */
+  private scheduleNavTooltip(anchor: HTMLElement | null): void {
+    this.clearNavTooltipTimer();
+    this.navTooltipTimer = setTimeout(() => {
+      this.navTooltipTimer = null;
+      this.positionNavTooltip(anchor);
+      this.navTooltipVisible.set(true);
+    }, TOOLTIP_DELAY_MS);
+  }
+
+  private hideNavTooltip(): void {
+    this.clearNavTooltipTimer();
+    this.navTooltipVisible.set(false);
+  }
+
+  private clearNavTooltipTimer(): void {
+    if (this.navTooltipTimer !== null) {
+      clearTimeout(this.navTooltipTimer);
+      this.navTooltipTimer = null;
+    }
+  }
+
+  /**
+   * Anchor the nav tooltip below the control that triggered it. The anchor is
+   * the `st-button` host captured at dispatch time, so no extra template ref is
+   * needed.
+   */
+  private positionNavTooltip(anchor: HTMLElement | null): void {
+    const rect = anchor?.getBoundingClientRect?.();
+    if (!rect) return;
+    const margin = 8;
+    const maxWidth = TOOLTIP_MAX_WIDTH;
+    const viewportWidth = typeof window === 'undefined' ? rect.left + maxWidth : window.innerWidth;
+    const left = Math.max(margin, Math.min(rect.left, viewportWidth - maxWidth - margin));
+    this.navTooltipLeft.set(left);
+    this.navTooltipTop.set(rect.bottom + 6);
   }
 
   /** Head ref when present, otherwise the first ref (plan §4.3 branch chip). */

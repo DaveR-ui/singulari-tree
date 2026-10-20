@@ -16,7 +16,6 @@ import { RepoState } from '@core/services/repo-state.service';
 import { CommitViewModeService } from '../../commit-view-mode.service';
 import { GraphStore, WIP_OID } from '../../graph/graph.store';
 import { CommitDetailsPanel } from '../../graph/ui/commit-details-panel';
-import { splitCommitMessage } from '../../graph/ui/commit-message';
 import { ChangesPanel } from '../../status/ui/changes-panel';
 import { isHunkActionable } from '../../status/ui/hunk-actions.model';
 import { FileStatusStore } from '../file-status.store';
@@ -32,9 +31,9 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
  * Three variants share that scaffold: **local** reuses the existing working-tree
  * `st-changes-panel` (with the pinned-commit `st-commit-details-panel` section
  * rendered above it as the contrast anchor / entry point), **commit** reuses
- * `st-commit-details-panel` as its description region (subject + body, with the
- * shared `description | files` switch in the panel header) plus the changed-file
- * list below it, and **pull request** diffs a local ref against a base branch. The screen never talks to
+ * `st-commit-details-panel` as the WHOLE commit view — subject + body, or the
+ * panel's own paths-only changed-file list, plus its metadata footer — and
+ * **pull request** diffs a local ref against a base branch. The screen never talks to
  * Git: every value comes from `FileStatusStore`, which composes the route-scoped
  * `StatusStore` and calls the existing `getStatus`/`getDiff`/`getBranches` RPCs
  * through `IpcBridge`.
@@ -127,43 +126,35 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
             }
             @case ('commit') {
               <!--
-                The PANEL owns the description region: it renders the subject
-                and, in description mode, the body in its own scrolling
-                content region. The PAGE keeps the files region (summary +
-                changed-file list) and renders it below the panel only while
-                the shared mode is "files"; the list is also the diff selector,
-                so it must stay reachable. The panel's header carries the
-                exclusive switch, wired to the route-scoped mode so the choice
-                survives the /repo ↔ /repo/file-status navigation. A commit
-                with no message at all is forced to files by both surfaces
-                (see effectiveAnalyzerMode).
+                The PANEL owns the whole commit view, exactly like History: its
+                content region holds the subject/body (description mode) or the
+                changed-file list (files mode, paths only), and its metadata
+                footer is the last element of the column. The panel is the SOLE
+                scroller here: the page renders no summary and no separate file
+                list. The rows are selectable because the right pane projects a
+                single file, so picking a row is how the diff changes. The
+                header's contextual action is "History": following the commit
+                hands it to the graph via CommitFocusService.
               -->
               <st-commit-details-panel
                 [commit]="fs.activeCommit()"
                 [isWip]="false"
                 [showSubject]="true"
-                [showFiles]="false"
+                [showFiles]="true"
+                [filesSelectable]="true"
+                [selectedPath]="fs.selectedPath()"
                 [showViewSwitch]="true"
                 [mode]="viewMode.mode()"
                 [changedFiles]="changedPaths()"
-                [navMode]="'release'"
+                [navMode]="'history'"
                 [locked]="graph.lockedOid() === fs.activeCommit()?.oid?.hex"
                 [showInGraph]="true"
                 (modeChange)="viewMode.setMode($event)"
-                (release)="releaseCommit()"
+                (fileSelect)="fs.selectFile($event)"
+                (openHistory)="goHistory()"
                 (lockToggle)="toggleLock()"
                 (revealInGraph)="showInGraph()"
               />
-              @if (effectiveAnalyzerMode() === 'files') {
-                <p class="st-file-status__summary" data-testid="file-status-summary">
-                  {{ summaryText() }}
-                </p>
-                <st-file-diff-list
-                  [files]="fs.diffFiles()"
-                  [selectedPath]="fs.selectedPath()"
-                  (fileSelect)="fs.selectFile($event)"
-                />
-              }
             }
             @case ('pr') {
               <p class="st-file-status__summary" data-testid="file-status-summary">
@@ -250,11 +241,17 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
       min-height: 0;
     }
 
-    /* Local variant only: the changes panel owns a bounded column and its own
-       scroll, so its commit box pins to the pane bottom. Scoped with :has() to
-       the panel's mount point, so the commit and pr variants — which rely on the
-       body's own overflow — keep their content-sized column. */
-    .st-file-status__left:has(st-changes-panel) {
+    /* The local and commit variants own the column's height.
+       - local: the changes panel owns a bounded column and its own scroll, so
+         its commit box pins to the pane bottom.
+       - commit: the panel IS the column and its own content region is the
+         single scroller, so the metadata footer has to land at the BOTTOM of
+         the pane, not right under the message.
+       Scoped with :has() to each variant's mount point, so the pr variant —
+       which keeps a content-sized column and relies on the body's own
+       overflow — is untouched. */
+    .st-file-status__left:has(st-changes-panel),
+    .st-file-status__left:has(.st-file-status__body--commit) {
       flex: 1 1 auto;
     }
 
@@ -285,14 +282,18 @@ import { FileStatusVariantBar } from '../ui/file-status-variant-bar';
     }
 
     /*
-      Commit variant: the panel is the FIRST child and its own content region
-      scrolls, so it must be bounded or a long description would push the
-      summary + file list out of reach. flex: 0 1 auto + min-height: 0
-      lets it shrink; the percentage cap keeps the files region visible below
-      it while the file list takes the remaining height.
+      Commit variant: the panel IS the column. Its own content region scrolls,
+      so the column must not scroll too (that would nest two scrollers and
+      detach the panel's pinned metadata footer). The panel stretches to fill
+      the leftover height: flex: 1 1 auto + min-height: 0.
     */
+    .st-file-status__body--commit {
+      overflow: hidden;
+    }
+
     .st-file-status__body--commit st-commit-details-panel {
-      max-height: 50%;
+      flex: 1 1 auto;
+      min-height: 0;
     }
 
     :host st-file-diff-list {
@@ -388,16 +389,6 @@ export class FileStatusPage {
   /** Last observed `RepoState.statusRefreshRequested` token (dedupes the effect). */
   private lastStatusRefresh = this.repoState.statusRefreshRequested();
 
-  /**
-   * The mode actually rendered by the commit analyzer. The shared mode is the
-   * single source of truth; a commit with NO message at all (empty subject AND
-   * body) can never land in `description`, so it is forced to `files` — the
-   * exact rule the panel applies to its own `effectiveMode`.
-   */
-  readonly effectiveAnalyzerMode = computed<'description' | 'files'>(() =>
-    this.hasMessage() ? this.viewMode.mode() : 'files',
-  );
-
   /** Changed paths of the active commit, feeding the panel switch's file count. */
   readonly changedPaths = computed<readonly string[]>(() =>
     this.fs.diffFiles().map((file) => file.path),
@@ -487,39 +478,6 @@ export class FileStatusPage {
     const files = filesChanged === 1 ? $localize`1 file` : $localize`${filesChanged} files`;
     return $localize`+${additions} −${deletions} across ${files}`;
   });
-
-  /**
-   * Subject of the active commit. The panel renders it in the commit variant's
-   * description region; here it only distinguishes "has a message" from "has
-   * none" (see `hasMessage`). Empty when there is no active commit.
-   */
-  readonly commitTitle = computed(() => {
-    const commit = this.fs.activeCommit();
-    return commit ? splitCommitMessage(commit.message ?? '').subject : '';
-  });
-
-  /**
-   * Body of the active commit (everything after the first blank line). The
-   * panel renders it under the subject in `description` mode; here it only
-   * completes the `hasMessage` test so a body-only message is never mistaken
-   * for a message-less commit.
-   */
-  readonly commitBody = computed(() => {
-    const commit = this.fs.activeCommit();
-    return commit ? splitCommitMessage(commit.message ?? '').description : '';
-  });
-
-  /**
-   * Whether the commit carries ANY message content — a subject or a body. The
-   * analyzer keys its forced-`files` fallback on this, never on the subject
-   * alone: a commit whose message starts with a blank line has an empty subject
-   * but a real body, and that body must stay reachable. A commit with no
-   * message at all renders no description content, so `files` is forced (see
-   * `effectiveAnalyzerMode`) and the file list is never left hidden.
-   */
-  readonly hasMessage = computed(
-    () => this.commitTitle().length > 0 || this.commitBody().length > 0,
-  );
 
   // -- inline hunk actions (viewer-driven, ADR-0020) ------------------------
 
@@ -699,8 +657,18 @@ export class FileStatusPage {
     else this.graph.lock();
   }
 
-  /** Return to the History screen so the user can pick a commit. */
+  /**
+   * Navigate to History, following the commit in view when there is one.
+   *
+   * Only the COMMIT variant has a commit in view. The local variant renders the
+   * empty-branch History shortcut, and `FileStatusStore.openLocal()` keeps the
+   * last viewed commit in `activeCommit()` — following that stale value would
+   * select a commit the user is no longer looking at.
+   */
   goHistory(): void {
+    const oid = this.fs.variant() === 'commit' ? (this.fs.activeCommit()?.oid?.hex ?? null) : null;
+    const repoId = this.graph.repoId();
+    if (oid && repoId) this.commitFocus.request(repoId, oid);
     void this.router?.navigate(['/repo']);
   }
 
