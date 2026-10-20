@@ -138,6 +138,7 @@ SingulariTree/                         <- monorepo root (physical folder Singula
 │   │   └── build-go-core.sh           <- go build -o dist/go-core ./apps/go-core/cmd/go-core
 │   └── ci/
 │       └── verify-contracts.sh        <- buf lint + buf breaking + buf generate --dry-run
+├── website/                           <- static landing page for GitHub Pages (no build step)
 ├── go.work                            <- Go workspace (use ./apps/go-core)
 ├── package.json                       <- root workspaces (angular, electron, contracts, ui-kit)
 └── README.md                          <- traceability + headless proof + quick start
@@ -160,6 +161,7 @@ SingulariTree/                         <- monorepo root (physical folder Singula
 | `libs/ui-kit` | Reusable dumb components (graph-row, diff-viewer). | State, services. |
 | `data/sqlite` | Schema docs + migrations; runtime DB at `~/.local/share/...` (outside repo). | User data, Git blobs. |
 | `tools/scripts` | Automates `buf generate` and `go build`; CI uses `tools/ci`. | App logic. |
+| `website` | Static landing page deployed to GitHub Pages by `.github/workflows/pages.yml`; plain HTML/CSS, no build step. | App code, build output. |
 | `docs/context/git-client` | Greenfield topic folder; does not touch Necomat; future promotion to Slices optional. | Code. |
 
 ## 3. Import rules
