@@ -7,20 +7,8 @@
 /** Which remote dialog is currently open. */
 export type RemoteDialogKind = 'pull' | 'push' | 'fetch';
 
-/** Per-repository status of a renderer-orchestrated "fetch all" fan-out (ADR-024). */
+/** Per-repository status of the renderer-orchestrated fetch (shown one repo at a time). */
 export type RepoFetchState = 'pending' | 'success' | 'failed';
-
-/** A repository targeted by a "fetch all" fan-out (id + display name). */
-export interface RepoFetchEntry {
-  readonly repoId: string;
-  readonly name: string;
-}
-
-/** Aggregate progress of a "fetch all" fan-out (completed / total repositories). */
-export interface FetchAllProgress {
-  readonly done: number;
-  readonly total: number;
-}
 
 /** Progress reported by a remote operation (mirrors the contract `Progress`). */
 export interface RemoteOpProgress {

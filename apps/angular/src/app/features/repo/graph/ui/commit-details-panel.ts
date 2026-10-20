@@ -1,10 +1,15 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
+  ElementRef,
   computed,
+  effect,
+  inject,
   input,
   output,
   signal,
+  viewChild,
 } from '@angular/core';
 import type { Commit, RefLabel, Signature } from '@contracts/domain';
 import {
@@ -20,6 +25,16 @@ import {
 } from '@singularitree/ui-kit';
 import { splitCommitMessage } from './commit-message';
 
+/** Delay before the padlock tooltip appears (continuous hover or focus). */
+export const TOOLTIP_DELAY_MS = 1000;
+
+/**
+ * Maximum tooltip width in px, mirroring `--st-size-pane-min` (320px in
+ * `libs/ui-kit/src/styles/tokens.scss`). Used only to clamp the fixed-position
+ * bubble inside the viewport; the visual cap stays in the stylesheet.
+ */
+export const TOOLTIP_MAX_WIDTH = 320;
+
 /**
  * Read-only details panel for the selected commit (plan §4.3, decision #8).
  * Dumb: it only renders the `commit` input (or the WIP placeholder) and emits
@@ -31,26 +46,24 @@ import { splitCommitMessage } from './commit-message';
  * inputs, so the same panel reads as a full overview in History and as a slim
  * header in the analyzer.
  *
- * In its full form (both `showSubject` and `showFiles`) the panel exposes ONE
- * exclusive 2-segment switch — description / changed files — in the subject
- * row, where the old description chevron sat. Exactly one sector is in the DOM
- * at a time (the hidden one is never rendered), defaulting to `description`; a
- * commit with no body can never land in `description` (its segment is disabled
- * and the mode is forced to `files`). The subject `h1` stays visible in both
- * modes as the commit's identity, clamped to a single line only in `files`
- * mode. The mode is panel view state, never shared with a host.
- *
- * The primary "Review changes" CTA sits in the header's center slot so it reads
- * as the panel's single focal action between the identity (left) and the
- * contextual actions (right). The metadata block is demoted to the bottom: a
- * hairline-separated, muted footer that never competes with the message.
+ * The panel is three regions: a header (two rows — identity | centred CTA |
+ * actions, then the `description | files` switch), a single scrolling content
+ * region (the subject, plus either the body or the changed-file list) and a
+ * collapsible metadata footer. The host
+ * owns the `description | files` mode (`mode` input / `modeChange` output); the
+ * panel keeps no mode state, so a pick never mutates what is rendered until the
+ * host feeds it back. A commit with no message at all forces `files` (the
+ * `description` segment is disabled); a subject-only commit still has a
+ * description because the subject is part of it.
  *
  * `showSubject` gates the ENTIRE description sector (subject + body) and
- * `showFiles` the files sector; the analyzer leaves both off because it owns
- * those two sectors in its own title header / left column, so the panel there
- * renders identity + metadata only. `navMode` chooses which contextual action
- * renders in the header — `release` (History "Back") or `history` (the
- * analyzer's "History" shortcut, which also renders in the empty branch).
+ * `showFiles` the files sector. The History aside and the analyzer's commit
+ * variant render the description sector in the panel; only the analyzer's LOCAL
+ * variant leaves it off (that page owns the identity), and neither the local
+ * variant nor the analyzer's commit variant renders the panel's file list.
+ * `navMode` chooses which contextual action renders in the header — `release`
+ * (History "Back") or `history` (the analyzer's "History" shortcut, which also
+ * renders in the empty branch).
  * `locked`/`showInGraph` drive the padlock and the analyzer-only reveal action.
  */
 @Component({
@@ -81,275 +94,335 @@ import { splitCommitMessage } from './commit-message';
       </section>
     } @else {
       <!--
-        Both non-WIP states share one header/toolbar so the padlock and the
-        contextual nav always land in the same place. The commit branch adds the
-        identity, the centered CTA, the description, the changed files and the
-        metadata footer; the empty branch swaps all of that for the placeholder
-        message (the disabled padlock still proves the toolbar is inert without a
-        selection).
+        Three regions: a fixed header, the only scrolling content region and a
+        fixed footer. The footer is a SIBLING of the content, so the changed-file
+        list can never paint over the metadata.
       -->
       <section
         class="st-commit-details"
         [attr.data-testid]="commit() ? 'commit-details' : null"
       >
-        <header class="st-commit-details__header">
-          <div class="st-commit-details__identity">
-            @if (commit()) {
-              <span
-                class="st-commit-details__short-oid"
-                data-testid="commit-details-short-oid"
-                >{{ shortOid() }}</span
-              >
-              @if (branchChip(); as branch) {
-                <st-badge variant="branch" data-testid="commit-details-branch">{{ branch }}</st-badge>
-              }
-            }
-          </div>
-
+        <header class="st-commit-details__header" data-testid="commit-details-header">
           <!--
-            Center slot: flexes to fill the gap between identity and actions so
-            the primary CTA centers in the panel regardless of how wide either
-            side grows.
+            Row 1: identity | centred CTA | action group. It wraps at the narrow
+            pane widths the detail host allows; the identity shrinks and
+            truncates while the CTA and the actions never do.
           -->
-          <div class="st-commit-details__header-center">
-            @if (commit() && showCta()) {
-              <st-button
-                variant="primary"
-                data-testid="commit-details-review"
-                (click)="reviewChanges.emit()"
-                i18n
-                >Review changes</st-button
-              >
-            }
-          </div>
-
-          <div class="st-commit-details__actions">
-            <!--
-              Padlock: press-to-pin the selected commit so the aside survives a
-              graph reload. Disabled whenever there is no real commit to pin
-              (empty state) or the synthetic WIP row is selected.
-            -->
-            <st-button
-              variant="icon"
-              size="sm"
-              data-testid="commit-details-lock"
-              [pressed]="locked()"
-              [disabled]="!canLock()"
-              [ariaLabel]="lockLabel()"
-              (click)="lockToggle.emit()"
-            >
-              <st-icon [name]="locked() ? 'lock' : 'lock-open'" />
-            </st-button>
-
-            @if (commit() && navMode() === 'release') {
-              <st-button
-                variant="ghost"
-                size="sm"
-                data-testid="commit-details-release"
-                (click)="release.emit()"
-              >
-                <st-icon name="chevron-left" />
-                <span i18n>Back</span>
-              </st-button>
-            } @else if (navMode() === 'history') {
-              <st-button
-                variant="ghost"
-                size="sm"
-                data-testid="commit-details-history"
-                (click)="openHistory.emit()"
-              >
-                <st-icon name="history" />
-                <span i18n>History</span>
-              </st-button>
-            }
-
-            @if (commit() && showInGraph()) {
-              <st-button
-                variant="icon"
-                size="sm"
-                data-testid="commit-details-show-in-graph"
-                [ariaLabel]="showInGraphLabel"
-                (click)="revealInGraph.emit()"
-              >
-                <st-icon name="brand" />
-              </st-button>
-            }
-          </div>
-        </header>
-
-        @if (commit(); as selected) {
-          <!--
-            Description sector: the commit's identity (the subject h1) plus the
-            exclusive view switch. showSubject gates the ENTIRE sector (the
-            File-status analyzer embed turns it off and owns the identity
-            itself). The switch renders only in a host that owns BOTH sectors
-            (History) and selects exactly one of description / changed files:
-            the hidden sector is never in the DOM. The subject stays visible in
-            both modes (it is the commit's identity), clamped to a single line
-            only in files mode; the body renders only in description mode.
-          -->
-          @if (showSubject()) {
-            <div class="st-commit-details__description-block">
-              <div class="st-commit-details__subject-row">
-                <h1
-                  class="st-commit-details__subject"
-                  [class.st-commit-details__subject--collapsed]="effectiveMode() === 'files'"
-                  data-testid="commit-details-subject"
+          <div class="st-commit-details__header-row">
+            <div class="st-commit-details__identity">
+              @if (commit()) {
+                <span
+                  class="st-commit-details__short-oid"
+                  data-testid="commit-details-short-oid"
+                  >{{ shortOid() }}</span
                 >
-                  {{ subject() }}
-                </h1>
-                @if (showFiles()) {
-                  <st-toggle-group
-                    class="st-commit-details__view-switch"
-                    data-testid="commit-details-view-switch"
-                    [ariaLabel]="viewSwitchLabel"
-                    [options]="modeOptions()"
-                    [value]="effectiveMode()"
-                    (valueChange)="setMode($event)"
-                  />
+                @if (branchChip(); as branch) {
+                  <st-badge variant="branch" data-testid="commit-details-branch">{{ branch }}</st-badge>
                 }
-              </div>
-
-              @if (effectiveMode() === 'description') {
-                <p class="st-commit-details__description" data-testid="commit-details-description">
-                  {{ description() }}
-                </p>
               }
             </div>
-          }
 
-          @if (showFiles() && effectiveMode() === 'files') {
             <!--
-              Changed files: a bordered block that owns the whole sector in
-              files mode. Paths only — no hunks, no diff, no stats. The body
-              keeps its own filter, both empty states and the list; the header
-              keeps only the heading (the exclusive switch lives in the subject
-              row above).
+              Center slot: flexes to fill the gap between identity and actions so
+              the primary CTA centers in the panel regardless of how wide either
+              side grows.
             -->
-            <section class="st-commit-details__files">
-              <header class="st-commit-details__files-header">
-                <p
-                  class="st-commit-details__files-heading"
-                  data-testid="commit-details-files-heading"
-                  [attr.id]="filesHeadingId"
+            <div class="st-commit-details__header-center">
+              @if (commit() && showCta()) {
+                <st-button
+                  variant="primary"
+                  data-testid="commit-details-review"
+                  (click)="reviewChanges.emit()"
+                  i18n
+                  >Review changes</st-button
                 >
-                  {{ filesHeading() }}
-                </p>
-              </header>
+              }
+            </div>
 
-              <div
-                class="st-commit-details__files-body"
-                role="region"
-                [attr.aria-labelledby]="filesHeadingId"
+            <div class="st-commit-details__actions">
+              <!--
+                Padlock: press-to-pin the selected commit so the aside survives a
+                graph reload. Disabled whenever there is no real commit to pin
+                (empty state) or the synthetic WIP row is selected. The wrapper
+                owns the hover/focus timer for the explanatory tooltip.
+              -->
+              <span
+                #lockAnchor
+                class="st-commit-details__lock"
+                (mouseenter)="onLockEnter()"
+                (mouseleave)="onLockLeave()"
+                (focusin)="onLockFocus()"
+                (focusout)="onLockBlur()"
               >
-                <st-input
-                  type="search"
-                  testId="commit-details-files-filter"
-                  [value]="fileFilter()"
-                  [placeholder]="filterPlaceholder"
-                  [ariaLabel]="filterLabel"
-                  (valueChange)="fileFilter.set($event)"
-                />
+                <st-button
+                  variant="icon"
+                  size="sm"
+                  data-testid="commit-details-lock"
+                  [pressed]="locked()"
+                  [disabled]="!canLock()"
+                  [ariaLabel]="lockLabel()"
+                  [ariaDescribedby]="tooltipId"
+                  (click)="lockToggle.emit()"
+                >
+                  <st-icon [name]="locked() ? 'lock' : 'lock-open'" />
+                </st-button>
+              </span>
 
-                @if (!changedFiles().length) {
-                  <p
-                    class="st-commit-details__files-empty"
-                    data-testid="commit-details-files-empty"
-                    i18n
-                  >
-                    No changed files.
-                  </p>
-                } @else if (!filteredFiles().length) {
-                  <!--
-                    Distinct from the no-files line: files exist, the filter
-                    simply matches none of them.
-                  -->
-                  <p
-                    class="st-commit-details__files-empty"
-                    data-testid="commit-details-files-filter-empty"
-                    i18n
-                  >
-                    No files match the filter.
-                  </p>
-                } @else {
-                  <ul class="st-commit-details__files-list">
-                    @for (path of filteredFiles(); track path) {
-                      <li
-                        class="st-commit-details__file-path st-mono"
-                        data-testid="commit-details-file-path"
-                      >
-                        {{ path }}
-                      </li>
-                    }
-                  </ul>
-                }
-              </div>
-            </section>
-          }
+              @if (commit() && navMode() === 'release') {
+                <st-button
+                  variant="ghost"
+                  size="sm"
+                  data-testid="commit-details-release"
+                  (click)="release.emit()"
+                >
+                  <st-icon name="chevron-left" />
+                  <span i18n>Back</span>
+                </st-button>
+              } @else if (navMode() === 'history') {
+                <st-button
+                  variant="ghost"
+                  size="sm"
+                  data-testid="commit-details-history"
+                  (click)="openHistory.emit()"
+                >
+                  <st-icon name="history" />
+                  <span i18n>History</span>
+                </st-button>
+              }
+
+              @if (commit() && showInGraph()) {
+                <st-button
+                  variant="icon"
+                  size="sm"
+                  data-testid="commit-details-show-in-graph"
+                  [ariaLabel]="showInGraphLabel"
+                  (click)="revealInGraph.emit()"
+                >
+                  <st-icon name="brand" />
+                </st-button>
+              }
+            </div>
+          </div>
 
           <!--
-            Metadata footer: Author/Date/Commit/Parents/Refs + committer. Pushed
-            to the bottom and de-emphasized (hairline top rule, muted, 0.75) so
-            the message and the files own the visual weight.
+            Row 2: the exclusive description | files switch stays INSIDE the
+            header, aligned to the start. The HOST owns the mode: the panel only
+            renders effectiveMode() and emits modeChange, so a pick never
+            mutates anything locally.
           -->
-          <div class="st-commit-details__meta-block">
-            @if (refs().length) {
-              <div class="st-commit-details__refs" data-testid="commit-details-refs">
-                @for (ref of refs(); track ref.kind + ':' + ref.name) {
-                  <span class="st-commit-details__ref" [class]="refClass(ref)">{{ ref.name }}</span>
+          @if (commit() && showViewSwitch()) {
+            <div class="st-commit-details__header-switch">
+              <st-toggle-group
+                data-testid="commit-details-view-switch"
+                [ariaLabel]="viewSwitchLabel"
+                [options]="modeOptions()"
+                [value]="effectiveMode()"
+                (valueChange)="onModePick($event)"
+              />
+            </div>
+          }
+        </header>
+
+        <!--
+          Content: the ONLY scrolling region. The subject h1 is the commit's
+          identity and stays rendered in both modes; the body or the changed
+          files are swapped beside it (exactly one is in the DOM at a time).
+        -->
+        <div class="st-commit-details__content" data-testid="commit-details-content">
+          @if (commit(); as selected) {
+            @if (showSubject()) {
+              <div class="st-commit-details__description-block">
+                @if (subject()) {
+                  <h1
+                    class="st-commit-details__subject"
+                    [class.st-commit-details__subject--collapsed]="effectiveMode() === 'files'"
+                    data-testid="commit-details-subject"
+                  >
+                    {{ subject() }}
+                  </h1>
+                }
+
+                @if (effectiveMode() === 'description' && description()) {
+                  <p class="st-commit-details__description" data-testid="commit-details-description">
+                    {{ description() }}
+                  </p>
                 }
               </div>
             }
 
-            <dl class="st-commit-details__meta">
-              <dt>Author</dt>
-              <dd class="st-commit-details__author">
-                <span
-                  class="st-commit-details__avatar"
-                  data-testid="commit-details-avatar"
-                  aria-hidden="true"
-                  >{{ authorInitials() }}</span
-                >
-                <span data-testid="commit-details-author">{{ authorLabel() }}</span>
-              </dd>
-              <dt>Date</dt>
-              <dd data-testid="commit-details-date">{{ selected.committedAt }}</dd>
-              <dt i18n>Commit</dt>
-              <dd class="st-commit-details__oid" data-testid="commit-details-oid">
-                {{ selected.oid?.hex ?? 'unknown' }}
-              </dd>
-              <dt>Parents</dt>
-              <dd data-testid="commit-details-parents">
-                @if (parents().length) {
-                  @for (parent of parents(); track parent.hex) {
-                    <span class="st-commit-details__oid">{{ parent.hex }}</span>
-                  }
-                } @else {
-                  <span>(root commit)</span>
-                }
-              </dd>
-              <dt>Refs</dt>
-              <dd data-testid="commit-details-ref-summary">{{ refSummary() }}</dd>
-            </dl>
+            @if (showFiles() && effectiveMode() === 'files') {
+              <!--
+                Changed files: a bordered block that owns the whole sector in
+                files mode. Paths only — no hunks, no diff, no stats. The body
+                keeps its own filter, both empty states and the list; the header
+                keeps only the heading (the exclusive switch lives in the header
+                above).
+              -->
+              <section class="st-commit-details__files">
+                <header class="st-commit-details__files-header">
+                  <p
+                    class="st-commit-details__files-heading"
+                    data-testid="commit-details-files-heading"
+                    [attr.id]="filesHeadingId"
+                  >
+                    {{ filesHeading() }}
+                  </p>
+                </header>
 
-            <p class="st-commit-details__committer" data-testid="commit-details-committer">
-              {{ signature(selected.committer) }}
+                <div
+                  class="st-commit-details__files-body"
+                  role="region"
+                  [attr.aria-labelledby]="filesHeadingId"
+                >
+                  <st-input
+                    type="search"
+                    testId="commit-details-files-filter"
+                    [value]="fileFilter()"
+                    [placeholder]="filterPlaceholder"
+                    [ariaLabel]="filterLabel"
+                    (valueChange)="fileFilter.set($event)"
+                  />
+
+                  @if (!changedFiles().length) {
+                    <p
+                      class="st-commit-details__files-empty"
+                      data-testid="commit-details-files-empty"
+                      i18n
+                    >
+                      No changed files.
+                    </p>
+                  } @else if (!filteredFiles().length) {
+                    <!--
+                      Distinct from the no-files line: files exist, the filter
+                      simply matches none of them.
+                    -->
+                    <p
+                      class="st-commit-details__files-empty"
+                      data-testid="commit-details-files-filter-empty"
+                      i18n
+                    >
+                      No files match the filter.
+                    </p>
+                  } @else {
+                    <ul class="st-commit-details__files-list">
+                      @for (path of filteredFiles(); track path) {
+                        <li
+                          class="st-commit-details__file-path st-mono"
+                          data-testid="commit-details-file-path"
+                        >
+                          {{ path }}
+                        </li>
+                      }
+                    </ul>
+                  }
+                </div>
+              </section>
+            }
+          } @else {
+            <p class="st-commit-details__empty" data-testid="commit-details-empty">
+              Select a commit to see its details.
             </p>
-          </div>
-        } @else {
-          <p class="st-commit-details__empty" data-testid="commit-details-empty">
-            Select a commit to see its details.
-          </p>
+          }
+        </div>
+
+        <!--
+          Metadata footer: collapsed by default. Author/Date/Commit/Parents/Refs
+          + committer live behind the disclosure so they never compete with the
+          message; while collapsed the markup is not in the DOM at all.
+        -->
+        @if (commit(); as selected) {
+          <footer class="st-commit-details__footer" data-testid="commit-details-footer">
+            <button
+              type="button"
+              class="st-commit-details__footer-toggle"
+              data-testid="commit-details-footer-toggle"
+              [attr.aria-expanded]="footerExpanded()"
+              (click)="toggleFooter()"
+            >
+              <st-icon [name]="footerExpanded() ? 'chevron-down' : 'chevron-right'" [size]="14" />
+              <span i18n>Metadata</span>
+            </button>
+
+            @if (footerExpanded()) {
+              <div class="st-commit-details__meta-block" data-testid="commit-details-meta">
+                @if (refs().length) {
+                  <div class="st-commit-details__refs" data-testid="commit-details-refs">
+                    @for (ref of refs(); track ref.kind + ':' + ref.name) {
+                      <span class="st-commit-details__ref" [class]="refClass(ref)">{{ ref.name }}</span>
+                    }
+                  </div>
+                }
+
+                <dl class="st-commit-details__meta">
+                  <dt>Author</dt>
+                  <dd class="st-commit-details__author">
+                    <span
+                      class="st-commit-details__avatar"
+                      data-testid="commit-details-avatar"
+                      aria-hidden="true"
+                      >{{ authorInitials() }}</span
+                    >
+                    <span data-testid="commit-details-author">{{ authorLabel() }}</span>
+                  </dd>
+                  <dt>Date</dt>
+                  <dd data-testid="commit-details-date">{{ selected.committedAt }}</dd>
+                  <dt i18n>Commit</dt>
+                  <dd class="st-commit-details__oid" data-testid="commit-details-oid">
+                    {{ selected.oid?.hex ?? 'unknown' }}
+                  </dd>
+                  <dt>Parents</dt>
+                  <dd data-testid="commit-details-parents">
+                    @if (parents().length) {
+                      @for (parent of parents(); track parent.hex) {
+                        <span class="st-commit-details__oid">{{ parent.hex }}</span>
+                      }
+                    } @else {
+                      <span>(root commit)</span>
+                    }
+                  </dd>
+                  <dt>Refs</dt>
+                  <dd data-testid="commit-details-ref-summary">{{ refSummary() }}</dd>
+                </dl>
+
+                <p class="st-commit-details__committer" data-testid="commit-details-committer">
+                  {{ signature(selected.committer) }}
+                </p>
+              </div>
+            }
+          </footer>
         }
+
+        <!--
+          Tooltip lives outside the scroll region and uses position: fixed, so
+          no ancestor overflow can clip it. It is ALWAYS in the DOM: the
+          padlock's aria-describedby must resolve before the delayed bubble
+          appears, so a screen reader gets the explanation immediately. The
+          hidden modifier only fades it out of sight (never out of the
+          accessibility tree).
+        -->
+        <div
+          class="st-commit-details__tooltip"
+          [class.st-commit-details__tooltip--hidden]="!tooltipVisible()"
+          role="tooltip"
+          [id]="tooltipId"
+          data-testid="commit-details-lock-tooltip"
+          [style.left.px]="tooltipLeft()"
+          [style.top.px]="tooltipTop()"
+        >
+          {{ lockTooltip }}
+        </div>
       </section>
     }
   `,
   styles: `
+    /* The host is a fixed-height flex column: it never scrolls, the content
+       region does. */
     :host {
-      display: block;
+      display: flex;
+      flex-direction: column;
       min-height: 0;
       max-height: 100%;
-      overflow: auto;
+      overflow: hidden;
       padding: var(--st-space-3);
       color: var(--st-color-text);
       font-size: var(--st-font-12);
@@ -357,28 +430,68 @@ import { splitCommitMessage } from './commit-message';
 
     .st-commit-details {
       display: flex;
+      flex: 1 1 auto;
       flex-direction: column;
       gap: var(--st-space-3);
+      min-height: 0;
     }
 
-    /* Header: identity | centered CTA | contextual actions. */
+    /* Header: two rows — identity | centred CTA | actions, then the switch. */
     .st-commit-details__header {
+      flex: none;
       display: flex;
+      flex-direction: column;
+      gap: var(--st-space-2);
+    }
+
+    /* Row 1 wraps at the narrow pane widths the detail host allows. */
+    .st-commit-details__header-row {
+      display: flex;
+      flex-wrap: wrap;
       align-items: center;
       gap: var(--st-space-2);
     }
 
+    /* Shrinks and truncates instead of squeezing the CTA/actions out. */
     .st-commit-details__identity {
       display: flex;
+      flex: 0 1 auto;
       align-items: center;
       gap: var(--st-space-2);
       min-width: 0;
+      overflow: hidden;
+    }
+
+    .st-commit-details__identity st-badge {
+      flex: none;
     }
 
     .st-commit-details__header-center {
       flex: 1 1 auto;
       display: flex;
       justify-content: center;
+    }
+
+    /* The CTA label never wraps; the center slot gives it the remaining width. */
+    .st-commit-details__header-center st-button {
+      flex: none;
+    }
+
+    /* Row 2: fixed height and aligned to the header's start edge. */
+    .st-commit-details__header-switch {
+      flex: none;
+      align-self: flex-start;
+    }
+
+    /* The only scrolling region: a long description or a long file list
+       scrolls here and never pushes the footer out of the panel. */
+    .st-commit-details__content {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--st-space-3);
     }
 
     .st-commit-details__actions {
@@ -388,7 +501,16 @@ import { splitCommitMessage } from './commit-message';
       gap: var(--st-space-2);
     }
 
+    .st-commit-details__lock {
+      display: inline-flex;
+      flex: none;
+    }
+
     .st-commit-details__short-oid {
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
       font-family: var(--st-font-mono);
       font-size: var(--st-font-12);
       color: var(--st-color-muted);
@@ -401,19 +523,13 @@ import { splitCommitMessage } from './commit-message';
     }
 
     .st-commit-details__description-block {
+      flex: none;
       display: flex;
       flex-direction: column;
       gap: var(--st-space-2);
     }
 
-    .st-commit-details__subject-row {
-      display: flex;
-      align-items: flex-start;
-      gap: var(--st-space-2);
-    }
-
     .st-commit-details__subject {
-      flex: 1 1 auto;
       min-width: 0;
       margin: 0;
       font-size: var(--st-font-22);
@@ -422,18 +538,12 @@ import { splitCommitMessage } from './commit-message';
       word-break: break-word;
     }
 
-    /* Collapsed: the subject clamps to a single line so the header row stays
-       compact and the disclosure's state reads at a glance. */
+    /* Collapsed: the subject clamps to a single line in files mode so the list
+       keeps the vertical budget. */
     .st-commit-details__subject--collapsed {
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-    }
-
-    /* Exclusive view switch (description / changed files): pinned to the far
-       right of the subject row, like the disclosure it replaces. */
-    .st-commit-details__view-switch {
-      flex: none;
     }
 
     .st-commit-details__description {
@@ -446,8 +556,10 @@ import { splitCommitMessage } from './commit-message';
     }
 
     /* Changed files: an outer bordered block carrying the header row + a
-       bordered, independently-scrolling body. */
+       bordered body. The content region owns the scroll, so the block grows
+       naturally and never overlays the footer. */
     .st-commit-details__files {
+      flex: none;
       display: flex;
       flex-direction: column;
       gap: var(--st-space-2);
@@ -470,9 +582,8 @@ import { splitCommitMessage } from './commit-message';
       color: var(--st-color-muted);
     }
 
-    /* Inset body: its own surface + border so it reads as a distinct region,
-       and its own scroll so a very long list never pushes the panel past the
-       viewport (the host already scrolls). */
+    /* Inset body: its own surface + border so it reads as a distinct region.
+       No height cap: the content region is the only scroller. */
     .st-commit-details__files-body {
       display: flex;
       flex-direction: column;
@@ -481,8 +592,6 @@ import { splitCommitMessage } from './commit-message';
       border: var(--st-hairline) solid var(--st-color-border);
       border-radius: var(--st-radius-2);
       background: var(--st-color-surface-2);
-      max-height: 320px;
-      overflow: auto;
     }
 
     .st-commit-details__files-list {
@@ -507,13 +616,44 @@ import { splitCommitMessage } from './commit-message';
       color: var(--st-color-muted);
     }
 
-    /* Metadata footer: hairline-separated and dimmed so it never competes with
-       the message above. */
+    /* Footer: fixed sibling of the content region. */
+    .st-commit-details__footer {
+      flex: none;
+      display: flex;
+      flex-direction: column;
+      gap: var(--st-space-2);
+    }
+
+    .st-commit-details__footer-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--st-space-1);
+      align-self: flex-start;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--st-color-muted);
+      font-family: var(--st-font-ui);
+      font-size: var(--st-font-11);
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .st-commit-details__footer-toggle:hover {
+      color: var(--st-color-text);
+    }
+
+    .st-commit-details__footer-toggle:focus-visible {
+      outline: 2px solid var(--st-color-focus);
+      outline-offset: 2px;
+    }
+
+    /* Metadata: hairline-separated and dimmed so it never competes with the
+       message above. */
     .st-commit-details__meta-block {
       display: flex;
       flex-direction: column;
       gap: var(--st-space-2);
-      margin-top: var(--st-space-1);
       padding-top: var(--st-space-3);
       border-top: var(--st-hairline) solid var(--st-color-border);
       opacity: 0.75;
@@ -606,6 +746,30 @@ import { splitCommitMessage } from './commit-message';
       word-break: break-all;
     }
 
+    /* Fixed so the pane's overflow: auto can never clip the padlock tooltip.
+       Long copy wraps at the pane-minimum width; the floating layer uses the
+       same radius role as the st-popover component. */
+    .st-commit-details__tooltip {
+      position: fixed;
+      z-index: var(--st-z-popover);
+      max-width: var(--st-size-pane-min);
+      padding: var(--st-space-2) var(--st-space-3);
+      border: var(--st-hairline) solid var(--st-color-border);
+      border-radius: var(--st-radius-4);
+      background: var(--st-color-raised);
+      color: var(--st-color-text);
+      font-size: var(--st-font-11);
+      line-height: var(--st-leading-ui);
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
+    /* Hidden only visually: opacity keeps the description in the a11y tree. */
+    .st-commit-details__tooltip--hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
     .st-commit-details__empty {
       margin: 0;
       color: var(--st-color-muted);
@@ -613,6 +777,8 @@ import { splitCommitMessage } from './commit-message';
   `,
 })
 export class CommitDetailsPanel {
+  private readonly destroyRef = inject(DestroyRef);
+
   readonly commit = input<Commit | null>(null);
   readonly isWip = input(false);
   /**
@@ -623,21 +789,31 @@ export class CommitDetailsPanel {
   readonly showCta = input(false);
   /**
    * Whether the ENTIRE description sector renders inside the panel: the subject
-   * `h1` AND the exclusive view switch (plus the body in `description` mode).
-   * The File-status commit embed sets this to false because it owns the subject
-   * in its right-pane title; the History aside keeps the default `true` and
-   * shows the sector inside the panel.
+   * `h1` AND the body (in `description` mode). The History aside (`repo-page`)
+   * and the File-status commit (analyzer) variant both pass `true`; only the
+   * File-status LOCAL variant passes `false` because that page owns the screen
+   * identity in its left column.
    */
   readonly showSubject = input(true);
   /**
-   * Gates the inline changed-files sector. The History aside opts in (and with
-   * it the exclusive switch appears); the File-status analyzer embed leaves it
-   * off because it lists the commit's files itself in its left column, so a
-   * second list — and a second switch — would be noise. Only meaningful
-   * together with `showSubject`: the switch renders (so `files` is reachable)
-   * only when both sectors are opted in.
+   * Gates the inline changed-files sector. The History aside opts in; the
+   * File-status analyzer embed leaves it off because it lists the commit's files
+   * itself in its left column, so a second list would be noise.
    */
   readonly showFiles = input(false);
+  /**
+   * HOST-OWNED shared view mode. The panel keeps no mode state of its own: it
+   * renders exactly this value (forced to `files` when the commit has no
+   * message) and emits `modeChange` when the user picks a segment.
+   */
+  readonly mode = input<'description' | 'files'>('description');
+  /**
+   * Whether the header renders the `description | files` switch. It renders
+   * only where the host opts in: BOTH the History aside (`repo-page`) and the
+   * analyzer's commit variant opt in; the analyzer's local variant and the
+   * empty/WIP states never render it.
+   */
+  readonly showViewSwitch = input(false);
   /**
    * Which contextual action the header's action group renders: `release` (the
    * History "Back" control), `history` (the analyzer shortcut back to the graph,
@@ -665,33 +841,29 @@ export class CommitDetailsPanel {
   readonly openHistory = output<void>();
   /** Reveal the commit in the graph (analyzer). */
   readonly revealInGraph = output<void>();
+  /** The user picked a segment: the host owns the mode and feeds it back. */
+  readonly modeChange = output<'description' | 'files'>();
 
   /**
-   * Exclusive view mode: exactly one of `description` (the subject + body) or
-   * `files` (the changed-file list) is visible. View state owned here, like
-   * `fileFilter`; a host never sees or shares it.
-   */
-  readonly mode = signal<'description' | 'files'>('description');
-
-  /**
-   * The mode actually rendered. A commit with no body can never land in
-   * `description` (the segment is disabled and the mode is forced to `files`),
-   * so an empty description view is impossible.
+   * The mode actually rendered. A commit with no message at all (empty subject
+   * AND body) can never land in `description` (the segment is disabled and the
+   * mode is forced to `files`). A subject-only commit still has a description —
+   * the subject is part of it — so `description` stays selectable.
    */
   readonly effectiveMode = computed<'description' | 'files'>(() =>
-    this.hasDescription() ? this.mode() : 'files',
+    this.hasMessage() ? this.mode() : 'files',
   );
 
   /**
    * Segments of the exclusive view switch. The `description` segment is
-   * disabled when the commit has no body (there would be nothing to show); the
-   * `files` segment carries the changed-file count.
+   * disabled when the commit has no message; the `files` segment carries the
+   * changed-file count.
    */
   readonly modeOptions = computed<readonly ToggleOption[]>(() => [
     {
       value: 'description',
       label: this.descriptionSegmentLabel,
-      disabled: !this.hasDescription(),
+      disabled: !this.hasMessage(),
     },
     { value: 'files', label: this.filesSegmentLabel, count: this.changedFiles().length },
   ]);
@@ -726,6 +898,31 @@ export class CommitDetailsPanel {
     this.locked() ? $localize`Unlock commit` : $localize`Lock commit`,
   );
 
+  /** Plain localized explanation of what the padlock does (no interpolation). */
+  readonly lockTooltip = $localize`Locking pins this commit: the details panel keeps showing it after the graph reloads, and while the lock is on, selecting a different commit is refused.`;
+
+  /** Stable tooltip id referenced by the padlock's `aria-describedby`. */
+  readonly tooltipId = 'st-commit-details-lock-tooltip';
+
+  // -- padlock tooltip (delayed, continuous hover/focus) --------------------
+  private readonly lockAnchor = viewChild<ElementRef<HTMLElement>>('lockAnchor');
+  private tooltipTimer: ReturnType<typeof setTimeout> | null = null;
+  readonly tooltipVisible = signal(false);
+  readonly tooltipLeft = signal(0);
+  readonly tooltipTop = signal(0);
+
+  /** Footer starts collapsed: the metadata markup is not in the DOM. */
+  readonly footerExpanded = signal(false);
+
+  constructor() {
+    // A different commit invalidates whatever the tooltip described.
+    effect(() => {
+      this.commit();
+      this.hideLockTooltip();
+    });
+    this.destroyRef.onDestroy(() => this.clearTooltipTimer());
+  }
+
   readonly refs = computed(() => this.commit()?.refs ?? []);
   readonly parents = computed(() => this.commit()?.parents ?? []);
 
@@ -737,8 +934,10 @@ export class CommitDetailsPanel {
   readonly subject = computed(() => this.messageParts().subject);
   readonly description = computed(() => this.messageParts().description);
 
-  /** Whether the commit carries a body (the disclosure only matters then). */
-  readonly hasDescription = computed(() => this.description().length > 0);
+  /** Whether the commit carries ANY message (a subject or a trimmed body). */
+  readonly hasMessage = computed(
+    () => this.subject().length > 0 || this.description().length > 0,
+  );
 
   /**
    * Normalized filter query: trimmed and lowercased once so both the "active"
@@ -772,10 +971,65 @@ export class CommitDetailsPanel {
     return total === 1 ? $localize`1 changed file` : $localize`${total} changed files`;
   });
 
-  /** Pick the visible sector. Unknown values are ignored. */
-  setMode(value: string): void {
+  /** Announce a segment pick; the host owns the mode. */
+  onModePick(value: string): void {
     if (value !== 'description' && value !== 'files') return;
-    this.mode.set(value);
+    this.modeChange.emit(value);
+  }
+
+  toggleFooter(): void {
+    this.footerExpanded.update((expanded) => !expanded);
+  }
+
+  // -- padlock tooltip ------------------------------------------------------
+
+  onLockEnter(): void {
+    this.scheduleTooltip();
+  }
+
+  onLockFocus(): void {
+    this.scheduleTooltip();
+  }
+
+  onLockLeave(): void {
+    this.hideLockTooltip();
+  }
+
+  onLockBlur(): void {
+    this.hideLockTooltip();
+  }
+
+  private scheduleTooltip(): void {
+    this.clearTooltipTimer();
+    this.tooltipTimer = setTimeout(() => {
+      this.tooltipTimer = null;
+      this.positionTooltip();
+      this.tooltipVisible.set(true);
+    }, TOOLTIP_DELAY_MS);
+  }
+
+  private hideLockTooltip(): void {
+    this.clearTooltipTimer();
+    this.tooltipVisible.set(false);
+  }
+
+  private clearTooltipTimer(): void {
+    if (this.tooltipTimer !== null) {
+      clearTimeout(this.tooltipTimer);
+      this.tooltipTimer = null;
+    }
+  }
+
+  /** Anchor the tooltip below the padlock, clamped inside the viewport. */
+  private positionTooltip(): void {
+    const rect = this.lockAnchor()?.nativeElement.getBoundingClientRect();
+    if (!rect) return;
+    const margin = 8;
+    const maxWidth = TOOLTIP_MAX_WIDTH;
+    const viewportWidth = typeof window === 'undefined' ? rect.left + maxWidth : window.innerWidth;
+    const left = Math.max(margin, Math.min(rect.left, viewportWidth - maxWidth - margin));
+    this.tooltipLeft.set(left);
+    this.tooltipTop.set(rect.bottom + 6);
   }
 
   /** Head ref when present, otherwise the first ref (plan §4.3 branch chip). */

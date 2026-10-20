@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-10-17
+last_updated: 2026-10-19
 status: active
 description: Shipped SingulariTree renderer design system — the Dark Neon / Developer Studio palette in dark and light, the two-tier CSS custom property vocabulary, typography, spacing and geometry, the ui-kit component inventory, and copy-paste usage.
 tags:
@@ -8,7 +8,7 @@ tags:
 - tokens
 - theming
 - ui-kit
-version: 1.7
+version: 1.8
 related:
 - renderer-redesign-plan
 - renderer-slice
@@ -228,7 +228,7 @@ All shipped primitives live under `libs/ui-kit/src/` and are exported from the b
 ### `st-button`
 **Role:** the single action element
 
-Variants `default | primary | ghost | danger | info | icon`; sizes `sm` (24px) `md` (30px). `default` is a bordered surface button; `primary` fills with `--st-color-accent` and uses `--st-color-accent-contrast` text and carries the **one permitted glow** in the system (`0 2px 10px` turquoise at 22%); `ghost` is transparent; `danger` is transparent with `--st-color-danger` (coral) text; `info` is neutral/muted at rest and takes the electric-blue `--st-color-info` border and label only while hovered or focused; `icon` is square and sized by `--st-size-control-sm|md`. Focus uses a 2px `--st-color-focus` outline. `ariaLabel` is forwarded to the inner native button; `pressed` (`boolean | null`) is forwarded as `aria-pressed` for toggle chips and is omitted when null.
+Variants `default | primary | ghost | danger | info | icon`; sizes `sm` (24px) `md` (30px). `default` is a bordered surface button; `primary` fills with `--st-color-accent` and uses `--st-color-accent-contrast` text and carries the **one permitted glow** in the system (`0 2px 10px` turquoise at 22%); `ghost` is transparent; `danger` is transparent with `--st-color-danger` (coral) text; `info` is neutral/muted at rest and takes the electric-blue `--st-color-info` border and label only while hovered or focused; `icon` is square and sized by `--st-size-control-sm|md`. Focus uses a 2px `--st-color-focus` outline. `ariaLabel` is forwarded to the inner native button; `pressed` (`boolean | null`) is forwarded as `aria-pressed` for toggle chips and is omitted when null; `ariaDescribedby` (`string | null`) is forwarded as `aria-describedby` — the commit-details padlock uses it to point at its delayed tooltip — and is omitted when null.
 
 ### `st-badge`
 **Role:** pill label for branch, tag, status and graph state
@@ -258,7 +258,7 @@ The parent owns the state; each control re-emits its value on input/change. Surf
 ### `st-toggle-group`
 **Role:** segmented control
 
-`options[]` + `value` + `valueChange`, one segment active at a time. Surface-2 track, 24px segments, the active segment raised to the surface colour. An option may carry an optional per-segment `count` (a small accent-tinted pill after the label, hidden when absent or zero and capped at `99+`, tabular-nums — e.g. the pending-file count on the variant bar's "Local" segment) and an optional per-segment `disabled` (a single segment can be disabled while the group stays enabled — the commit-details switch disables `description` for a body-less commit); a whole-group `disabled` input is also available. Used for theme, language, density and variant bars, and as a two-segment **view switch**: the commit-details view switch in the History aside (`commit-details-view-switch`, description | files) and the analyzer title switch (`file-status-view-switch`).
+`options[]` + `value` + `valueChange`, one segment active at a time. Surface-2 track, 24px segments, the active segment raised to the surface colour. An option may carry an optional per-segment `count` (a small accent-tinted pill after the label, hidden when absent or zero and capped at `99+`, tabular-nums — e.g. the pending-file count on the variant bar's "Local" segment) and an optional per-segment `disabled` (a single segment can be disabled while the group stays enabled — the commit-details switch disables `description` for a commit with no message at all (a subject-only commit stays selectable)); a whole-group `disabled` input is also available. Used for theme, language, density and variant bars, and as a two-segment **view switch**: the commit-details panel header carries `commit-details-view-switch` (description | files) on **both** hosts — History and the Commit analyzer — driving the route-scoped `CommitViewModeService`.
 
 ### `[stSelectableRow]`
 **Role:** the one reusable selectable-row pattern

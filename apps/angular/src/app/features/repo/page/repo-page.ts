@@ -7,6 +7,7 @@ import { IpcBridge } from '@core/services/ipc-bridge.service';
 import { PreferencesService } from '@core/services/preferences.service';
 import { RepoState } from '@core/services/repo-state.service';
 import { WorkspacesStore } from '@core/services/workspaces.store';
+import { CommitViewModeService } from '../commit-view-mode.service';
 import { GraphStore } from '../graph/graph.store';
 import { CommitDetailsPanel } from '../graph/ui/commit-details-panel';
 import { GraphPage } from '../graph/page/graph-page';
@@ -46,10 +47,13 @@ import { RepoRelocatePanel } from '../ui/repo-relocate-panel';
         [changedFiles]="changedFiles()"
         [showCta]="true"
         [showFiles]="true"
+        [showViewSwitch]="true"
+        [mode]="viewMode.mode()"
         [navMode]="'release'"
         [locked]="graphStore.lockedOid() === selectedCommit()?.oid?.hex"
         (reviewChanges)="openChanges()"
         (lockToggle)="toggleLock()"
+        (modeChange)="viewMode.setMode($event)"
         (release)="releaseCommit()"
       />
       <!--
@@ -89,10 +93,16 @@ import { RepoRelocatePanel } from '../ui/repo-relocate-panel';
       min-height: 0;
     }
 
-    /* The History aside's commit panel rests on the floor of the detail pane. */
+    /*
+      The History aside's commit panel IS the detail pane: it must fill the
+      split's detail body so its content region is the only scroller and its
+      metadata footer stays pinned to the bottom. The split's detail body is a
+      definite-height flex column, so flex: 1 1 auto + min-height: 0 is all
+      the panel needs to stretch without overflowing.
+    */
     :host st-commit-details-panel {
-      margin-top: auto;
-      align-self: stretch;
+      flex: 1 1 auto;
+      min-height: 0;
     }
 
     :host st-graph-page,
@@ -107,6 +117,11 @@ import { RepoRelocatePanel } from '../ui/repo-relocate-panel';
 export class RepoPage {
   private readonly repoState = inject(RepoState);
   readonly graphStore = inject(GraphStore);
+  /**
+   * Route-scoped `description | files` choice shared with the File-status
+   * analyzer, so a pick on either surface survives the screen change.
+   */
+  protected readonly viewMode = inject(CommitViewModeService);
   private readonly commitFocus = inject(CommitFocusService);
   private readonly bridge = inject(IpcBridge);
   private readonly workspaces = inject(WorkspacesStore);

@@ -15,8 +15,10 @@ import { _electron as electron, type ElectronApplication, type Page } from 'play
  *   1. open repo       — type the fixture path into the repo picker and open it.
  *   2. graph           — the routed graph page renders real commits from go-core
  *                        (gRPC round-trip through the Electron IPC bridge).
- *   3. select          — clicking a row shows its details (message/oid) in the
- *                        read-only History aside (ADR-0030).
+ *   3. select          — clicking a row shows its details (message) in the
+ *                        read-only History aside (ADR-0030); the metadata
+ *                        (full oid, author, date) sits in the aside's
+ *                        collapsible footer, which the spec expands.
  *   4. WIP row         — the synthetic working-tree row no longer renders a
  *                        History placeholder: it routes to the File status screen
  *                        (ADR-0030), whose `local` variant lists the dirty
@@ -28,8 +30,10 @@ import { _electron as electron, type ElectronApplication, type Page } from 'play
  *                        WORKSPACE entry and shows the new commit row
  *                        (IPC → gRPC → git).
  *   7. diff            — re-selecting that commit and using the History toolbar
- *                        "Changes" button opens the File status `commit` variant,
- *                        whose changed-file list diffs the file in the viewer.
+ *                        "Changes" button opens the File status `commit` variant;
+ *                        picking Files in the commit-details panel's header
+ *                        switch mounts its changed-file list, which diffs the
+ *                        file in the viewer.
  *
  * WHAT IS ABSENT THIS ITERATION
  *   History (route `/repo`) is compare-free by design (ADR-0030): it owns the
@@ -330,7 +334,28 @@ test.describe('SingulariTree Electron smoke: open repo → graph → stage → c
     const detailSubject = window.getByTestId('commit-details-subject');
     await expect(detailSubject).toBeVisible();
     await expect(detailSubject).toContainText('second commit');
-    await expect(window.getByTestId('commit-details-oid')).toBeVisible();
+
+    // The metadata (oid / author / date / parents / refs) lives in the panel's
+    // COLLAPSIBLE footer, which starts collapsed: the metadata markup is not in
+    // the DOM until the disclosure is expanded (the commit-details panel is a
+    // header / content / footer surface).
+    const footerToggle = window.getByTestId('commit-details-footer-toggle');
+    await expect(footerToggle).toBeVisible();
+    await expect(footerToggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(window.getByTestId('commit-details-oid')).toHaveCount(0);
+
+    await footerToggle.click();
+    await expect(footerToggle).toHaveAttribute('aria-expanded', 'true');
+    // Full OID coverage: the metadata shows the complete 40-hex oid, not the
+    // abbreviated one.
+    const detailOid = window.getByTestId('commit-details-oid');
+    await expect(detailOid).toBeVisible();
+    await expect(detailOid).toContainText(fixture.head);
+
+    // Collapsing it again hides the metadata again.
+    await footerToggle.click();
+    await expect(footerToggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(window.getByTestId('commit-details-oid')).toHaveCount(0);
 
     // (d) pinned synthetic WIP row → routes to the File status screen (ADR-0030).
     // History no longer renders status details, so the dirty fixture file is
@@ -422,6 +447,17 @@ test.describe('SingulariTree Electron smoke: open repo → graph → stage → c
     await newCommitMessage.click();
     await window.getByTestId('graph-open-changes').click();
     await expect(window).toHaveURL(/\/repo\/file-status/);
+
+    // The analyzer opens in DESCRIPTION mode (the shared `description | files`
+    // mode defaults to description), so its changed-file list is not mounted
+    // yet. The switch now lives in the commit-details PANEL HEADER (it used to
+    // sit in the diff-pane title), so pick Files there. Clicking the already
+    // active segment is a no-op, which keeps this step idempotent.
+    const filesSegment = window
+      .getByTestId('commit-details-view-switch')
+      .getByTestId('toggle-segment-files');
+    await expect(filesSegment).toBeVisible();
+    await filesSegment.click();
 
     const changedRow = window.getByTestId('file-diff-row').filter({ hasText: 'wip.txt' });
     await expect(changedRow).toHaveCount(1, { timeout: 30_000 });

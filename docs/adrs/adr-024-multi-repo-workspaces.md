@@ -4,11 +4,13 @@ category: adrs
 tags: [adr, renderer, workspaces, multi-repo, m3]
 aliases: [ADR-024, Multi-repo workspaces]
 related: [adr-index, feature-gap-analysis, renderer-slice, core-slice, desktop-shell-slice]
-version: 1.0
-status: active
+version: 1.1
+status: superseded
 ---
 
 # ADR-024: Multi-repo Workspaces — repo tabs + multi-repo fetch
+
+> **Superseded in part by [[adr-0036-per-tab-fetch]] (2026-10-19):** solution item 3 — the renderer-orchestrated fan-out over every open tab — is replaced. The top-bar **Sync** now fetches only the active tab, and every other tab is fetched lazily when it becomes active. The repo-tabs decision (items 1, 2 and 4), the renderer-only boundary and the core's role as a per-repo executor stand unchanged. The decision text below is left verbatim (ADRs are append-only).
 
 ## Problem
 
