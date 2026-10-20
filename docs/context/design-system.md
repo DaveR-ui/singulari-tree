@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-10-19
+last_updated: 2026-10-20
 status: active
 description: Shipped SingulariTree renderer design system — the Dark Neon / Developer Studio palette in dark and light, the two-tier CSS custom property vocabulary, typography, spacing and geometry, the ui-kit component inventory, and copy-paste usage.
 tags:
@@ -228,7 +228,7 @@ All shipped primitives live under `libs/ui-kit/src/` and are exported from the b
 ### `st-button`
 **Role:** the single action element
 
-Variants `default | primary | ghost | danger | info | icon`; sizes `sm` (24px) `md` (30px). `default` is a bordered surface button; `primary` fills with `--st-color-accent` and uses `--st-color-accent-contrast` text and carries the **one permitted glow** in the system (`0 2px 10px` turquoise at 22%); `ghost` is transparent; `danger` is transparent with `--st-color-danger` (coral) text; `info` is neutral/muted at rest and takes the electric-blue `--st-color-info` border and label only while hovered or focused; `icon` is square and sized by `--st-size-control-sm|md`. Focus uses a 2px `--st-color-focus` outline. `ariaLabel` is forwarded to the inner native button; `pressed` (`boolean | null`) is forwarded as `aria-pressed` for toggle chips and is omitted when null; `ariaDescribedby` (`string | null`) is forwarded as `aria-describedby` — the commit-details padlock uses it to point at its delayed tooltip — and is omitted when null.
+Variants `default | primary | ghost | danger | info | icon`; sizes `sm` (24px) `md` (30px). `default` is a bordered surface button; `primary` fills with `--st-color-accent` and uses `--st-color-accent-contrast` text and carries the **one permitted glow** in the system (`0 2px 10px` turquoise at 22%); `ghost` is transparent; `danger` is transparent with `--st-color-danger` (coral) text; `info` is neutral/muted at rest and takes the electric-blue `--st-color-info` border and label only while hovered or focused; `icon` is square and sized by `--st-size-control-sm|md`. Focus uses a 2px `--st-color-focus` outline. `ariaLabel` is forwarded to the inner native button; `pressed` (`boolean | null`) is forwarded as `aria-pressed` for toggle chips and is omitted when null; `ariaDescribedby` (`string | null`) is forwarded as `aria-describedby` — the commit-details padlock and the two contextual nav controls (the "Close" control in History and the "History" control in the analyzer) use it to point at their ~1 s delayed tooltips — and is omitted when null.
 
 ### `st-badge`
 **Role:** pill label for branch, tag, status and graph state
