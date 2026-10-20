@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-10-17
+last_updated: 2026-10-20
 status: active
 description: Accepted debt of the corpus — legacy documents not yet migrated and explicitly tolerated decisions, with the criterion to reduce it.
 tags:
@@ -7,7 +7,7 @@ tags:
 - debt
 - legacy
 - ratchet
-version: 1.8.0
+version: 1.9.1
 related:
 - documentation-system
 ---
@@ -35,6 +35,7 @@ Record here **every exception explicitly**, with its reason and the criterion to
 | `buf` breaking check is SKIPPED when `buf` is not installed (`tools/ci/verify-contracts.sh` prints "buf not found — skipping"). | The host lacks `buf`; the ADR-020/021/023 proto change was additive-only and hand-verified, so no wire break was introduced. | Ensure `buf` is present in CI so `verify-contracts.sh` actually runs the breaking check instead of skipping it. |
 | Branch/tag mutations reuse `BRANCH_NOT_FOUND` / `TAG_NOT_FOUND` for generic failures (the real reason travels in `AppError.details`); no dedicated `*_FAILED` codes yet. | [[adr-028-advanced-git-rpcs]] defined only `*_EXISTS` / `*_NOT_FOUND`; the M3 branch/tag mutations reuse the not-found codes when a generic git failure occurs, keeping the underlying message in `details`. | Append dedicated `BRANCH_FAILED` / `TAG_FAILED` codes after the current last code when a concrete need appears (append-only, per ADR-028). |
 | `StashApply` / `StashPop` conflicts surface as `STASH_FAILED` and leave the working tree conflicted; there is no stash-conflict code yet. | M3 stash apply/pop land on [[adr-028-advanced-git-rpcs]], which defines no conflict code for stash; a conflicted apply is reported through the generic failure code. | Add a dedicated stash-conflict code (append-only) when the renderer needs to distinguish it from a generic failure; surface `GetStatus.is_conflicted` in the meantime. |
+| Monaco's static CSS is built but never delivered (renderer, diff editor) — PRE-EXISTING in the **production** build and, before the dev-server fix, in the dev server too | The Angular build emits Monaco's static CSS into per-entry CSS files that **nothing references**: **only** `styles-*.css` is linked from `index.html`, so a headless Chromium load of the production build fetches exactly one stylesheet. Snapshot as of 2026-10-20: `apps/angular/dist/browser` holds `main-*.css`, two byte-identical 186 KB Monaco CSS files and a 99 KB one, none of them referenced. The dev server had the same gap before the dev-server fix (403), so the CSS was never applied there either — the fix removes the 403, it does not start delivering the CSS. Consequence, verified by screenshot in headless Chromium: Monaco's diff editor mounts and renders its content, but without the static CSS the layout rules are missing (`.overflow-guard` computes `overflow: visible` instead of `hidden`; `.monaco-editor` computes `position: absolute` instead of `relative`), so the diff panes render without line numbers, diff highlighting or correct clipping. It is PRE-EXISTING and affects the **production** build identically (this change did not introduce it), the diff editor still loads and its content renders, and the obvious remedy — adding Monaco's aggregated CSS (`monaco-editor/min/vs/editor/editor.main.css`, 390,829 bytes) to the build's global `styles` — would take the initial payload referenced from `index.html` from ~558 kB to ~949 kB: it would move the production build above the 600 kB warning threshold while staying under the 1 MB error threshold, which is a product/budget decision, not a dev-server fix. | A dedicated change that delivers Monaco's CSS per lazy chunk (or splits it) so it is only fetched when the diff viewer opens, with the initial-budget impact reviewed; plus a check that the Monaco ESM CSS imports are not silently dropped again. Dev-server context and the 403 remedy: [[renderer-slice]]. |
 
 **What is NOT debt** (complies with the contract and must be validated):
 

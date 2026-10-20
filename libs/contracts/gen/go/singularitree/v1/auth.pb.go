@@ -978,7 +978,7 @@ type AuthStatus struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Authenticated bool                   `protobuf:"varint,1,opt,name=authenticated,proto3" json:"authenticated,omitempty"`
 	Source        AuthSource             `protobuf:"varint,2,opt,name=source,proto3,enum=singularitree.v1.AuthSource" json:"source,omitempty"`
-	AccountLogin  string                 `protobuf:"bytes,3,opt,name=account_login,json=accountLogin,proto3" json:"account_login,omitempty"` // gh account, e.g. "DaveR-ui"
+	AccountLogin  string                 `protobuf:"bytes,3,opt,name=account_login,json=accountLogin,proto3" json:"account_login,omitempty"` // gh account, e.g. "Nijnamovich"
 	Name          string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
 	AvatarUrl     string                 `protobuf:"bytes,5,opt,name=avatar_url,json=avatarUrl,proto3" json:"avatar_url,omitempty"`
 	Email         string                 `protobuf:"bytes,6,opt,name=email,proto3" json:"email,omitempty"`   // MAY BE EMPTY: gh token scopes may omit read:user

@@ -115,7 +115,7 @@ enum AuthSource {
 message AuthStatus {
   bool authenticated = 1;
   AuthSource source = 2;
-  string account_login = 3;   // gh account, e.g. "DaveR-ui"
+  string account_login = 3;   // gh account, e.g. "Nijnamovich"
   string name = 4;
   string avatar_url = 5;
   string email = 6;           // MAY BE EMPTY: gh token scopes may omit read:user

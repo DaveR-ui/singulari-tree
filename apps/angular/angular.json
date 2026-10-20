@@ -77,6 +77,13 @@
         },
         "serve": {
           "builder": "@angular/build:dev-server",
+          "options": {
+            "prebundle": {
+              "exclude": [
+                "monaco-editor"
+              ]
+            }
+          },
           "configurations": {
             "production": {
               "buildTarget": "singularitree-angular:build:production"

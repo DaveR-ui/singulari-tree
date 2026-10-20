@@ -29,7 +29,7 @@ These decisions were already made by the human and are input constraints, not pr
 | Decision | Frozen value |
 |---|---|
 | Token source | `gh` CLI — token obtained with `gh auth token` (no OAuth app). |
-| Target account | `DaveR-ui` (authenticated account on the local machine). |
+| Target account | `Nijnamovich` (authenticated account on the local machine). |
 | Token scopes | `gist, read:org, repo, workflow` — **without** `read:user`. |
 | OAuth app flow | Out of this iteration; future evolution only. |
 | Data scope | Repositories of the authenticated account (`GET /user/repos`), not third-party repos. |
