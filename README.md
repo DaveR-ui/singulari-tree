@@ -1,55 +1,63 @@
 # SingulariTree
 
-> **SingulariTree = git-client monorepo** — Multiplatform desktop Git client.
-> Greenfield design under `docs/context/git-client/` (see `docs/context/git-client/INDEX.md`).
-> Physical folder on disk is `SingulariTree/` (alias `git-client` per `docs/context/git-client/folder-structure.md §1`).
+> **SingulariTree = git-client monorepo** — multiplatform desktop Git client.
 > Module alias: **Singularitree** (Go module `github.com/SingulariTree/go-core`, proto package `singularitree.v1` aka `gitclient.v1` for compatibility).
+> Design corpus (legacy, under ratchet): [`docs/context/git-client/`](docs/context/git-client/INDEX.md).
 
 > **Agent-facing documentation:** entry point [`docs/project.md`](docs/project.md) · generated index [`docs/index.md`](docs/index.md) · contract in [`docs/context/documentation-system.md`](docs/context/documentation-system.md).
 >
 > **Website:** [daver-ui.github.io/singulari-tree](https://daver-ui.github.io/singulari-tree/) — static landing page (Spanish), source in `website/`. See [Website](#website).
 
-Necomat `frontend/` (Angular 21 SPA `spa-necomat`) and `backend/` (Go 1.24 API `github.com/DavidRomaniuk/golang-api`) are **untouched** by this scaffold. SingulariTree is additive — see `docs/context/git-client/INDEX.md`.
-
-## Monorepo Tree (source of truth: `docs/context/git-client/folder-structure.md §1`)
+## Monorepo Tree
 
 ```
-SingulariTree/                         <- monorepo root (physical folder SingulariTree, logical git-client)
+SingulariTree/                         <- monorepo root
 ├── apps/
 │   ├── angular/                       <- Angular 22 renderer (zoneless signals, standalone)
 │   │   └── src/app/{app,core,features/<feature>,shared,environments}
 │   ├── electron/                      <- Electron shell (main + preload + ipc + window, supervisor)
 │   │   └── src/{main,preload,ipc,window}
 │   └── go-core/                       <- Go headless core (domain + services + adapters)
-│       ├── cmd/go-core/main.go        <- Viper + DI + gRPC/HTTP, --headless flag
+│       ├── cmd/go-core/main.go        <- DI + gRPC/HTTP, --headless flag
 │       └── internal/{domain,service,repository,adapter/{git,grpc,http,watcher},config}
 ├── libs/
 │   ├── contracts/                     <- Single contract source (proto -> gen/go + gen/ts)
-│   │   ├── proto/{domain,errors,gitcore}.proto
-│   │   └── gen/{go,ts}/              <- generated stubs (buf generate)
+│   │   ├── proto/{auth,domain,errors,gitcore}.proto
+│   │   ├── buf.yaml  buf.gen.yaml     <- buf module + generation template
+│   │   └── gen/{go,ts}/               <- generated stubs (buf generate)
 │   └── ui-kit/                        <- shared Angular UI kit (dumb components)
 ├── data/
 │   └── sqlite/                        <- WAL per-user DB docs + migrations (runtime DB outside repo)
-│       └── migrations/001_initial.sql
+│       └── migrations/00*.sql
+├── docs/                              <- documentation corpus (entry point: docs/project.md)
+│   ├── context/                       <- strategic context docs
+│   ├── slices/  protocols/  adrs/     <- slice hub, protocols, decision records
+│   └── project.md                     <- agent-facing entry point
 ├── tools/
-│   ├── scripts/{gen-contracts,build-go-core}.sh
-│   └── ci/verify-contracts.sh
+│   ├── scripts/                       <- gen-contracts, build-go-core, gen-migrations, CI helpers
+│   ├── ci/                            <- verify-contracts, verify-migrations, verify-docs
+│   └── docs/validate.js               <- documentation corpus validator
 ├── website/                           <- static landing page for GitHub Pages (no build step)
+├── .github/workflows/                 <- CI (ci.yml) + GitHub Pages (pages.yml)
+├── Dockerfile  compose.yaml           <- containerized headless Go core
 ├── go.work                            <- Go workspace (use ./apps/go-core)
 └── README.md
 ```
 
 ## Traceability
 
-- Index: `docs/context/git-client/INDEX.md`
-- Architecture (C4 + Hexagonal + headless proof): `docs/context/git-client/architecture.md`
-- Folder structure: `docs/context/git-client/folder-structure.md`
-- Module / hexagonal proof: `docs/context/git-client/module-diagram.md`
-- Domain model (entities, SQLite tables, errors): `docs/context/git-client/domain-model.md`
-- IPC strategy (preload bridge + gRPC/HTTP, proto sketch §2.3, supervisor §2.6): `docs/context/git-client/ipc-strategy.md`
-- Service design (Go services, Angular stores, cache, watchers): `docs/context/git-client/service-design.md`
+- Canonical entry point: `docs/project.md` — stack, slices, commands, corpus navigation
+- Generated index: `docs/index.md` · tag index: `docs/tag-index.md`
+- Renderer UI plan: `docs/context/renderer-redesign-plan.md` · design system: `docs/context/design-system.md`
+- Legacy design corpus: `docs/context/git-client/INDEX.md`
+  - Architecture (C4 + Hexagonal + headless proof): `docs/context/git-client/architecture.md`
+  - Folder structure: `docs/context/git-client/folder-structure.md`
+  - Module / hexagonal proof: `docs/context/git-client/module-diagram.md`
+  - Domain model (entities, SQLite tables, errors): `docs/context/git-client/domain-model.md`
+  - IPC strategy (preload bridge + gRPC/HTTP, proto sketch §2.3, supervisor §2.6): `docs/context/git-client/ipc-strategy.md`
+  - Service design (Go services, Angular stores, cache, watchers): `docs/context/git-client/service-design.md`
 
-## Headless Proof (architecture.md §5)
+## Headless Proof (`docs/context/git-client/architecture.md` §5)
 
 Go core compiles and runs without Electron or Angular:
 
@@ -68,12 +76,23 @@ Behavior in `--headless`:
 - prints `GO_CORE_READY addr=... http=... token=...` for supervisor discovery;
 - health `Ping` every 5s; graceful shutdown on `SIGTERM`/`SIGINT`.
 
+The same core also runs containerized (`Dockerfile` + `compose.yaml`):
+
+```bash
+docker compose up --build core    # headless core; gRPC socket bind-mounted at ./ipc
+```
+
+The container exposes **no** TCP port: the gRPC unix socket is shared with the
+host through the `./ipc` bind mount, and the HTTP fallback stays on the
+container's own loopback.
+
 ## Contracts
 
 - Go module: `github.com/SingulariTree/go-core` (Go 1.25+)
 - Proto package: `singularitree.v1` (alias `gitclient.v1` for compatibility — see `libs/contracts/proto/*.proto` header comments)
-- Generation: `buf generate --template buf.gen.yaml` -> `libs/contracts/gen/go` + `libs/contracts/gen/ts`
-- Breaking check: `buf breaking` via `tools/ci/verify-contracts.sh`
+- Source of truth: `libs/contracts/proto/*.proto` (buf module `libs/contracts/buf.yaml`)
+- Generation: `buf generate --template buf.gen.yaml` from `libs/contracts/` -> `libs/contracts/gen/go` + `libs/contracts/gen/ts` (or `./tools/scripts/gen-contracts.sh`)
+- CI gate: `tools/ci/verify-contracts.sh` — `buf lint` + `buf breaking` against `main` + a generated-drift check
 
 ## Website
 
@@ -87,10 +106,6 @@ Static landing page (Spanish) — plain HTML/CSS, **no build step**.
 
 Local preview: open `website/index.html` in a browser (relative asset paths, no server needed).
 
-## Necomat Isolation
-
-This monorepo does not modify `frontend/` or `backend/`. Workspace routing (`docs/project.md` Slices table) remains authoritative for Necomat; SingulariTree is documented as a greenfield topic folder under `docs/context/git-client/` until promoted to a slice.
-
 ## Quick Start
 
 **Prerequisites:** Node >=22.22.3 (npm workspaces) · Go 1.25+ (the Go workspace targets 1.26) · `git` on `PATH`. Only for regenerating contracts: [`buf`](https://buf.build/docs/installation) — `./tools/scripts/gen-contracts.sh` fails fast if it is missing.
@@ -103,7 +118,9 @@ npm ci
 ./tools/scripts/build-go-core.sh                    # -> dist/go-core (or dist/go-core.exe)
 npm run build --workspace=@singularitree/angular    # -> apps/angular/dist/browser
 npm run build --workspace=@singularitree/electron   # -> apps/electron/dist/main/main.js
-# `npm run build` at the root builds every JS workspace (angular, electron, contracts, ui-kit).
+# `npm run build` at the root builds every JS workspace that has a build script
+# (angular, electron, ui-kit). The contracts workspace ships generated stubs, so
+# it has no build step of its own.
 
 # 3. Run the dev app (Angular `ng serve` + Electron, via concurrently + wait-on)
 npm start
@@ -124,7 +141,8 @@ npm run start:mock --workspace=@singularitree/electron   # mock core, opt-in via
 > first if a proto changed). `Supervisor.spawn`'s prefer-existing-binary policy
 > is unchanged on purpose — the guard, not a policy change, closes the hole.
 
-Tests (run from the **package directory**, never the repo root):
+Tests (the npm workspace commands run from the repo root; the Go and Playwright
+ones from their package directory):
 
 ```bash
 npm test --workspace=@singularitree/angular     # Angular vitest (`ng test --no-watch`)
@@ -132,6 +150,10 @@ npm test --workspace=@singularitree/electron    # Electron vitest (`vitest run`)
 cd apps/go-core && go test ./...                # Go core
 cd apps/electron && npx playwright test         # e2e smoke — needs the three builds above
 ```
+
+`./tools/scripts/run-tests-local.sh` reproduces the full CI suite locally
+(build + Go tests + Electron vitest + Playwright smoke); `--go-only`,
+`--ts-only`, `--e2e-only` and `--build-only` narrow it down.
 
 Package (**UNSIGNED** — code signing / notarization is V1):
 
@@ -155,7 +177,7 @@ Screenshots to capture manually and drop into `docs/assets/` (filenames and exac
 |---|---|---|
 | 1 | Repo picker | first launch, empty state |
 | 2 | Commit graph | repo opened, a commit selected |
-| 3 | Diff view | a diff open (once the diff UI lands; the current iteration is read-only graph + WIP) |
+| 3 | Diff view | the commit analyzer on a selected commit (diff of one file) |
 | 4 | Packaging artifact | `apps/electron/release/` after `npm run dist` (e.g. the AppImage) |
 
 Replace `docs/assets/placeholder-screenshot.svg` with the real captures and update the image links above.
