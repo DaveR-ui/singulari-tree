@@ -14,24 +14,24 @@ function makeRepo(index: number): GitHubRepo {
   return {
     id: index,
     name: `repo-${index}`,
-    fullName: `DaveR-ui/repo-${index}`,
+    fullName: `Nijnamovich/repo-${index}`,
     private: index % 2 === 0,
-    htmlUrl: `https://github.com/DaveR-ui/repo-${index}`,
+    htmlUrl: `https://github.com/Nijnamovich/repo-${index}`,
     description: `repo ${index}`,
     language: 'TypeScript',
     stargazersCount: index,
     updatedAt: '2026-01-02T10:00:00Z',
     nodeId: `node-${index}`,
     defaultBranch: 'main',
-    ownerLogin: 'DaveR-ui',
+    ownerLogin: 'Nijnamovich',
     ownerAvatarUrl: 'https://avatars.example/u',
     visibility: index % 2 === 0 ? 'private' : 'public',
     fork: false,
     archived: false,
     disabled: false,
-    cloneUrl: `https://github.com/DaveR-ui/repo-${index}.git`,
-    sshUrl: `git@github.com:DaveR-ui/repo-${index}.git`,
-    gitUrl: `git://github.com/DaveR-ui/repo-${index}.git`,
+    cloneUrl: `https://github.com/Nijnamovich/repo-${index}.git`,
+    sshUrl: `git@github.com:Nijnamovich/repo-${index}.git`,
+    gitUrl: `git://github.com/Nijnamovich/repo-${index}.git`,
     pushedAt: '2026-01-02T10:00:00Z',
     createdAt: '2025-01-02T10:00:00Z',
     forksCount: 0,
@@ -47,7 +47,7 @@ function makeStatus(overrides: Partial<AuthStatus> = {}): AuthStatus {
   return {
     authenticated: true,
     source: 2,
-    accountLogin: 'DaveR-ui',
+    accountLogin: 'Nijnamovich',
     name: 'David',
     avatarUrl: 'https://avatars.example/u',
     email: '',
@@ -95,7 +95,7 @@ describe('GithubAccountStore', () => {
   });
 
   it('connect() sets the authenticated status and sends the CLI request', async () => {
-    const status = makeStatus({ authenticated: true, accountLogin: 'DaveR-ui' });
+    const status = makeStatus({ authenticated: true, accountLogin: 'Nijnamovich' });
     const connectGitHubFromCLI = vi.fn(() => Promise.resolve({ status, user: undefined }));
     store = new GithubAccountStore(makeBridge({ connectGitHubFromCLI }));
 
@@ -229,8 +229,8 @@ describe('GithubAccountStore', () => {
   });
 
   it('refreshStatus() loads the current account status', async () => {
-    const status = makeStatus({ accountLogin: 'DaveR-ui' });
-    const getAuthStatus = vi.fn(() => Promise.resolve({ authenticated: true, login: 'DaveR-ui', status }));
+    const status = makeStatus({ accountLogin: 'Nijnamovich' });
+    const getAuthStatus = vi.fn(() => Promise.resolve({ authenticated: true, login: 'Nijnamovich', status }));
     store = new GithubAccountStore(makeBridge({ getAuthStatus }));
 
     await store.refreshStatus();
@@ -245,7 +245,7 @@ describe('GithubAccountStore', () => {
       ...makeStatus(),
       source: 'AUTH_SOURCE_GITHUB_CLI',
     } as unknown as AuthStatus;
-    const getAuthStatus = vi.fn(() => Promise.resolve({ authenticated: true, login: 'DaveR-ui', status: wireStatus }));
+    const getAuthStatus = vi.fn(() => Promise.resolve({ authenticated: true, login: 'Nijnamovich', status: wireStatus }));
     store = new GithubAccountStore(makeBridge({ getAuthStatus }));
 
     await store.refreshStatus();
@@ -258,7 +258,7 @@ describe('GithubAccountStore', () => {
       ...makeStatus(),
       source: 'SOMETHING_ELSE',
     } as unknown as AuthStatus;
-    const getAuthStatus = vi.fn(() => Promise.resolve({ authenticated: true, login: 'DaveR-ui', status: wireStatus }));
+    const getAuthStatus = vi.fn(() => Promise.resolve({ authenticated: true, login: 'Nijnamovich', status: wireStatus }));
     store = new GithubAccountStore(makeBridge({ getAuthStatus }));
 
     await store.refreshStatus();
@@ -340,7 +340,7 @@ describe('GithubAccountStore', () => {
 
   it('autoConnectOnce() does not connect when already authenticated', async () => {
     const getAuthStatus = vi.fn(() =>
-      Promise.resolve({ authenticated: true, login: 'DaveR-ui', status: makeStatus() }),
+      Promise.resolve({ authenticated: true, login: 'Nijnamovich', status: makeStatus() }),
     );
     const connectGitHubFromCLI = vi.fn();
     store = new GithubAccountStore(makeBridge({ getAuthStatus, connectGitHubFromCLI }));

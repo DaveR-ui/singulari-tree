@@ -6,7 +6,7 @@
 
 > **Agent-facing documentation:** entry point [`docs/project.md`](docs/project.md) · generated index [`docs/index.md`](docs/index.md) · contract in [`docs/context/documentation-system.md`](docs/context/documentation-system.md).
 >
-> **Website:** [daver-ui.github.io/singulari-tree](https://daver-ui.github.io/singulari-tree/) — static landing page (Spanish), source in `website/`. See [Website](#website).
+> **Website:** [nijnamovich.github.io/singulari-tree](https://nijnamovich.github.io/singulari-tree/) — static landing page (Spanish), source in `website/`. See [Website](#website).
 
 ## Monorepo Tree
 
@@ -99,7 +99,7 @@ container's own loopback.
 Static landing page (Spanish) — plain HTML/CSS, **no build step**.
 
 - Source: `website/` (`index.html`, `styles.css`, `assets/`)
-- Live: <https://daver-ui.github.io/singulari-tree/>
+- Live: <https://nijnamovich.github.io/singulari-tree/>
 - Deploy: `.github/workflows/pages.yml` uploads `website/` with `actions/upload-pages-artifact` and publishes with `actions/deploy-pages` on pushes to `main` that touch `website/**` or the workflow; manual runs via `workflow_dispatch`.
 - One-time setup: **Settings → Pages → Source: GitHub Actions** (already enabled; `build_type: workflow`).
 - Illustrative only: the page states that there is **no public release yet** and that all builds are unsigned/preliminary.

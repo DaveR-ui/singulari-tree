@@ -125,7 +125,7 @@ export interface LogoutResponse {
 export interface AuthStatus {
   authenticated: boolean;
   source: AuthSource;
-  /** gh account, e.g. "DaveR-ui" */
+  /** gh account, e.g. "Nijnamovich" */
   accountLogin: string;
   name: string;
   avatarUrl: string;

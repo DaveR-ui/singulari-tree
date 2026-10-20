@@ -9,24 +9,24 @@ function makeRepo(overrides: Partial<GitHubRepo> = {}): GitHubRepo {
   return {
     id: 1,
     name: 'repo-1',
-    fullName: 'DaveR-ui/repo-1',
+    fullName: 'Nijnamovich/repo-1',
     private: true,
-    htmlUrl: 'https://github.com/DaveR-ui/repo-1',
+    htmlUrl: 'https://github.com/Nijnamovich/repo-1',
     description: 'repo 1',
     language: 'TypeScript',
     stargazersCount: 1,
     updatedAt: '2026-01-02T10:00:00Z',
     nodeId: 'node-1',
     defaultBranch: 'main',
-    ownerLogin: 'DaveR-ui',
+    ownerLogin: 'Nijnamovich',
     ownerAvatarUrl: 'https://avatars.example/u',
     visibility: 'private',
     fork: false,
     archived: false,
     disabled: false,
-    cloneUrl: 'https://github.com/DaveR-ui/repo-1.git',
-    sshUrl: 'git@github.com:DaveR-ui/repo-1.git',
-    gitUrl: 'git://github.com/DaveR-ui/repo-1.git',
+    cloneUrl: 'https://github.com/Nijnamovich/repo-1.git',
+    sshUrl: 'git@github.com:Nijnamovich/repo-1.git',
+    gitUrl: 'git://github.com/Nijnamovich/repo-1.git',
     pushedAt: '2026-01-02T10:00:00Z',
     createdAt: '2025-01-02T10:00:00Z',
     forksCount: 0,
@@ -114,7 +114,7 @@ describe('RepoList', () => {
 
   it('keeps loaded repos and shows an inline error when pagination fails', () => {
     const fixture = render({
-      repos: [makeRepo({ id: 3, fullName: 'DaveR-ui/repo-3' })],
+      repos: [makeRepo({ id: 3, fullName: 'Nijnamovich/repo-3' })],
       error: { code: 'GITHUB_API_ERROR', message: 'page 2 failed' },
     });
     const el = fixture.nativeElement as HTMLElement;
@@ -129,14 +129,14 @@ describe('RepoList', () => {
 
   it('renders one repository card per repo, mapped to the card view', () => {
     const fixture = render({
-      repos: [makeRepo({ id: 7, fullName: 'DaveR-ui/repo-7', description: 'hello' })],
+      repos: [makeRepo({ id: 7, fullName: 'Nijnamovich/repo-7', description: 'hello' })],
     });
     const el = fixture.nativeElement as HTMLElement;
 
     expect(el.querySelector('[data-testid="gh-repos"]')).not.toBeNull();
     const cards = el.querySelectorAll('st-repo-card');
     expect(cards).toHaveLength(1);
-    expect(el.textContent).toContain('DaveR-ui/repo-7');
+    expect(el.textContent).toContain('Nijnamovich/repo-7');
     expect(el.querySelector('[data-testid="repo-card-subtitle"]')?.textContent?.trim()).toBe(
       'hello',
     );

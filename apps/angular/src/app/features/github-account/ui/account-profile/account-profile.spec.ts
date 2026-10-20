@@ -8,7 +8,7 @@ function makeStatus(overrides: Partial<AuthStatus> = {}): AuthStatus {
   return {
     authenticated: true,
     source: 2,
-    accountLogin: 'DaveR-ui',
+    accountLogin: 'Nijnamovich',
     name: 'David',
     avatarUrl: 'https://avatars.example/u',
     email: 'david@example.com',
@@ -42,7 +42,7 @@ describe('AccountProfile', () => {
       'david@example.com',
     );
     expect(el.querySelector('[data-testid="badge"]')?.textContent?.trim()).toBe('OAuth');
-    expect(el.textContent).toContain('DaveR-ui');
+    expect(el.textContent).toContain('Nijnamovich');
   });
 
   it('falls back to "no disponible" when the email is empty', () => {
