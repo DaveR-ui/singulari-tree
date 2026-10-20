@@ -34,6 +34,7 @@ export type ButtonType = 'button' | 'submit' | 'reset';
       [type]="type()"
       [disabled]="disabled()"
       [attr.aria-label]="ariaLabel() || null"
+      [attr.aria-describedby]="ariaDescribedby() || null"
       [attr.aria-pressed]="pressed()"
       [attr.aria-expanded]="expanded()"
       [attr.aria-haspopup]="haspopup()"
@@ -164,4 +165,9 @@ export class ButtonComponent {
   readonly expanded = input<boolean | null>(null);
   /** `aria-haspopup` for popup triggers; `null` (default) renders no attribute. */
   readonly haspopup = input<string | null>(null);
+  /**
+   * `aria-describedby` for a control explained by a tooltip/hint elsewhere;
+   * `null` (default) renders no attribute.
+   */
+  readonly ariaDescribedby = input<string | null>(null);
 }

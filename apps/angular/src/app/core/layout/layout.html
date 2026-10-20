@@ -3,7 +3,7 @@
     [tabs]="topBarTabs()"
     [activeTab]="workspaces.activeTabId()"
     [hasActiveRepo]="repoState.activeId() !== null"
-    [canFetchAll]="workspaces.tabs().length > 0"
+    [canSync]="workspaces.activeTabId() !== null"
     [pullPending]="repoState.currentBranchBehind()"
     [drawerPinned]="drawerPinned()"
     (tabSelected)="onTabSelected($event)"
@@ -12,7 +12,7 @@
     (pullRequested)="remoteOps.openDialog('pull')"
     (pushRequested)="remoteOps.openDialog('push')"
     (fetchRequested)="remoteOps.openDialog('fetch')"
-    (fetchAllRequested)="onFetchAll()"
+    (syncRequested)="onSync()"
     (cloneFromClipboardRequested)="onCloneFromClipboard()"
     (copyRepoUrlRequested)="onCopyRepoUrl()"
     (drawerToggled)="onDrawerToggled()"
@@ -95,7 +95,7 @@
   </div>
   <!-- /st-body -->
 
-  <!-- STATUS BAR: context | sync/online | live region + compact fetch-all -->
+  <!-- STATUS BAR: context | sync/online | live region + compact fetch status -->
   <st-status-bar
     [repo]="repoState.activeRepo()?.name ?? ''"
     [branch]="repoState.currentBranch()"
@@ -104,13 +104,13 @@
     [behind]="repoState.currentBranchBehind()"
     [offline]="remoteOps.offline()"
   >
-    <!-- Renderer-orchestrated multi-repo fetch fan-out (ADR-024). -->
+    <!-- Renderer-orchestrated active-tab fetch (ADR-024). -->
     <st-fetch-all-status
-      [open]="fetchAllOpen()"
-      [progress]="remoteOps.fetchAllProgress()"
-      [status]="remoteOps.fetchAllStatus()"
-      [error]="remoteOps.fetchAllError()"
-      (dismissed)="remoteOps.clearFetchAll()"
+      [open]="fetchOpen()"
+      [repoName]="fetchRepoName()"
+      [status]="remoteOps.fetchStatus()"
+      [error]="remoteOps.fetchError()"
+      (dismissed)="remoteOps.clearFetch()"
     />
   </st-status-bar>
 

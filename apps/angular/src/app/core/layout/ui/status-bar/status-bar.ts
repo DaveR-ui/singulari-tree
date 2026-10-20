@@ -6,8 +6,8 @@ import { LiveRegionComponent, LiveRegionService } from '@singularitree/ui-kit';
  * context, the sync + online indicators, and the single polite live region.
  *
  * The parent supplies every segment; missing ones are omitted from the joined
- * label. The right zone is a content slot so the shell can mount the compact
- * fetch-all line next to the live region.
+ * label. The right zone is a content slot so the shell can mount the
+ * per-repository fetch status next to the live region.
  */
 @Component({
   selector: 'st-status-bar',

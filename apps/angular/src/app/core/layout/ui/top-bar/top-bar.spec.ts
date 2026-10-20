@@ -14,7 +14,7 @@ async function setup(
     tabs: readonly TopBarTab[];
     activeTab: string | null;
     hasActiveRepo: boolean;
-    canFetchAll: boolean;
+    canSync: boolean;
     pullPending: number;
     drawerPinned: boolean;
   }> = {},
@@ -27,7 +27,7 @@ async function setup(
   fixture.componentRef.setInput('tabs', inputs.tabs ?? TABS);
   fixture.componentRef.setInput('activeTab', inputs.activeTab ?? 'repo-1');
   fixture.componentRef.setInput('hasActiveRepo', inputs.hasActiveRepo ?? true);
-  fixture.componentRef.setInput('canFetchAll', inputs.canFetchAll ?? false);
+  fixture.componentRef.setInput('canSync', inputs.canSync ?? false);
   fixture.componentRef.setInput('pullPending', inputs.pullPending ?? 0);
   fixture.componentRef.setInput('drawerPinned', inputs.drawerPinned ?? true);
   fixture.detectChanges();
@@ -127,32 +127,32 @@ describe('TopBar', () => {
     }
   });
 
-  it('gates fetch-all on canFetchAll', async () => {
-    const disabled = await setup({ canFetchAll: false });
-    expect(button(disabled, 'top-bar-fetch-all')!.disabled).toBe(true);
+  it('gates Sync on canSync', async () => {
+    const disabled = await setup({ canSync: false });
+    expect(button(disabled, 'top-bar-sync')!.disabled).toBe(true);
 
-    const enabled = await setup({ canFetchAll: true });
-    expect(button(enabled, 'top-bar-fetch-all')!.disabled).toBe(false);
+    const enabled = await setup({ canSync: true });
+    expect(button(enabled, 'top-bar-sync')!.disabled).toBe(false);
   });
 
   it('emits the remote-op intents', async () => {
-    const fixture = await setup({ canFetchAll: true });
+    const fixture = await setup({ canSync: true });
     const events: string[] = [];
     fixture.componentInstance.pullRequested.subscribe(() => events.push('pull'));
     fixture.componentInstance.pushRequested.subscribe(() => events.push('push'));
     fixture.componentInstance.fetchRequested.subscribe(() => events.push('fetch'));
-    fixture.componentInstance.fetchAllRequested.subscribe(() => events.push('fetch-all'));
+    fixture.componentInstance.syncRequested.subscribe(() => events.push('sync'));
     fixture.componentInstance.cloneFromClipboardRequested.subscribe(() => events.push('clone'));
     fixture.componentInstance.copyRepoUrlRequested.subscribe(() => events.push('copy-url'));
 
     button(fixture, 'top-bar-pull')!.click();
     button(fixture, 'top-bar-push')!.click();
     button(fixture, 'top-bar-fetch')!.click();
-    button(fixture, 'top-bar-fetch-all')!.click();
+    button(fixture, 'top-bar-sync')!.click();
     button(fixture, 'top-bar-clone-clipboard')!.click();
     button(fixture, 'top-bar-copy-repo-url')!.click();
 
-    expect(events).toEqual(['pull', 'push', 'fetch', 'fetch-all', 'clone', 'copy-url']);
+    expect(events).toEqual(['pull', 'push', 'fetch', 'sync', 'clone', 'copy-url']);
   });
 
   it('renders the pull badge only when there is something pending', async () => {
@@ -174,12 +174,10 @@ describe('TopBar', () => {
     expect(button(fixture, 'top-bar-fetch')!.classList.contains('st-button--primary')).toBe(false);
   });
 
-  it('gives Fetch all the neutral info variant with a blue interaction accent', async () => {
-    const fixture = await setup({ canFetchAll: true });
-    expect(button(fixture, 'top-bar-fetch-all')!.classList.contains('st-button--info')).toBe(true);
-    expect(button(fixture, 'top-bar-fetch-all')!.classList.contains('st-button--primary')).toBe(
-      false,
-    );
+  it('gives Sync the neutral info variant with a blue interaction accent', async () => {
+    const fixture = await setup({ canSync: true });
+    expect(button(fixture, 'top-bar-sync')!.classList.contains('st-button--info')).toBe(true);
+    expect(button(fixture, 'top-bar-sync')!.classList.contains('st-button--primary')).toBe(false);
   });
 
   it('shows a success sync pill when clean and a warning one while a pull is pending', async () => {

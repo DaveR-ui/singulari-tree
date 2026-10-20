@@ -19,9 +19,9 @@ export interface TopBarTab {
  *
  * Emphasis hierarchy (Dark Neon): exactly one action is highlighted — Push, the
  * `primary` variant (turquoise fill + dark contrast text). Pull and Fetch stay
- * secondary; Fetch all is neutral with an electric-blue `info` interaction
- * accent on hover/focus. The sync pill is mint (`success`) when clean and amber
- * (`warning`) while a pull is pending. Coral (`danger`) is reserved for
+ * secondary; Sync (the active-tab fetch) is neutral with an electric-blue `info`
+ * interaction accent on hover/focus. The sync pill is mint (`success`) when clean
+ * and amber (`warning`) while a pull is pending. Coral (`danger`) is reserved for
  * repository errors and is never applied here.
  */
 @Component({
@@ -123,12 +123,12 @@ export interface TopBarTab {
           variant="info"
           size="sm"
           class="st-topbar__action"
-          data-testid="top-bar-fetch-all"
-          [disabled]="!canFetchAll()"
-          (click)="fetchAllRequested.emit()"
+          data-testid="top-bar-sync"
+          [disabled]="!canSync()"
+          (click)="syncRequested.emit()"
         >
           <st-icon name="fetch-all" />
-          <span i18n>Fetch all</span>
+          <span i18n>Sync</span>
         </st-button>
         <st-button
           variant="ghost"
@@ -438,8 +438,8 @@ export class TopBar {
   readonly activeTab = input<string | null>(null);
   /** Whether a repository is active; gates Pull/Push/Fetch/Copy-URL. */
   readonly hasActiveRepo = input(false);
-  /** Whether any repository tab is open; gates Fetch-all. */
-  readonly canFetchAll = input(false);
+  /** Whether a repository tab is active; gates Sync (the active-tab fetch). */
+  readonly canSync = input(false);
   /** Pull-pending (behind) count of the current branch; badges Pull and the sync pill. */
   readonly pullPending = input(0);
   /** Whether the repo drawer is pinned (docked); reflected on the toggle. */
@@ -453,7 +453,7 @@ export class TopBar {
   readonly pullRequested = output<void>();
   readonly pushRequested = output<void>();
   readonly fetchRequested = output<void>();
-  readonly fetchAllRequested = output<void>();
+  readonly syncRequested = output<void>();
   readonly cloneFromClipboardRequested = output<void>();
   readonly copyRepoUrlRequested = output<void>();
   readonly drawerToggled = output<void>();

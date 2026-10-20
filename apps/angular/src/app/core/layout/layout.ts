@@ -25,7 +25,6 @@ import { copyToClipboard, readClipboardText } from '@core/util/clipboard';
 import { baseName, buildRepoDeepLink, isPlausibleGitRemoteUrl } from '@core/util/git-url';
 import { GithubAccountStore } from '@features/github-account/github-account.store';
 import { RemoteOpsStore } from '@features/remote/remote-ops.store';
-import type { RepoFetchEntry } from '@features/remote/remote-models';
 import { FetchAllStatus } from '@features/remote/ui/fetch-all-status/fetch-all-status';
 import { FetchDialog } from '@features/remote/ui/fetch-dialog/fetch-dialog';
 import { PullDialog } from '@features/remote/ui/pull-dialog/pull-dialog';
@@ -113,6 +112,13 @@ export class LayoutComponent implements OnInit {
   /** Current router URL, mirrored into a signal so the rail highlight can react. */
   private readonly currentUrl = signal(this.router.url);
 
+  /**
+   * The last text this shell announced about a fetch. It lets the shell clear
+   * ONLY its own announcement when the fetch line closes, leaving another
+   * producer's message (e.g. the graph's refused-selection notice) untouched.
+   */
+  private lastFetchAnnouncement: string | null = null;
+
   /** Top-level routes the OS-native menu may request. */
   private static readonly MENU_ROUTES: ReadonlySet<string> = new Set([
     '/repo',
@@ -186,15 +192,27 @@ export class LayoutComponent implements OnInit {
     })),
   );
 
-  /** Open tabs mapped to the multi-repo fetch fan-out targets (ADR-024). */
-  readonly fetchAllRepos = computed<RepoFetchEntry[]>(() =>
-    this.workspaces.tabs().map((tab) => ({ repoId: tab.repoId, name: tab.name })),
-  );
+  /** Display name of the repository whose fetch the status line reports. */
+  readonly fetchRepoName = computed<string>(() => {
+    const repoId = this.remoteOps.fetchRepoId();
+    if (!repoId) return '';
+    return this.workspaces.tabs().find((tab) => tab.repoId === repoId)?.name ?? '';
+  });
 
-  /** Whether the fetch-all status line should be visible. */
-  readonly fetchAllOpen = computed(
-    () => this.remoteOps.fetchAllRunning() || this.remoteOps.fetchAllProgress() !== null,
-  );
+  /** Whether the fetch status line should be visible (a reported repository). */
+  readonly fetchOpen = computed(() => Object.keys(this.remoteOps.fetchStatus()).length > 0);
+
+  /**
+   * State of the reported repository, derived with the SAME rule the status
+   * line renders (`pending` wins over `failed`, which wins over `success`), so
+   * the live-region announcement settles with the visible line.
+   */
+  readonly fetchState = computed<'pending' | 'success' | 'failed' | null>(() => {
+    const states = Object.values(this.remoteOps.fetchStatus());
+    if (states.includes('pending')) return 'pending';
+    if (states.includes('failed')) return 'failed';
+    return states.includes('success') ? 'success' : null;
+  });
 
   constructor() {
     // Persist the drawer pin state (the previous width/collapse pair is gone).
@@ -223,15 +241,50 @@ export class LayoutComponent implements OnInit {
       else this.activeWorkspace.set('');
     });
 
-    // Publish fetch-all progress to the status-bar's single live region.
+    // Lazy per-tab fetch: every activation path (deep link `selectTab`, the
+    // drawer, startup re-activation and the neighbour promoted by `closeTab`)
+    // funnels through `activeTabId`, so this effect covers them all. It is
+    // fire-and-forget: the click/render path is never awaited and the store is
+    // single-flight per repository. A status line owned by a DIFFERENT
+    // repository is stale after the switch, so drop it here.
     effect(() => {
-      if (!this.fetchAllOpen()) return;
-      const progress = this.remoteOps.fetchAllProgress();
-      this.liveRegion.announce(
-        progress
-          ? $localize`Fetching repositories ${progress.done}/${progress.total}`
-          : $localize`Fetching repositories…`,
-      );
+      const id = this.workspaces.activeTabId();
+      const reported = this.remoteOps.fetchRepoId();
+      // A line owned by any other repository (including no active tab) is stale
+      // after the switch: drop it before the lazy fetch repaints the bar.
+      if (reported && reported !== id) this.remoteOps.clearFetch();
+      if (!id) return;
+      void this.remoteOps.fetchRepoIfStale(id);
+    });
+
+    // Publish the repository being fetched to the status-bar live region. The
+    // announcement follows the SAME state the visible line renders, so it
+    // settles with the fetch instead of claiming to fetch forever; when the
+    // line closes, the announcement we own is cleared (another producer's
+    // message — e.g. the graph's refused-selection notice — is left alone).
+    effect(() => {
+      const state = this.fetchState();
+      if (!state) {
+        if (this.lastFetchAnnouncement !== null) {
+          // `untracked`: reading the live message must not make this effect
+          // depend on every other producer's announcement.
+          if (untracked(() => this.liveRegion.message()) === this.lastFetchAnnouncement) {
+            this.liveRegion.announce('');
+          }
+          this.lastFetchAnnouncement = null;
+        }
+        return;
+      }
+      const label =
+        state === 'success'
+          ? $localize`Repository up to date`
+          : state === 'failed'
+            ? $localize`Fetch failed`
+            : $localize`Fetching repository`;
+      const name = this.fetchRepoName();
+      const text = name ? `${label} ${name}` : `${label}…`;
+      this.lastFetchAnnouncement = text;
+      this.liveRegion.announce(text);
     });
 
     // Take over from the fallback banner whenever a blocked checkout needs a
@@ -735,7 +788,10 @@ export class LayoutComponent implements OnInit {
   /** Remove a repository from the persisted list via the drawer's trash icon. */
   onRemoveRepository(id: string): void {
     void this.repoState.removeRepository(id).then((ok) => {
-      if (ok) this.workspaces.closeTab(id);
+      if (ok) {
+        this.remoteOps.invalidateFetch(id);
+        this.workspaces.closeTab(id);
+      }
     });
   }
 
@@ -778,6 +834,9 @@ export class LayoutComponent implements OnInit {
    * left the shell falls back to the repository manager.
    */
   onTabClosed(id: string): void {
+    // Kill any in-flight fetch for the closed repository first: its late result
+    // must never write the status line or refresh another repository's refs.
+    this.remoteOps.invalidateFetch(id);
     const wasActive = this.workspaces.activeTabId() === id;
     this.workspaces.closeTab(id);
     if (wasActive) {
@@ -790,10 +849,17 @@ export class LayoutComponent implements OnInit {
     void this.router.navigate(['/repos']);
   }
 
-  // -- multi-repo fetch (ADR-024) ------------------------------------------
+  // -- active-tab sync (ADR-024) -------------------------------------------
 
-  /** Fan out `fetch` across every open repository tab. */
-  onFetchAll(): void {
-    void this.remoteOps.runFetchAll(this.fetchAllRepos());
+  /**
+   * Sync the active tab: fetch ONLY the currently visible repository. An
+   * explicit user action bypasses the lazy freshness marker (`fetchRepo`, not
+   * `fetchRepoIfStale`) but still runs fire-and-forget. No active tab is a
+   * no-op.
+   */
+  onSync(): void {
+    const id = this.workspaces.activeTabId();
+    if (!id) return;
+    void this.remoteOps.fetchRepo(id, { force: true });
   }
 }

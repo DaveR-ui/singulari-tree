@@ -17,7 +17,6 @@ import { WorkspacesStore, type RepoTab } from '@core/services/workspaces.store';
 import { GithubAccountStore } from '@features/github-account/github-account.store';
 import { RemoteOpsStore } from '@features/remote/remote-ops.store';
 import type {
-  FetchAllProgress,
   PushRowView,
   RemoteBranchOption,
   RemoteDialogKind,
@@ -221,18 +220,19 @@ function makeRemoteOps(opts: StubRemoteOpsOptions = {}) {
     progress: signal<RemoteOpProgress | null>(null),
     opError: signal<AppError | null>(null),
     refsError: signal<AppError | null>(null),
-    fetchAllRunning: signal(false),
-    fetchAllStatus: signal<Readonly<Record<string, RepoFetchState>>>({}),
-    fetchAllProgress: signal<FetchAllProgress | null>(null),
-    fetchAllError: signal<AppError | null>(null),
+    fetchStatus: signal<Readonly<Record<string, RepoFetchState>>>({}),
+    fetchRepoId: signal<string | null>(null),
+    fetchError: signal<AppError | null>(null),
     openDialog: vi.fn(),
     closeDialog: vi.fn(),
     loadRefs: vi.fn(async () => {}),
     runPull: vi.fn(async () => {}),
     runPush: vi.fn(async () => {}),
     runFetch: vi.fn(async () => {}),
-    runFetchAll: vi.fn(async () => {}),
-    clearFetchAll: vi.fn(),
+    fetchRepo: vi.fn(async () => {}),
+    fetchRepoIfStale: vi.fn(async () => {}),
+    invalidateFetch: vi.fn(),
+    clearFetch: vi.fn(),
   };
 }
 
@@ -1579,46 +1579,210 @@ describe('LayoutComponent', () => {
     await vi.waitFor(() => expect(workspaces.closeTab).toHaveBeenCalledWith(repo.id));
   });
 
-  // -- multi-repo fetch (ADR-024) ------------------------------------------
+  // -- active-tab sync (ADR-024) -------------------------------------------
 
-  it('fans out fetch across every open tab', async () => {
-    const workspaces = makeWorkspaces([
-      { repoId: 'repo-1', fsPath: '/tmp/local-1', name: 'local-1' },
-      { repoId: 'repo-2', fsPath: '/tmp/local-2', name: 'local-2' },
-    ]);
+  it('sync fetches only the active tab', async () => {
+    const workspaces = makeWorkspaces(
+      [
+        { repoId: 'repo-1', fsPath: '/tmp/local-1', name: 'local-1' },
+        { repoId: 'repo-2', fsPath: '/tmp/local-2', name: 'local-2' },
+      ],
+      'repo-2',
+    );
     const { fixture, remoteOps } = await setup({}, {}, workspaces);
 
-    const fetchAll = innerButton(fixture, 'top-bar-fetch-all')!;
-    expect(fetchAll.disabled).toBe(false);
-    fetchAll.click();
+    const sync = innerButton(fixture, 'top-bar-sync')!;
+    expect(sync.disabled).toBe(false);
+    expect(sync.textContent).toContain('Sync');
+    sync.click();
 
-    expect(remoteOps.runFetchAll).toHaveBeenCalledWith([
-      { repoId: 'repo-1', name: 'local-1' },
-      { repoId: 'repo-2', name: 'local-2' },
-    ]);
+    expect(remoteOps.fetchRepo).toHaveBeenCalledTimes(1);
+    expect(remoteOps.fetchRepo).toHaveBeenCalledWith('repo-2', { force: true });
   });
 
-  it('disables fetch-all when no tab is open', async () => {
+  it('sync with no active tab is a no-op', async () => {
+    const { fixture, remoteOps } = await setup();
+
+    fixture.componentInstance.onSync();
+
+    expect(remoteOps.fetchRepo).not.toHaveBeenCalled();
+  });
+
+  it('disables sync when no tab is active', async () => {
     const { fixture } = await setup();
 
-    expect(innerButton(fixture, 'top-bar-fetch-all')!.disabled).toBe(true);
+    expect(innerButton(fixture, 'top-bar-sync')!.disabled).toBe(true);
   });
 
-  it('announces fetch-all progress through the status-bar live region', async () => {
-    const { fixture, remoteOps } = await setup();
-    const liveRegion = TestBed.inject(LiveRegionService);
+  it('triggers the lazy fetch when the active tab changes', async () => {
+    const workspaces = makeWorkspaces(
+      [
+        { repoId: 'repo-1', fsPath: '/tmp/local-1', name: 'local-1' },
+        { repoId: 'repo-2', fsPath: '/tmp/local-2', name: 'local-2' },
+      ],
+      'repo-1',
+    );
+    const { fixture, remoteOps } = await setup({}, {}, workspaces);
 
-    remoteOps.fetchAllRunning.set(true);
-    remoteOps.fetchAllProgress.set({ done: 1, total: 2 });
+    expect(remoteOps.fetchRepoIfStale).toHaveBeenCalledWith('repo-1');
+    remoteOps.fetchRepoIfStale.mockClear();
+
+    workspaces.selectTab('repo-2');
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(liveRegion.message()).toContain('1/2');
+    expect(remoteOps.fetchRepoIfStale).toHaveBeenCalledWith('repo-2');
+  });
+
+  it('drops a status line owned by another repository when the tab changes', async () => {
+    const workspaces = makeWorkspaces(
+      [
+        { repoId: 'repo-1', fsPath: '/tmp/local-1', name: 'local-1' },
+        { repoId: 'repo-2', fsPath: '/tmp/local-2', name: 'local-2' },
+      ],
+      'repo-1',
+    );
+    const { fixture, remoteOps } = await setup({}, {}, workspaces);
+
+    remoteOps.fetchRepoId.set('repo-1');
+    remoteOps.fetchStatus.set({ 'repo-1': 'success' });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(remoteOps.clearFetch).not.toHaveBeenCalled();
+
+    workspaces.selectTab('repo-2');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // repo-1's settled line must not linger over repo-2.
+    expect(remoteOps.clearFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('invalidates an in-flight fetch when its tab is closed', async () => {
+    const workspaces = makeWorkspaces(
+      [
+        { repoId: 'repo-1', fsPath: '/tmp/local-1', name: 'local-1' },
+        { repoId: 'repo-2', fsPath: '/tmp/local-2', name: 'local-2' },
+      ],
+      'repo-2',
+    );
+    const { fixture, remoteOps } = await setup({}, {}, workspaces);
+
+    const closes = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+      '.st-tab__close',
+    );
+    closes[1].click();
+
+    expect(remoteOps.invalidateFetch).toHaveBeenCalledWith('repo-2');
+  });
+
+  it('announces the single repository being fetched through the live region', async () => {
+    const workspaces = makeWorkspaces(
+      [{ repoId: 'repo-1', fsPath: '/tmp/local-1', name: 'local-1' }],
+      'repo-1',
+    );
+    const { fixture, remoteOps } = await setup({}, {}, workspaces);
+    const liveRegion = TestBed.inject(LiveRegionService);
+
+    remoteOps.fetchRepoId.set('repo-1');
+    remoteOps.fetchStatus.set({ 'repo-1': 'pending' });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(liveRegion.message()).toContain('Fetching repository');
+    expect(liveRegion.message()).toContain('local-1');
+    expect(liveRegion.message()).not.toContain('1/2');
     const region = (fixture.nativeElement as HTMLElement).querySelector('[role="status"]');
     expect(region).not.toBeNull();
-    expect(region!.textContent).toContain('Fetching repositories');
-    expect(region!.textContent).toContain('1/2');
+    expect(region!.textContent).toContain('Fetching repository');
+    expect(region!.textContent).toContain('local-1');
+    expect(region!.textContent).not.toContain('1/2');
+  });
+
+  it('settles the live-region announcement with the fetch state', async () => {
+    const workspaces = makeWorkspaces(
+      [{ repoId: 'repo-1', fsPath: '/tmp/local-1', name: 'local-1' }],
+      'repo-1',
+    );
+    const { fixture, remoteOps } = await setup({}, {}, workspaces);
+    const liveRegion = TestBed.inject(LiveRegionService);
+
+    remoteOps.fetchRepoId.set('repo-1');
+    remoteOps.fetchStatus.set({ 'repo-1': 'pending' });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(liveRegion.message()).toContain('Fetching repository');
+
+    // The fetch settles: the announcement must settle too, never keep claiming
+    // to fetch.
+    remoteOps.fetchStatus.set({ 'repo-1': 'success' });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(liveRegion.message()).toContain('Repository up to date');
+    expect(liveRegion.message()).not.toContain('Fetching repository');
+
+    // A failure announces the failure.
+    remoteOps.fetchStatus.set({ 'repo-1': 'failed' });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(liveRegion.message()).toContain('Fetch failed');
+  });
+
+  it('clears its own live-region announcement when the fetch line closes', async () => {
+    const workspaces = makeWorkspaces(
+      [{ repoId: 'repo-1', fsPath: '/tmp/local-1', name: 'local-1' }],
+      'repo-1',
+    );
+    const { fixture, remoteOps } = await setup({}, {}, workspaces);
+    const liveRegion = TestBed.inject(LiveRegionService);
+
+    remoteOps.fetchRepoId.set('repo-1');
+    remoteOps.fetchStatus.set({ 'repo-1': 'pending' });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(liveRegion.message()).not.toBe('');
+
+    // The line is dismissed: the shell clears the announcement it owns.
+    remoteOps.fetchRepoId.set(null);
+    remoteOps.fetchStatus.set({});
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(liveRegion.message()).toBe('');
+  });
+
+  it('keeps another producer live-region message when the fetch line closes', async () => {
+    const workspaces = makeWorkspaces(
+      [{ repoId: 'repo-1', fsPath: '/tmp/local-1', name: 'local-1' }],
+      'repo-1',
+    );
+    const { fixture, remoteOps } = await setup({}, {}, workspaces);
+    const liveRegion = TestBed.inject(LiveRegionService);
+
+    remoteOps.fetchRepoId.set('repo-1');
+    remoteOps.fetchStatus.set({ 'repo-1': 'pending' });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // Another producer (the graph's refused-selection notice) takes the region.
+    liveRegion.announce('Commit selection is locked.');
+    remoteOps.fetchRepoId.set(null);
+    remoteOps.fetchStatus.set({});
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // The shell must not wipe a message it does not own.
+    expect(liveRegion.message()).toBe('Commit selection is locked.');
   });
 
   // -- deep links (ADR-025) ------------------------------------------------

@@ -9,6 +9,7 @@ import { CommitFocusService } from '@core/services/commit-focus.service';
 import { DiffModeService } from '@core/services/diff-mode.service';
 import { IpcBridge } from '@core/services/ipc-bridge.service';
 import { RepoState } from '@core/services/repo-state.service';
+import { CommitViewModeService } from '../../commit-view-mode.service';
 import { GraphStore, WIP_OID } from '../../graph/graph.store';
 import { CommitDetailsPanel } from '../../graph/ui/commit-details-panel';
 import { StatusStore } from '../../status/status.store';
@@ -122,6 +123,7 @@ const BRANCHES: Branch[] = [
 
 interface RepoStateStub {
   activeRepo: WritableSignal<Repository | null>;
+  activeId: WritableSignal<string | null>;
   statusRefreshRequested: WritableSignal<number>;
 }
 
@@ -132,6 +134,7 @@ interface Harness {
   graph: GraphStore;
   repoState: RepoStateStub;
   commitFocus: CommitFocusService;
+  viewMode: CommitViewModeService;
   router: { navigate: ReturnType<typeof vi.fn> };
   getDiff: ReturnType<typeof vi.fn>;
   stageHunk: ReturnType<typeof vi.fn>;
@@ -193,6 +196,7 @@ async function setup(
 
   const repoState: RepoStateStub = {
     activeRepo: signal<Repository | null>(null),
+    activeId: signal<string | null>(null),
     statusRefreshRequested: signal(0),
   };
   const router = { navigate: vi.fn(() => Promise.resolve(true)) };
@@ -206,9 +210,13 @@ async function setup(
       { provide: FileStatusStore, useValue: fs },
       { provide: GraphStore, useValue: graph },
       { provide: Router, useValue: router },
+      // Route-scoped in the app (provided on the parent repo route), so the
+      // standalone page spec must provide it explicitly.
+      CommitViewModeService,
     ],
   }).compileComponents();
   const commitFocus = TestBed.inject(CommitFocusService);
+  const viewMode = TestBed.inject(CommitViewModeService);
 
   // Root preferences are read in PreferencesService's constructor, so any
   // persisted value must be in place before the page (and its viewer) mount.
@@ -224,6 +232,7 @@ async function setup(
     graph,
     repoState,
     commitFocus,
+    viewMode,
     router,
     getDiff,
     stageHunk,
@@ -361,31 +370,33 @@ describe('FileStatusPage', () => {
     assertDiffOnRight(fixture);
   });
 
-  it('moves the commit subject to the right-pane title and out of the panel', async () => {
+  it('renders the subject and body in the panel description region (one home)', async () => {
     const { fixture, fs } = await setup({ selection: HEAD_HEX });
     await waitForDiff(fixture, fs);
     await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
     fixture.detectChanges();
 
-    const title = query(fixture, 'file-status-title');
-    expect(title).not.toBeNull();
-    // The commit fixture's subject is the first line of its message, rendered in
-    // the title sector's default (`description`) mode.
-    const heading = title!.querySelector('.st-file-status__pane-title-text');
-    expect(heading?.textContent?.trim()).toBe('commit aaaa');
+    const details = fixture.debugElement.query(By.css('st-commit-details-panel'))
+      ?.componentInstance as CommitDetailsPanel;
+    expect(details.showSubject()).toBe(true);
+    expect(details.showFiles()).toBe(false);
+    expect(details.showViewSwitch()).toBe(true);
 
-    // It is the first child of the right (diff) pane, above the notice/header.
-    const right = query(fixture, 'file-status-diff')!;
-    expect(right.contains(title!)).toBe(true);
-    expect(right.firstElementChild).toBe(title);
+    // The subject and the body render in the panel's own content region.
+    const subject = query(fixture, 'commit-details-subject');
+    expect(subject?.textContent?.trim()).toBe('commit aaaa');
+    const body = query(fixture, 'commit-details-description');
+    expect(body?.textContent?.trim()).toBe(HEAD_BODY);
+    const content = query(fixture, 'commit-details-content')!;
+    expect(content.contains(subject!)).toBe(true);
+    expect(content.contains(body!)).toBe(true);
 
-    // The subject is MOVED, never duplicated: the panel drops it.
-    expect(query(fixture, 'commit-details-subject')).toBeNull();
-    // The panel itself still renders (its identity head stays in the left pane).
-    expect(query(fixture, 'commit-details')).not.toBeNull();
+    // The right pane no longer duplicates the description (one home only).
+    expect(query(fixture, 'file-status-title')).toBeNull();
+    expect(query(fixture, 'file-status-title-body')).toBeNull();
   });
 
-  it('leaves the right-pane title empty with no active commit', async () => {
+  it('leaves the description empty with no active commit', async () => {
     const { fixture, fs } = await setup({ selection: WIP_OID });
     await waitForDiff(fixture, fs);
     await vi.waitFor(() => expect(fs.variant()).toBe('local'));
@@ -393,9 +404,10 @@ describe('FileStatusPage', () => {
 
     expect(fixture.componentInstance.commitTitle()).toBe('');
     expect(query(fixture, 'file-status-title')).toBeNull();
+    expect(query(fixture, 'commit-details-subject')).toBeNull();
   });
 
-  it('defaults the analyzer to description: full subject + body, no left-column file list', async () => {
+  it('defaults the analyzer to description: full subject + body in the panel, no file list', async () => {
     const { fixture, fs } = await setup({ selection: HEAD_HEX });
     await waitForDiff(fixture, fs);
     await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
@@ -404,41 +416,40 @@ describe('FileStatusPage', () => {
     const page = fixture.componentInstance;
     expect(page.effectiveAnalyzerMode()).toBe('description');
 
-    const title = query(fixture, 'file-status-title')!;
-    const heading = title.querySelector('.st-file-status__pane-title-text')!;
-    expect(heading.textContent?.trim()).toBe('commit aaaa');
-    // The subject reads in full: the wrapping modifier drops the single-line clamp.
-    expect(heading.classList.contains('st-file-status__pane-title-text--wrap')).toBe(true);
+    // The panel owns the description sector: subject + body in its content.
+    const subject = query(fixture, 'commit-details-subject')!;
+    expect(subject.textContent?.trim()).toBe('commit aaaa');
+    const body = query(fixture, 'commit-details-description')!;
+    expect(body.textContent?.trim()).toBe(HEAD_BODY);
+    expect(query(fixture, 'commit-details-content')!.contains(body)).toBe(true);
 
-    const body = query(fixture, 'file-status-title-body');
-    expect(body).not.toBeNull();
-    expect(body?.textContent?.trim()).toBe(HEAD_BODY);
-    expect(title.contains(body!)).toBe(true);
-
-    // The left column's file list is absent in description mode.
+    // The file sector is hidden in description mode.
     expect(fixture.nativeElement.querySelector('st-file-diff-list')).toBeNull();
     expect(query(fixture, 'file-status-summary')).toBeNull();
     expect(query(fixture, 'commit-details-file-path')).toBeNull();
   });
 
-  it('switches the analyzer to files mode: short sha title + left-column list', async () => {
-    const { fixture, fs } = await setup({ selection: HEAD_HEX });
+  it('switches the analyzer to files mode from the panel switch: left-column list appears', async () => {
+    const { fixture, fs, viewMode } = await setup({ selection: HEAD_HEX });
     await waitForDiff(fixture, fs);
     await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
     fixture.detectChanges();
 
-    const title = query(fixture, 'file-status-title')!;
-    // The switch lives in the title header (query it THERE: the diff header
-    // carries its own st-toggle-group).
-    title.querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!.click();
+    // The switch lives in the PANEL header, never in the right pane.
+    const panelEl = fixture.nativeElement.querySelector('st-commit-details-panel') as HTMLElement;
+    const viewSwitch = query(fixture, 'commit-details-view-switch')!;
+    expect(panelEl.contains(viewSwitch)).toBe(true);
+    expect(query(fixture, 'file-status-view-switch')).toBeNull();
+
+    viewSwitch.querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!.click();
     fixture.detectChanges();
 
+    // The pick went through the host: the shared service carries the mode.
+    expect(viewMode.mode()).toBe('files');
     expect(fixture.componentInstance.effectiveAnalyzerMode()).toBe('files');
-    // Title degrades to the short sha; no subject heading, no body.
-    expect(title.querySelector('.st-file-status__pane-title-sha')?.textContent?.trim()).toBe(
-      'aaaaaaa',
-    );
-    expect(title.querySelector('.st-file-status__pane-title-text')).toBeNull();
+    // The panel keeps the subject as identity but drops the body.
+    expect(query(fixture, 'commit-details-subject')?.textContent?.trim()).toBe('commit aaaa');
+    expect(query(fixture, 'commit-details-description')).toBeNull();
     expect(query(fixture, 'file-status-title-body')).toBeNull();
 
     // The left column's summary + file list render.
@@ -447,32 +458,41 @@ describe('FileStatusPage', () => {
     expect(all(fixture, 'file-diff-row')).toHaveLength(2);
 
     // Switching back restores the description sector.
-    title.querySelector<HTMLButtonElement>('[data-testid="toggle-segment-description"]')!.click();
+    query(fixture, 'commit-details-view-switch')!
+      .querySelector<HTMLButtonElement>('[data-testid="toggle-segment-description"]')!
+      .click();
     fixture.detectChanges();
-    expect(query(fixture, 'file-status-title-body')).not.toBeNull();
+    expect(viewMode.mode()).toBe('description');
+    expect(query(fixture, 'commit-details-description')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('st-file-diff-list')).toBeNull();
   });
 
-  it('renders exactly one sector at a time with the switch inside the title header', async () => {
+  it('renders exactly one sector at a time with the switch inside the panel header', async () => {
     const { fixture, fs } = await setup({ selection: HEAD_HEX });
     await waitForDiff(fixture, fs);
     await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
     fixture.detectChanges();
 
-    const title = query(fixture, 'file-status-title')!;
-    expect(title.querySelector('[data-testid="file-status-view-switch"]')).not.toBeNull();
-    expect(title.querySelector('[data-testid="toggle-segment-description"]')).not.toBeNull();
-    expect(title.querySelector('[data-testid="toggle-segment-files"]')).not.toBeNull();
+    const viewSwitch = query(fixture, 'commit-details-view-switch')!;
+    expect(
+      (fixture.nativeElement.querySelector('st-commit-details-panel') as HTMLElement).contains(
+        viewSwitch,
+      ),
+    ).toBe(true);
+    expect(viewSwitch.querySelector('[data-testid="toggle-segment-description"]')).not.toBeNull();
+    expect(viewSwitch.querySelector('[data-testid="toggle-segment-files"]')).not.toBeNull();
+    // The old right-pane switch is gone.
+    expect(query(fixture, 'file-status-view-switch')).toBeNull();
 
-    const bodyVisible = () => query(fixture, 'file-status-title-body') !== null;
+    const bodyVisible = () => query(fixture, 'commit-details-description') !== null;
     const listVisible = () => fixture.nativeElement.querySelector('st-file-diff-list') !== null;
     // Description mode: body XOR list.
     expect(bodyVisible() && listVisible()).toBe(false);
     expect(bodyVisible() || listVisible()).toBe(true);
 
-    title.querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!.click();
+    viewSwitch.querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!.click();
     fixture.detectChanges();
-    // Files mode: still exactly one of the two.
+    // Files mode: still exactly one of the two, and it is the list.
     expect(bodyVisible() && listVisible()).toBe(false);
     expect(bodyVisible() || listVisible()).toBe(true);
     expect(listVisible()).toBe(true);
@@ -491,32 +511,34 @@ describe('FileStatusPage', () => {
     const page = fixture.componentInstance;
     expect(page.commitBody()).toBe('');
     expect(page.hasMessage()).toBe(true);
-    // No force: the subject alone IS the description sector's content, so the
-    // default `description` mode stays and the segment is never a dead control.
+    // No force: the subject alone IS the description content, so the default
+    // `description` mode stays and the segment is never a dead control.
     expect(page.effectiveAnalyzerMode()).toBe('description');
 
-    const title = query(fixture, 'file-status-title')!;
-    const description = title.querySelector<HTMLButtonElement>(
+    // The panel renders the subject; there is no body element.
+    expect(query(fixture, 'commit-details-subject')?.textContent?.trim()).toBe(
+      'subject only, no body',
+    );
+    expect(query(fixture, 'commit-details-description')).toBeNull();
+
+    const viewSwitch = query(fixture, 'commit-details-view-switch')!;
+    const description = viewSwitch.querySelector<HTMLButtonElement>(
       '[data-testid="toggle-segment-description"]',
     )!;
     expect(description.disabled).toBe(false);
     expect(description.getAttribute('aria-pressed')).toBe('true');
 
-    // The subject reads in full; there is no body element to render.
-    const heading = title.querySelector('.st-file-status__pane-title-text')!;
-    expect(heading.textContent?.trim()).toBe('subject only, no body');
-    expect(heading.classList.contains('st-file-status__pane-title-text--wrap')).toBe(true);
-    expect(query(fixture, 'file-status-title-body')).toBeNull();
-
     // Exactly one sector: the left column's file list is absent.
     expect(fixture.nativeElement.querySelector('st-file-diff-list')).toBeNull();
 
     // Files mode is one click away, and description comes straight back.
-    title.querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!.click();
+    viewSwitch.querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!.click();
     fixture.detectChanges();
     expect(page.effectiveAnalyzerMode()).toBe('files');
     expect(fixture.nativeElement.querySelector('st-file-diff-list')).not.toBeNull();
-    title.querySelector<HTMLButtonElement>('[data-testid="toggle-segment-description"]')!.click();
+    query(fixture, 'commit-details-view-switch')!
+      .querySelector<HTMLButtonElement>('[data-testid="toggle-segment-description"]')!
+      .click();
     fixture.detectChanges();
     expect(page.effectiveAnalyzerMode()).toBe('description');
     expect(fixture.nativeElement.querySelector('st-file-diff-list')).toBeNull();
@@ -524,8 +546,8 @@ describe('FileStatusPage', () => {
 
   it('shows the body when the commit subject is empty (never neither sector)', async () => {
     // A message that starts with a blank line splits to an empty subject and a
-    // real body. Keying the title sector on the subject alone would hide BOTH
-    // sectors at once (no switch to escape, no file list either).
+    // real body. Keying the description on the subject alone would hide BOTH
+    // sectors at once (no switch escape would be meaningful, no file list either).
     const emptySubject = commit(HEAD_HEX, [OTHER_HEX], '\n\nbody only, no subject');
     const { fixture, fs } = await setup({
       selection: HEAD_HEX,
@@ -541,27 +563,26 @@ describe('FileStatusPage', () => {
     expect(page.hasMessage()).toBe(true);
     expect(page.effectiveAnalyzerMode()).toBe('description');
 
-    const title = query(fixture, 'file-status-title')!;
-    // No subject heading (there is no subject), but the body renders and is
-    // reachable — the description sector is not empty.
-    expect(title.querySelector('.st-file-status__pane-title-text')).toBeNull();
-    const body = query(fixture, 'file-status-title-body');
+    // The panel omits the empty subject heading and renders only the body, so
+    // the description sector is not empty.
+    expect(query(fixture, 'commit-details-subject')).toBeNull();
+    const body = query(fixture, 'commit-details-description');
     expect(body?.textContent?.trim()).toBe('body only, no subject');
 
     // Exactly one sector: the left column's file list is absent.
     expect(fixture.nativeElement.querySelector('st-file-diff-list')).toBeNull();
 
-    // One click reaches the files sector (short sha title + the list).
-    title.querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!.click();
+    // One click reaches the files sector and its list.
+    query(fixture, 'commit-details-view-switch')!
+      .querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!
+      .click();
     fixture.detectChanges();
     expect(page.effectiveAnalyzerMode()).toBe('files');
-    expect(title.querySelector('.st-file-status__pane-title-sha')?.textContent?.trim()).toBe(
-      'aaaaaaa',
-    );
+    expect(query(fixture, 'commit-details-description')).toBeNull();
     expect(fixture.nativeElement.querySelector('st-file-diff-list')).not.toBeNull();
   });
 
-  it('grows no title sector or switch when the commit has no message at all', async () => {
+  it('forces files mode for a message-less commit (disabled description segment)', async () => {
     const messageLess = commit(HEAD_HEX, [OTHER_HEX], '');
     const { fixture, fs } = await setup({
       selection: HEAD_HEX,
@@ -571,39 +592,49 @@ describe('FileStatusPage', () => {
     await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
     fixture.detectChanges();
 
-    // Nothing to describe: no stray title sector and no dead switch.
+    // Nothing to describe: `files` is forced so the list is the visible sector.
     expect(fixture.componentInstance.hasMessage()).toBe(false);
     expect(fixture.componentInstance.commitTitle()).toBe('');
     expect(query(fixture, 'file-status-title')).toBeNull();
-    expect(query(fixture, 'file-status-view-switch')).toBeNull();
-
-    // `files` is forced instead, so the left column is the one visible sector —
-    // never neither.
     expect(fixture.componentInstance.effectiveAnalyzerMode()).toBe('files');
+
+    // The panel still renders the switch, but its description segment is
+    // disabled: a body-less description view adds nothing.
+    const viewSwitch = query(fixture, 'commit-details-view-switch');
+    expect(viewSwitch).not.toBeNull();
+    expect(
+      viewSwitch!.querySelector<HTMLButtonElement>('[data-testid="toggle-segment-description"]')
+        ?.disabled,
+    ).toBe(true);
+    expect(query(fixture, 'commit-details-description')).toBeNull();
     expect(fixture.nativeElement.querySelector('st-file-diff-list')).not.toBeNull();
   });
 
-  it('never leaks the analyzer mode into the embedded panel (separate state)', async () => {
-    const { fixture, fs } = await setup({ selection: HEAD_HEX });
+  it('shares the mode with the embedded panel through the route-scoped service', async () => {
+    const { fixture, fs, viewMode } = await setup({ selection: HEAD_HEX });
     await waitForDiff(fixture, fs);
     await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
     fixture.detectChanges();
 
-    const panel = fixture.debugElement.query(By.css('st-commit-details-panel'))
+    const details = fixture.debugElement.query(By.css('st-commit-details-panel'))
       ?.componentInstance as CommitDetailsPanel;
-    expect(panel.mode()).toBe('description');
+    // Both hosts read the same service: no separate component-local state.
+    expect(details.mode()).toBe('description');
+    expect(details.showViewSwitch()).toBe(true);
 
-    query(fixture, 'file-status-title')!
-      .querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!
-      .click();
+    viewMode.setMode('files');
     fixture.detectChanges();
 
-    // The page flips, but the panel's own signal is untouched (no shared state).
+    expect(details.mode()).toBe('files');
     expect(fixture.componentInstance.effectiveAnalyzerMode()).toBe('files');
-    expect(panel.mode()).toBe('description');
-    // The panel also renders no switch: it opted out of both sectors.
-    expect(panel.showFiles()).toBe(false);
-    expect(query(fixture, 'commit-details-view-switch')).toBeNull();
+    // The panel opted out of its own files block: the page owns the list.
+    expect(details.showFiles()).toBe(false);
+    expect(fixture.nativeElement.querySelector('st-file-diff-list')).not.toBeNull();
+
+    viewMode.setMode('description');
+    fixture.detectChanges();
+    expect(details.mode()).toBe('description');
+    expect(fixture.nativeElement.querySelector('st-file-diff-list')).toBeNull();
   });
 
   it('wires the commit-variant panel to the redesigned contract', async () => {
@@ -616,8 +647,14 @@ describe('FileStatusPage', () => {
       ?.componentInstance as CommitDetailsPanel;
     expect(panel.commit()?.oid?.hex).toBe(HEAD_HEX);
     expect(panel.isWip()).toBe(false);
+    // The panel owns the description; the page keeps the files region.
+    expect(panel.showSubject()).toBe(true);
     expect(panel.showFiles()).toBe(false);
-    expect(panel.showSubject()).toBe(false);
+    // The header switch is wired to the shared mode.
+    expect(panel.showViewSwitch()).toBe(true);
+    expect(panel.mode()).toBe('description');
+    // The switch's file count comes from the active commit's diff.
+    expect(panel.changedFiles()).toEqual(['a.ts', 'b.ts']);
     expect(panel.navMode()).toBe('release');
     expect(panel.showInGraph()).toBe(true);
     // The padlock reflects the shared graph lock.
@@ -786,15 +823,15 @@ describe('FileStatusPage', () => {
     expect(openCommit).not.toHaveBeenCalled();
   });
 
-  it('orders the commit column as summary, then file list, then the panel on the floor', async () => {
+  it('orders the commit column as panel, then summary, then file list', async () => {
     const { fixture, fs } = await setup({ selection: HEAD_HEX });
     await waitForDiff(fixture, fs);
     await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
     fixture.detectChanges();
 
     // The summary and file list live in the files sector; the default is
-    // description, so switch first.
-    query(fixture, 'file-status-title')!
+    // description, so switch first (from the panel's own header).
+    query(fixture, 'commit-details-view-switch')!
       .querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!
       .click();
     fixture.detectChanges();
@@ -807,21 +844,23 @@ describe('FileStatusPage', () => {
     expect(summary).not.toBeNull();
     expect(list).not.toBeNull();
 
-    // The three stack as siblings in the variant body, in reading order:
-    // summary → changed-file list → panel, which rests on the floor below.
-    expect(details!.parentElement).toBe(list!.parentElement);
+    // The three stack as siblings in the variant body: the panel is FIRST
+    // (right under the variant bar), then the summary and the changed-file list.
+    expect(details!.parentElement).toBe(summary!.parentElement);
     expect(summary!.parentElement).toBe(list!.parentElement);
+    expect(
+      details!.compareDocumentPosition(summary!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(
       summary!.compareDocumentPosition(list!) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(
-      list!.compareDocumentPosition(details!) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
 
-    // The list owns the slack; the panel shrinks and bottom-pins via auto margin.
-    expect(getComputedStyle(list as Element).flexGrow).toBe('1');
+    // The panel is bounded and content-sized (never floor-pinned); the list
+    // takes the remaining height so it stays reachable.
     expect(getComputedStyle(details as Element).flexGrow).toBe('0');
-    expect(getComputedStyle(details as Element).marginTop).toBe('auto');
+    expect(getComputedStyle(details as Element).marginTop).not.toBe('auto');
+    expect(getComputedStyle(details as Element).maxHeight).not.toBe('none');
+    expect(getComputedStyle(list as Element).flexGrow).toBe('1');
   });
 
   it('switches variant from the variant bar', async () => {
@@ -879,7 +918,7 @@ describe('FileStatusPage', () => {
     fixture.detectChanges();
 
     // The file rows live in the files sector; the default is description.
-    query(fixture, 'file-status-title')!
+    query(fixture, 'commit-details-view-switch')!
       .querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!
       .click();
     fixture.detectChanges();
@@ -988,7 +1027,7 @@ describe('FileStatusPage', () => {
     fixture.detectChanges();
 
     // The summary is part of the files sector; switch to it first.
-    query(fixture, 'file-status-title')!
+    query(fixture, 'commit-details-view-switch')!
       .querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!
       .click();
     fixture.detectChanges();
