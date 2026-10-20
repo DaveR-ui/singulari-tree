@@ -266,6 +266,18 @@ function all(fixture: ComponentFixture<FileStatusPage>, testId: string): HTMLEle
   );
 }
 
+/**
+ * The embedded `st-commit-details-panel` instance. It is the AUTHORITATIVE
+ * source for the rendered commit view: the page no longer mirrors the panel's
+ * effective mode, so the specs assert the panel's own `effectiveMode` — the
+ * value that actually decides what the user sees.
+ */
+function panelOf(fixture: ComponentFixture<FileStatusPage>): CommitDetailsPanel {
+  const panel = fixture.debugElement.query(By.css('st-commit-details-panel'));
+  if (!panel) throw new Error('commit details panel not found');
+  return panel.componentInstance as CommitDetailsPanel;
+}
+
 /** Run change detection and let the scheduled effects and bridge calls settle. */
 async function settle(fixture: ComponentFixture<FileStatusPage>): Promise<void> {
   fixture.detectChanges();
@@ -404,7 +416,7 @@ describe('FileStatusPage', () => {
     await vi.waitFor(() => expect(fs.variant()).toBe('local'));
     fixture.detectChanges();
 
-    expect(fixture.componentInstance.commitTitle()).toBe('');
+    expect(panelOf(fixture).subject()).toBe('');
     expect(query(fixture, 'file-status-title')).toBeNull();
     expect(query(fixture, 'commit-details-subject')).toBeNull();
   });
@@ -415,8 +427,8 @@ describe('FileStatusPage', () => {
     await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
     fixture.detectChanges();
 
-    const page = fixture.componentInstance;
-    expect(page.effectiveAnalyzerMode()).toBe('description');
+    // The PANEL owns the effective mode; the page does not mirror it.
+    expect(panelOf(fixture).effectiveMode()).toBe('description');
 
     // The panel owns the description sector: subject + body in its content.
     const subject = query(fixture, 'commit-details-subject')!;
@@ -448,7 +460,7 @@ describe('FileStatusPage', () => {
 
     // The pick went through the host: the shared service carries the mode.
     expect(viewMode.mode()).toBe('files');
-    expect(fixture.componentInstance.effectiveAnalyzerMode()).toBe('files');
+    expect(panelOf(fixture).effectiveMode()).toBe('files');
     // The panel keeps the subject as identity but drops the body.
     expect(query(fixture, 'commit-details-subject')?.textContent?.trim()).toBe('commit aaaa');
     expect(query(fixture, 'commit-details-description')).toBeNull();
@@ -519,12 +531,12 @@ describe('FileStatusPage', () => {
     await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
     fixture.detectChanges();
 
-    const page = fixture.componentInstance;
-    expect(page.commitBody()).toBe('');
-    expect(page.hasMessage()).toBe(true);
-    // No force: the subject alone IS the description content, so the default
-    // `description` mode stays and the segment is never a dead control.
-    expect(page.effectiveAnalyzerMode()).toBe('description');
+    const panel = panelOf(fixture);
+    // A subject-only message still HAS a message: the body is empty, but the
+    // subject IS the description content, so the default `description` mode
+    // stays and the segment is never a dead control.
+    expect(panel.description()).toBe('');
+    expect(panel.effectiveMode()).toBe('description');
 
     // The panel renders the subject; there is no body element.
     expect(query(fixture, 'commit-details-subject')?.textContent?.trim()).toBe(
@@ -545,13 +557,13 @@ describe('FileStatusPage', () => {
     // Files mode is one click away, and description comes straight back.
     viewSwitch.querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!.click();
     fixture.detectChanges();
-    expect(page.effectiveAnalyzerMode()).toBe('files');
+    expect(panel.effectiveMode()).toBe('files');
     expect(query(fixture, 'commit-details-files-heading')).not.toBeNull();
     query(fixture, 'commit-details-view-switch')!
       .querySelector<HTMLButtonElement>('[data-testid="toggle-segment-description"]')!
       .click();
     fixture.detectChanges();
-    expect(page.effectiveAnalyzerMode()).toBe('description');
+    expect(panel.effectiveMode()).toBe('description');
     expect(query(fixture, 'commit-details-files-heading')).toBeNull();
   });
 
@@ -568,11 +580,12 @@ describe('FileStatusPage', () => {
     await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
     fixture.detectChanges();
 
-    const page = fixture.componentInstance;
-    expect(page.commitTitle()).toBe('');
-    expect(page.commitBody()).toBe('body only, no subject');
-    expect(page.hasMessage()).toBe(true);
-    expect(page.effectiveAnalyzerMode()).toBe('description');
+    const panel = panelOf(fixture);
+    // A body-only message still HAS a message: the subject is empty, but the
+    // body must stay reachable, so the description mode is not forced away.
+    expect(panel.subject()).toBe('');
+    expect(panel.description()).toBe('body only, no subject');
+    expect(panel.effectiveMode()).toBe('description');
 
     // The panel omits the empty subject heading and renders only the body, so
     // the description sector is not empty.
@@ -588,7 +601,7 @@ describe('FileStatusPage', () => {
       .querySelector<HTMLButtonElement>('[data-testid="toggle-segment-files"]')!
       .click();
     fixture.detectChanges();
-    expect(page.effectiveAnalyzerMode()).toBe('files');
+    expect(panel.effectiveMode()).toBe('files');
     expect(query(fixture, 'commit-details-description')).toBeNull();
     expect(query(fixture, 'commit-details-files-heading')).not.toBeNull();
   });
@@ -604,10 +617,11 @@ describe('FileStatusPage', () => {
     fixture.detectChanges();
 
     // Nothing to describe: `files` is forced so the list is the visible sector.
-    expect(fixture.componentInstance.hasMessage()).toBe(false);
-    expect(fixture.componentInstance.commitTitle()).toBe('');
+    const panel = panelOf(fixture);
+    expect(panel.subject()).toBe('');
+    expect(panel.description()).toBe('');
     expect(query(fixture, 'file-status-title')).toBeNull();
-    expect(fixture.componentInstance.effectiveAnalyzerMode()).toBe('files');
+    expect(panel.effectiveMode()).toBe('files');
 
     // The panel still renders the switch, but its description segment is
     // disabled: a body-less description view adds nothing.
@@ -638,7 +652,7 @@ describe('FileStatusPage', () => {
     fixture.detectChanges();
 
     expect(details.mode()).toBe('files');
-    expect(fixture.componentInstance.effectiveAnalyzerMode()).toBe('files');
+    expect(details.effectiveMode()).toBe('files');
     // The panel owns the files block in the analyzer too (no page list).
     expect(details.showFiles()).toBe(true);
     expect(query(fixture, 'commit-details-files-heading')).not.toBeNull();
@@ -877,6 +891,14 @@ describe('FileStatusPage', () => {
     expect(getComputedStyle(details as Element).flexGrow).toBe('1');
     expect(getComputedStyle(details as Element).maxHeight).not.toBe('50%');
     expect(getComputedStyle(body as Element).overflow).toBe('hidden');
+
+    // The LEFT COLUMN grows too: otherwise the column is content-sized, the
+    // panel's `flex: 1` has no free space to grow into, and the metadata
+    // footer would sit right under the message instead of at the bottom of
+    // the pane (History's distribution).
+    const left = host.querySelector('.st-file-status__left');
+    expect(left).not.toBeNull();
+    expect(getComputedStyle(left as Element).flexGrow).toBe('1');
 
     // The changed-file rows live INSIDE the panel's content region, under the
     // heading, while the metadata footer stays its sibling (History's order).
@@ -1548,6 +1570,25 @@ describe('FileStatusPage', () => {
 
     fixture.componentInstance.goHistory();
 
+    expect(commitFocus.pending()).toBeNull();
+    expect(router.navigate).toHaveBeenCalledWith(['/repo']);
+  });
+
+  it('does not follow a stale commit after the analyzer switched back to the working tree', async () => {
+    const { fixture, fs, router, commitFocus } = await setup({ selection: HEAD_HEX });
+    await waitForDiff(fixture, fs);
+    await vi.waitFor(() => expect(fs.variant()).toBe('commit'));
+
+    // View a commit, then go back to the working tree: the store keeps the
+    // last viewed commit in `activeCommit()`, but nothing is in view anymore.
+    all(fixture, 'toggle-segment-local')[0].click();
+    await vi.waitFor(() => expect(fs.variant()).toBe('local'));
+    fixture.detectChanges();
+
+    fixture.componentInstance.goHistory();
+
+    // Following a commit the user is no longer looking at would select it in
+    // the graph behind their back.
     expect(commitFocus.pending()).toBeNull();
     expect(router.navigate).toHaveBeenCalledWith(['/repo']);
   });

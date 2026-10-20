@@ -451,11 +451,12 @@ export const TOOLTIP_MAX_WIDTH = 320;
         <!--
           Contextual nav tooltip: same contract as the padlock one — always in
           the DOM so aria-describedby resolves from the first render, hidden
-          visually (never from the a11y tree) until the delayed reveal. It only
-          exists when a contextual nav control does, so it never renders as an
-          empty bubble.
+          visually (never from the a11y tree) until the delayed reveal. The
+          guard mirrors EXACTLY when a nav control renders (the release control
+          needs a commit, the History control renders even in the empty branch),
+          so the bubble never exists without the control that describes it.
         -->
-        @if (navMode() !== 'none') {
+        @if ((commit() && navMode() === 'release') || navMode() === 'history') {
           <div
             class="st-commit-details__tooltip"
             [class.st-commit-details__tooltip--hidden]="!navTooltipVisible()"

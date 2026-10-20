@@ -1038,6 +1038,32 @@ describe('CommitDetailsPanel — contextual nav tooltip', () => {
     expect(bubble.style.top).toBe('46px');
   });
 
+  it('hides the bubble when the pointer leaves AFTER the reveal', () => {
+    vi.useFakeTimers();
+    const fixture = render({ commit: COMMIT, navMode: 'release' });
+    const el = fixture.nativeElement as HTMLElement;
+    const anchor = el.querySelector<HTMLElement>('[data-testid="commit-details-release"]')!;
+
+    anchor.dispatchEvent(new MouseEvent('mouseenter'));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    fixture.detectChanges();
+    expect(isHidden(el)).toBe(false);
+
+    // The pointer leaving must take the bubble down, not leave it stuck.
+    anchor.dispatchEvent(new MouseEvent('mouseleave'));
+    fixture.detectChanges();
+    expect(isHidden(el)).toBe(true);
+  });
+
+  it('renders no bubble at all when there is no contextual nav control', () => {
+    const el = render({ commit: COMMIT, navMode: 'none' }).nativeElement as HTMLElement;
+
+    // No control, no bubble: an unreferenced tooltip node would only be noise.
+    expect(el.querySelector('[data-testid="commit-details-nav-tooltip"]')).toBeNull();
+    expect(el.querySelector('[data-testid="commit-details-release"]')).toBeNull();
+    expect(el.querySelector('[data-testid="commit-details-history"]')).toBeNull();
+  });
+
   it('reads "follow commit" in history mode and describes the History control', () => {
     vi.useFakeTimers();
     const fixture = render({ commit: COMMIT, navMode: 'history' });
