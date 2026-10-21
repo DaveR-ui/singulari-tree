@@ -43,6 +43,16 @@ linux:
     - AppImage
     - deb
   category: Utility
+  # Without this, electron-builder falls back to the package name
+  # (@singularitree/electron), so the scoped npm name leaks into the install
+  # layout: /opt/SingulariTree/@singularitreeelectron plus a matching
+  # "@singularitreeelectron.desktop" entry and hicolor icons. An explicit
+  # executableName yields /opt/SingulariTree/singularitree, singularitree.desktop
+  # and singularitree.png.
+  executableName: singularitree
+  # Required by the deb (fpm) target: without an author/maintainer the build
+  # aborts with "It is required to set Linux .deb package maintainer".
+  maintainer: David <zaraza_9@hotmail.com>
 
 win:
   target:
@@ -60,3 +70,16 @@ nsis:
 
 portable:
   artifactName: SingulariTree-Portable-${version}-${arch}.${ext}
+
+# Asset names for the two Linux targets. Pinned for the same reason as the
+# Windows ones (top-level `config.appImage` / `config.deb`), plus one defect
+# that only pinning avoids: with the DEFAULT name the deb target resolves to
+# "@singularitree/electron_0.1.0_amd64.deb", and the scope's "/" is treated as a
+# path separator, so the package escapes into release/@singularitree/.
+# The ${arch} token legitimately diverges per target: getArtifactArchName()
+# yields "x86_64" for AppImage but "amd64" for deb.
+appImage:
+  artifactName: SingulariTree-AppImage-${version}-${arch}.${ext}
+
+deb:
+  artifactName: SingulariTree-deb-${version}-${arch}.${ext}

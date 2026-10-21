@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "SingulariTree Electron shell — window lifecycle, IPC gateway, supervisor",
+  "homepage": "https://github.com/Nijnamovich/singulari-tree",
   "main": "dist/main/main.js",
   "type": "commonjs",
   "scripts": {

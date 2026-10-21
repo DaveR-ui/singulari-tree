@@ -9,8 +9,8 @@
 
 ### Overview
 
-- Markdown files: 45
-- Context docs: 7 | Notes: 6 | Hubs: 2 | adrs: 25 | templates: 0 | protocols: 3
+- Markdown files: 46
+- Context docs: 7 | Notes: 6 | Hubs: 2 | adrs: 26 | templates: 0 | protocols: 3
 
 ### Tree
 
@@ -37,6 +37,7 @@
   - adr-0036-per-tab-fetch.md — adr, id: `adr-0036-per-tab-fetch`
   - adr-0037-windows-release-and-distribution.md — adr, id: `adr-0037-windows-release-and-distribution`
   - adr-0038-drop-macos-support-windows-and-linux-only.md — adr, id: `adr-0038-drop-macos-support-windows-and-linux-only`
+  - adr-0039-linux-release-and-distribution.md — adr, id: `adr-0039-linux-release-and-distribution`
   - adr-024-multi-repo-workspaces.md — adr, id: `adr-024-multi-repo-workspaces`
   - adr-025-deep-links-and-clipboard-clone.md — adr, id: `adr-025-deep-links-and-clipboard-clone`
   - adr-026-cross-repo-commit-search.md — adr, id: `adr-026-cross-repo-commit-search`

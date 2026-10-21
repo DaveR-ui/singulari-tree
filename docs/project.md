@@ -6,7 +6,7 @@ tags:
 - project
 - entry-point
 - singularitree
-version: 1.7.0
+version: 1.8.0
 doc_language: en
 ---
 
@@ -114,7 +114,7 @@ SingulariTree/
 - SQLite per user (WAL, `foreign_keys=ON`) and **NEVER** stores Git objects.
 - Necomat `frontend/`/`backend/` remain intact.
 - Tests/builds from the package directory (never the root, except Go via `go.work`).
-- ADRs are append-only; numbering continues at ADR-039 (last used: ADR-0038; new files use the padded form, e.g. `adr-0038-…`).
+- ADRs are append-only; numbering continues at ADR-040 (last used: ADR-0039; new files use the padded form, e.g. `adr-0038-…`).
 
 ## Domain Entities
 
@@ -135,7 +135,7 @@ SingulariTree/
 - [`docs/adrs/adr-index.md`](adrs/adr-index.md) — ADR hub (structural decisions, append-only).
 - [`docs/context/renderer-redesign-plan.md`](context/renderer-redesign-plan.md) — total-facelift design plan for the renderer's visible UI (shell, navigation, workspace panes, commit/diff/graph, settings), derived from the operator's git-client sketch with 16 justified divergences; P0–P6 shipped (P4.2 adds the Dark Neon / Developer Studio palette remap; P5 lands the secondary surfaces, the expanded Settings and the shared-modal focus trap; P6 — responsive, a11y & motion polish — is the final phase of the facelift: the ≤1600 / ≤1100 / ≤800 breakpoint utilities and stacked shell, the nav-rail `aria-expanded` heads, runtime `st:motion` enforcement, and the regenerated en/es message catalogues).
 - [`docs/context/design-system.md`](context/design-system.md) — shipped Dark Neon / Developer Studio design system: two-tier token vocabulary (dark + light), typography, spacing and geometry, the ui-kit component inventory, and copy-paste usage.
-- [`docs/context/repository-configuration.md`](context/repository-configuration.md) — repository-level GitHub configuration: the verified permissions audit of the three workflows, the UI-only settings checklist, the initial hardening recommendations, and the unsigned-installer consequence.
+- [`docs/context/repository-configuration.md`](context/repository-configuration.md) — repository-level GitHub configuration: the verified permissions audit of the three workflows (including the release pipeline's two read-only build jobs and its single write-scoped publish job), the UI-only settings checklist, the initial hardening recommendations, and the unsigned-installer consequences on Windows and Linux.
 
 ## Common Lookups
 
