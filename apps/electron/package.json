@@ -27,7 +27,7 @@
     "@types/node": "^22.10.2",
     "cross-env": "^10.1.0",
     "electron": "41.10.6",
-    "electron-builder": "^25.1.8",
+    "electron-builder": "^26.15.3",
     "typescript": "~5.9.3",
     "vitest": "^4.1.11",
     "wait-on": "^9.1.0"
