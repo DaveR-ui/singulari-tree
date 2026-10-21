@@ -1,14 +1,14 @@
 ---
-last_updated: 2026-10-20
+last_updated: 2026-10-21
 status: active
-description: Repository-level GitHub configuration for SingulariTree — a verified audit of the three workflows' permissions, the settings that only a human can apply, the initial hardening recommendations, and the end-user consequence of shipping unsigned installers.
+description: Repository-level GitHub configuration for SingulariTree — a verified audit of the three workflows' permissions and the release pipeline's job graph, the settings that only a human can apply, the initial hardening recommendations, and the end-user consequences of shipping unsigned installers on Windows and Linux.
 tags:
 - ci
 - github-actions
 - release
 - permissions
 - security
-version: 1.0.1
+version: 1.1.0
 related:
 - documentation-system
 ---
@@ -17,7 +17,7 @@ related:
 
 ## Problem
 
-The repository is the only durable record of how a change reaches a user, but only half of that record lives inside it. `.github/workflows/*.yml` is versioned and reviewable; the workflow-token default, branch protection, tag rules, environments and Pages enablement are clicks in the GitHub UI that no `git clone` carries. Without an explicit split between "verified in the repository" and "must be verified in the UI", least privilege is assumed rather than proven, and the release path — the only job allowed to write — sits one unreviewed edit away from over-permission. The same blind spot hides a product consequence: the Windows binaries are unsigned, so for many users the first contact with the product is a SmartScreen warning.
+The repository is the only durable record of how a change reaches a user, but only half of that record lives inside it. `.github/workflows/*.yml` is versioned and reviewable; the workflow-token default, branch protection, tag rules, environments and Pages enablement are clicks in the GitHub UI that no `git clone` carries. Without an explicit split between "verified in the repository" and "must be verified in the UI", least privilege is assumed rather than proven, and the release path — the only job allowed to write — sits one unreviewed edit away from over-permission. The same blind spot hides a product consequence: the published binaries are unsigned, so for many users the first contact with the product is a SmartScreen warning on Windows, and on Linux an install from an unverifiable package.
 
 ## Solution
 
@@ -31,9 +31,9 @@ One row per workflow; every value below was read from the YAML at the paths in t
 |---|---|---|---|---|---|
 | [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) | `push` to `main`, `pull_request`, `workflow_dispatch` | `contents: read` | none — both matrix legs inherit the workflow scope | `ci-${{ github.workflow }}-${{ github.ref }}` with `cancel-in-progress: true` | none |
 | [`.github/workflows/pages.yml`](../../.github/workflows/pages.yml) | `push` to `main` filtered by `paths: ['website/**', '.github/workflows/pages.yml']`, `workflow_dispatch` | `{}` — empty, so no scope is granted by default | job `deploy`: `contents: read`, `pages: write`, `id-token: write` | `pages` with `cancel-in-progress: false` | none |
-| `.github/workflows/release.yml` (new in this change) | `push` on tags `v*`, `workflow_dispatch` with optional `tag` input | `contents: read` | job `build` inherits `contents: read`; job `release` declares `contents: write` and is the only writer | `release-${{ github.workflow }}-${{ inputs.tag || github.ref_name }}` with `cancel-in-progress: false` | none — it authenticates with the implicit workflow token exposed to `gh` through an environment variable |
+| [`.github/workflows/release.yml`](../../.github/workflows/release.yml) | `push` on tags `v*`, `workflow_dispatch` with optional `tag` input | `contents: read` | jobs `build-windows` (`windows-latest`) and `build-linux` (`ubuntu-latest`) declare none and inherit `contents: read`; job `release` (`ubuntu-latest`) declares `contents: write` and is the only writer | `release-${{ github.workflow }}-${{ inputs.tag || github.ref_name }}` with `cancel-in-progress: false` | none — it authenticates with the implicit workflow token exposed to `gh` through an environment variable |
 
-The split that matters is in `release.yml`: the `build` job can never write, and the `release` job runs **no repository build code** — no checkout, no npm or Go step — only the artifact download plus the `gh` CLI. Its write scope therefore covers nothing that executes repository code.
+The split that matters is in `release.yml`: the two build jobs — `build-windows` and `build-linux` — declare no `permissions:` of their own, so neither can ever write, and the `release` job is the only writer. That job runs **no repository build code** — no checkout, no npm or Go step — only the two `actions/download-artifact` steps plus the `gh` CLI. Its write scope therefore covers nothing that executes repository code, and the token is exposed to the publish step rather than to the job, so the third-party download steps never see it.
 
 ### Layer 2 — settings that are not readable from the repository (human action)
 
@@ -58,14 +58,14 @@ Each item states the change, the rationale, and where it is configured.
 1. **Set the default workflow token permission to read-only** ("Read repository contents and packages permissions"). All three workflows already declare least privilege, so a read-only default is a safe backstop for any future workflow. *Where:* Settings → Actions → General → Workflow permissions.
 2. **Protect `main`** with a branch protection rule or a ruleset: require a pull request, at least one review, the status checks `CI / ubuntu-latest` and `CI / windows-latest`, block force pushes and deletions, and restrict bypass to administrators instead of everyone. *Where:* Settings → Branches / Rulesets.
 3. **Restrict release-tag creation** with a ruleset for `v*` tags so only maintainers can push them. The tag must be `v<version>` and match `apps/electron/package.json`'s `version`; the release workflow refuses to publish when they diverge, so the version bump must land **before** the tag is pushed. *Where:* Settings → Rules → Tags.
-4. **Keep `contents: write` confined to the publishing job.** The new workflow already does this — the build job can never write. The rule is to preserve that split when adding steps: a new step that needs checkout or a build belongs in `build`, not in `release`.
+4. **Keep `contents: write` confined to the publishing job.** The workflow already does this — neither build job can write. The rule is to preserve that split when adding steps: a new step that needs checkout or a build belongs in a build job, never in `release`, and a step added to one build job must be mirrored in the other.
 5. **Pin third-party actions to a full commit SHA.** Today the repository uses mutable version tags: `actions/checkout@v4`, `actions/setup-node@v4`, `actions/setup-go@v5`, `actions/upload-artifact@v4`, `actions/download-artifact@v4`, `actions/configure-pages@v6`, `actions/upload-pages-artifact@v5` and `actions/deploy-pages@v5`. A moved tag silently changes what runs with the workflow token. *Where:* the three workflow files, plus Dependabot for the `github-actions` ecosystem to keep the pins current.
 6. **Add a `release` GitHub Environment with required reviewers**, restricted to the `v*` tag pattern, and point the publishing job at it. That puts human approval in front of the only write-scoped job. *Where:* Settings → Environments.
 7. **Add a `CODEOWNERS` file** covering `.github/workflows/` and `apps/electron/electron-builder.yml` so a change to the release path always requests a release owner's review. *Where:* `.github/CODEOWNERS`.
 8. **Enable secret scanning, push protection and Dependabot**, including the `github-actions` ecosystem so workflow action versions are tracked. *Where:* Settings → Code security.
 9. **Restrict Actions to this repository** and require approval for outside contributors' pull requests before the CI job runs untrusted code. *Where:* Settings → Actions → General → Fork pull request workflows.
 10. **Keep the Pages source on "GitHub Actions"** and do not grant the Pages deployment job anything beyond `contents: read`, `pages: write` and `id-token: write` — the current state of `pages.yml`. *Where:* Settings → Pages plus the job block itself.
-11. **Document the release procedure**: bump `apps/electron/package.json`'s version, push the `v<version>` tag, let the Release workflow build and attach the unsigned NSIS installer and portable executable. The landing-page button points at the latest release, so the release must be **published** — not a draft, not a prerelease — for the download link to resolve.
+11. **Document the release procedure**: bump `apps/electron/package.json`'s version, push the `v<version>` tag, let the Release workflow build on `windows-latest` and `ubuntu-latest` and attach all four unsigned assets — the NSIS installer, the portable executable, the AppImage and the deb package. The landing-page button points at the latest release, so the release must be **published** — not a draft, not a prerelease — for the download link to resolve.
 
 ### The unsigned installer — what end users actually see
 
@@ -78,17 +78,35 @@ The packaging contract at [`apps/electron/electron-builder.yml`](../../apps/elec
 - Silent and unattended installation is unreliable on managed machines, and it cannot be presented as a trusted-publisher (UAC) prompt because the binary is unsigned — the NSIS target's `/S` switch exists, but without a signature an unattended run is not trustworthy.
 - Every fresh download re-triggers the warning until the binary gains reputation or is signed.
 
-Mitigations to apply now, without signing: publish the SHA-256 checksum of each asset in the release notes, state the unsigned status on the download page (the landing page already does), and keep the version pinned so users can match the artifact to the notes. Long term — and explicitly **out of scope now** — code signing with an OV/EV certificate or Azure Trusted Signing removes the warning; signing, notarization and auto-update are deferred (see [[accepted-debt]]).
+On Linux the same unsigned status has its own consequences, recorded with the same honesty:
+
+- The `.deb` is not GPG-signed and is not served from a signed apt repository. Installing it means trusting the downloaded file itself (`dpkg -i` or a graphical installer), and package tooling may warn or refuse the package unless the user overrides it. There is no repository key vouching for the artifact.
+- The `.AppImage` carries no signature of any kind, so a user has no way to verify the publisher beyond the download itself.
+- Nothing notifies a Linux user that a newer release exists: `electron-updater` is not wired, and there is no apt repository to upgrade from. A user stays on the downloaded version until they fetch another one.
+- This is the expected behaviour of the current packaging contract, not a defect to triage per report.
+
+Mitigations to apply now, without signing: publish the SHA-256 checksum of each asset in the release notes, state the unsigned status on the download page (the landing page already does), and keep the version pinned so users can match the artifact to the notes. Long term — and explicitly **out of scope now** — code signing with an OV/EV certificate or Azure Trusted Signing removes the Windows warning; on Linux the equivalent is a GPG-signed package served from a signed repository plus a signed AppImage (or a flatpak); signing, notarization and auto-update are deferred (see [[accepted-debt]]).
 
 ### Release asset naming
 
-The NSIS installer is `SingulariTree-Setup-<version>-x64.exe` and the portable build is `SingulariTree-Portable-<version>-x64.exe`. The names are fixed in `apps/electron/electron-builder.yml`, because electron-builder's defaults contain spaces and would collide visually in the release asset list, in download dialogs and in shell commands.
+Four assets are published, and all four names are pinned in `apps/electron/electron-builder.yml`:
+
+| Target | Asset | Pinned by |
+|---|---|---|
+| NSIS Setup | `SingulariTree-Setup-<version>-x64.exe` | top-level `nsis.artifactName` |
+| Portable | `SingulariTree-Portable-<version>-x64.exe` | top-level `portable.artifactName` |
+| AppImage | `SingulariTree-AppImage-<version>-x86_64.AppImage` | top-level `appImage.artifactName` |
+| deb | `SingulariTree-deb-<version>-amd64.deb` | top-level `deb.artifactName` |
+
+The names are fixed rather than defaulted because electron-builder's defaults contain spaces (which become `%20` in the download URL) and would collide visually in the release asset list, in download dialogs and in shell commands. The arch token is **not** uniform and is not a typo: electron-builder maps `x64` to `x86_64` for the AppImage target and to `amd64` for the deb target (`getArtifactArchName`), and the workflow asserts both literally.
+
+The deb needed an explicit `artifactName` for a second reason. Its default was `@singularitree/electron_<version>_amd64.deb`: the npm scope's `/` is treated as a path separator, so the package escaped into a `release/@singularitree/` subdirectory and could never appear as a flat release asset. The explicit name is what makes it publishable at all. The publish job asserts all four exact filenames before it touches the Releases API, so a misnamed or missing package fails the release instead of producing a partial asset set.
 
 ## When to use
 
 - Before editing a workflow, `electron-builder.yml` or any release-path file: re-read the audit table and confirm the edit does not widen a scope.
 - When reviewing a release, or diagnosing "the workflow did not run" / "the release failed": distinguish repository-declared behavior from UI-side configuration.
-- When a user reports a SmartScreen warning or a blocked installer.
+- When a user reports a SmartScreen warning or a blocked installer, or a Linux package manager refusing the `.deb`.
 - When onboarding a maintainer who needs to know which settings live outside `git`.
 
 ## When not to use
@@ -104,10 +122,14 @@ Adding a step to the publishing job while keeping the split:
 
 ```yaml
 jobs:
-  build:
+  build-windows:
     # no permissions: block — inherits the workflow-level `contents: read`
     ...
+  build-linux:
+    # same: inherits `contents: read`, and mirrors build-windows step for step
+    ...
   release:
+    needs: [build-windows, build-linux]
     permissions:
       contents: write     # the only writer; no checkout, no build step
 ```
@@ -138,5 +160,5 @@ Auditing a workflow diff: read the workflow-level `permissions:`, then every job
 - Project entry point and Commands: [docs/project.md](../project.md)
 - Corpus contract and version-bump rule: [documentation-system.md](./documentation-system.md)
 - Accepted debt, including the UNSIGNED package decision: [accepted-debt.md](./accepted-debt.md)
-- Workflows audited above: [ci.yml](../../.github/workflows/ci.yml), [pages.yml](../../.github/workflows/pages.yml)
+- Workflows audited above: [ci.yml](../../.github/workflows/ci.yml), [pages.yml](../../.github/workflows/pages.yml), [release.yml](../../.github/workflows/release.yml)
 - Packaging contract: [apps/electron/electron-builder.yml](../../apps/electron/electron-builder.yml)

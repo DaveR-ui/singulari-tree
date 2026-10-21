@@ -1,6 +1,6 @@
 # SingulariTree
 
-> **SingulariTree = git-client monorepo** — multiplatform desktop Git client.
+> **SingulariTree = git-client monorepo** — desktop Git client for Windows and Linux.
 > Module alias: **Singularitree** (Go module `github.com/SingulariTree/go-core`, proto package `singularitree.v1` aka `gitclient.v1` for compatibility).
 > Design corpus (legacy, under ratchet): [`docs/context/git-client/`](docs/context/git-client/INDEX.md).
 
@@ -72,7 +72,7 @@ go run ./apps/go-core/cmd/go-core --headless --grpc-addr unix:///tmp/singularitr
 ```
 
 Behavior in `--headless`:
-- starts gRPC on Unix socket (Linux/macOS) or named pipe `\\.\pipe\singularitree-go-core` (Windows) and HTTP fallback on ephemeral localhost;
+- starts gRPC on a Unix socket (Linux) or a named pipe `\\.\pipe\singularitree-go-core` (Windows) and HTTP fallback on ephemeral localhost;
 - prints `GO_CORE_READY addr=... http=... token=...` for supervisor discovery;
 - health `Ping` every 5s; graceful shutdown on `SIGTERM`/`SIGINT`.
 
@@ -155,7 +155,7 @@ cd apps/electron && npx playwright test         # e2e smoke — needs the three 
 (build + Go tests + Electron vitest + Playwright smoke); `--go-only`,
 `--ts-only`, `--e2e-only` and `--build-only` narrow it down.
 
-Package (**UNSIGNED** — code signing / notarization is V1):
+Package (**UNSIGNED** — code signing is V1):
 
 ```bash
 cd apps/electron
@@ -163,7 +163,7 @@ npm run pack   # unpacked dir -> apps/electron/release/
 npm run dist   # installers   -> apps/electron/release/
 ```
 
-Targets from `apps/electron/electron-builder.yml`: Linux `AppImage` + `deb`, Windows `nsis` + `portable`, macOS `dmg` + `zip`. Before packaging, `dist/go-core`, `apps/angular/dist/browser/` and `apps/electron/dist/main/` must exist — `extraResources` copies the renderer, core binary and `libs/contracts/proto` into the package. Build installers on the **target OS**: Windows `nsis` generally needs Windows or wine; macOS `dmg`/`zip` require macOS.
+Targets from `apps/electron/electron-builder.yml`: Windows `nsis` + `portable`, Linux `AppImage` + `deb`. Before packaging, `dist/go-core`, `apps/angular/dist/browser/` and `apps/electron/dist/main/` must exist — `extraResources` copies the renderer, core binary and `libs/contracts/proto` into the package. Build installers on the **target OS**: Windows `nsis` generally needs Windows or wine. The macOS targets were dropped by decision (ADR-0038); on a Linux host build the Windows targets explicitly with `electron-builder --win`. macOS is not a supported development host for the desktop shell — the Electron provisioner refuses a macOS binary, so a macOS host must set `ELECTRON_SKIP_BINARY_DOWNLOAD=1` to install the JavaScript toolchain — while the Go core still builds and runs on macOS.
 
 ## Screenshots
 

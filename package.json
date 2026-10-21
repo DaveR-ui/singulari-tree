@@ -26,7 +26,8 @@
     "wait-on": "^9.1.0"
   },
   "allowScripts": {
-    "electron@32.3.3": true,
-    "esbuild@0.28.1": true
+    "electron@41.10.6": true,
+    "esbuild@0.28.1": true,
+    "esbuild@0.28.2": true
   }
 }

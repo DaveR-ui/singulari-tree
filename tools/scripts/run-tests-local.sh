@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-tests-local.sh — reproduce the CI suites locally, on Linux or macOS.
+# run-tests-local.sh — reproduce the CI suites locally, on Linux or Windows.
 #
 # CI (.github/workflows/ci.yml) runs one job on ubuntu-latest and one on
 # windows-latest, fail-fast: false. This script reproduces the *ubuntu* job end
