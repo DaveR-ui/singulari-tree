@@ -54,3 +54,15 @@ mac:
     - dmg
     - zip
   category: public.app-category.developer-tools
+
+# Asset names for the two Windows targets. electron-builder v25 reads these
+# per-target options from the TOP level (`config.nsis` / `config.portable`);
+# `win.nsis` / `win.portable` are NOT valid schema keys and are rejected.
+# Default names would be "SingulariTree Setup <version>.exe" (NSIS) and
+# "SingulariTree <version>.exe" (portable) — the spaces become %20 in the
+# download URL. These explicit names keep both assets distinguishable.
+nsis:
+  artifactName: SingulariTree-Setup-${version}-${arch}.${ext}
+
+portable:
+  artifactName: SingulariTree-Portable-${version}-${arch}.${ext}
