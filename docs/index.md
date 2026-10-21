@@ -4,13 +4,13 @@
 # SingulariTree — Documentation index
 
 <!-- BEGIN GENERATED: index -->
-<!-- snapshot: 2026-10-19 -->
+<!-- snapshot: 2026-10-20 -->
 ## Generated index
 
 ### Overview
 
-- Markdown files: 42
-- Context docs: 6 | Notes: 6 | Hubs: 2 | adrs: 23 | templates: 0 | protocols: 3
+- Markdown files: 44
+- Context docs: 7 | Notes: 6 | Hubs: 2 | adrs: 24 | templates: 0 | protocols: 3
 
 ### Tree
 
@@ -35,6 +35,7 @@
   - adr-0034-retire-cross-repo-commit-search.md — adr, id: `adr-0034-retire-cross-repo-commit-search`
   - adr-0035-commit-details-redesign-and-inline-hunk-actions.md — adr, id: `adr-0035-commit-details-redesign-and-inline-hunk-actions`
   - adr-0036-per-tab-fetch.md — adr, id: `adr-0036-per-tab-fetch`
+  - adr-0037-windows-release-and-distribution.md — adr, id: `adr-0037-windows-release-and-distribution`
   - adr-024-multi-repo-workspaces.md — adr, id: `adr-024-multi-repo-workspaces`
   - adr-025-deep-links-and-clipboard-clone.md — adr, id: `adr-025-deep-links-and-clipboard-clone`
   - adr-026-cross-repo-commit-search.md — adr, id: `adr-026-cross-repo-commit-search`
@@ -47,6 +48,7 @@
   - documentation-system.md — context-doc
   - feature-gap-analysis.md — context-doc
   - renderer-redesign-plan.md — context-doc
+  - repository-configuration.md — context-doc
 - protocols/
   - bootstrap-protocol.md — protocol, id: `bootstrap-protocol`
   - docs-review-protocol.md — protocol, id: `docs-review-protocol`
