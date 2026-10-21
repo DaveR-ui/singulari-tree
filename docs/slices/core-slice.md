@@ -8,7 +8,7 @@ aliases:
 - Core slice
 related:
 - slices-index
-version: 1.3.1
+version: 1.4.0
 status: active
 ---
 
@@ -35,7 +35,7 @@ Headless Go core that concentrates the domain, the services, the repository and 
 
 - Hexagonal *ports & adapters* architecture.
 - Starts with `--headless` and prints the `GO_CORE_READY` line with the fields `addr`, `http` and the rotated session `token`.
-- gRPC is the primary transport (unix socket on Linux/macOS, named pipe on Windows); HTTP acts as fallback.
+- gRPC is the primary transport (unix socket on Linux and on macOS — the core keeps its darwin build paths even though the product no longer ships a macOS app; named pipe on Windows); HTTP acts as fallback.
 - SQLite in WAL mode is a metadata cache; it **never** stores Git objects.
 - Coalesced watcher over the filesystem.
 

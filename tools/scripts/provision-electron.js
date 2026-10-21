@@ -2,48 +2,120 @@
 'use strict';
 
 /**
- * Provisions the Electron binary for this repository.
+ * Provisions the Electron binary for this repository (Windows and Linux).
  *
- * Electron's own postinstall (`node_modules/electron/install.js`) extracts the
- * downloaded archive with `extract-zip` -> `yauzl`. On Node v26 that extraction
- * silently exits with code 0 on the first non-trivial compressed entry, leaving
- * `node_modules/electron/dist/` incomplete (only `locales/`) and `path.txt`
- * missing, so the `electron` binary never works.
+ * This provisioner is independent of Electron's bundled `install.js`: it runs
+ * after it on `npm ci` and it is the only extraction path when Electron's own
+ * install script is skipped. It also repairs trees left behind by older
+ * Electron releases whose `install.js` (extract-zip -> yauzl on Node >= 26)
+ * could exit 0 after a partial extraction, leaving `dist/` incomplete.
  *
- * This script replaces that broken extraction step without re-downloading:
- *   1. Resolve the already checksum-verified archive from the @electron/get
- *      cache (reusing the cached zip; no network when it is present).
- *   2. Extract it with the system `unzip`.
- *   3. Repair the executable mode and write `path.txt`.
+ * Strategy:
+ *   1. Compare the provisioned binary against the version this project pins in
+ *      `apps/electron/package.json`, never against the version the installed
+ *      `node_modules/electron` package declares about itself: those two can
+ *      disagree on a stale tree, which would otherwise look installed.
+ *   2. Resolve the checksum-verified archive through `@electron/get` (cached;
+ *      no network when it is already present).
+ *   3. Extract it with system `unzip`/`bsdtar`/`tar`.
+ *   4. Repair the executable mode, move the type definitions up and write
+ *      `path.txt`.
  *
- * It is idempotent: when the install already looks correct (mirroring
- * Electron's own `isInstalled()` check) it exits immediately with code 0.
- * It never invokes `npm install` and never re-downloads.
+ * It is idempotent: when the expected build is already provisioned it exits
+ * immediately with code 0. It never invokes `npm install` and never commits.
+ * `@electron/get` is ESM-only, so it is loaded with a dynamic `import()`.
  */
 
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const ELECTRON_DIR = path.join(REPO_ROOT, 'node_modules', 'electron');
+const ELECTRON_PACKAGE_DIR = path.join(REPO_ROOT, 'apps', 'electron');
+const ELECTRON_MANIFEST = path.join(ELECTRON_PACKAGE_DIR, 'package.json');
 
 function fail(message) {
   console.error(`[provision-electron] ${message}`);
   process.exit(1);
 }
 
+function warn(message) {
+  console.warn(`[provision-electron] WARNING: ${message}`);
+}
+
+/**
+ * Reads the Electron version this project actually requires from the app
+ * manifest (the source of truth), stripping a leading `^` / `~` so a caret or
+ * tilde range still yields the exact version to provision.
+ */
+function readExpectedVersion() {
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(ELECTRON_MANIFEST, 'utf-8'));
+  } catch (error) {
+    fail(`Cannot read ${ELECTRON_MANIFEST}: ${error.message}`);
+  }
+
+  const spec = manifest && manifest.devDependencies && manifest.devDependencies.electron;
+  if (typeof spec !== 'string' || spec.length === 0) {
+    fail(`${ELECTRON_MANIFEST} does not declare devDependencies.electron.`);
+  }
+
+  const expected = spec.trim().replace(/^[\^~]/, '');
+  if (!/^\d+\.\d+\.\d+([-+].*)?$/.test(expected)) {
+    fail(
+      `devDependencies.electron must resolve to an exact version; got "${spec}". ` +
+        `Pin it (for example "41.10.6") so the binary can be provisioned.`
+    );
+  }
+
+  return expected;
+}
+
+/** Reads `node_modules/electron/package.json` (the installed, possibly stale package). */
+function readInstalledVersion() {
+  try {
+    const installed = JSON.parse(fs.readFileSync(path.join(ELECTRON_DIR, 'package.json'), 'utf-8'));
+    return typeof installed.version === 'string' ? installed.version : 'unknown';
+  } catch (error) {
+    fail(`Cannot read ${path.join(ELECTRON_DIR, 'package.json')}: ${error.message}`);
+  }
+}
+
+/**
+ * Checksums shipped inside `node_modules/electron` describe the release that
+ * package was built for. They must only be used when the installed package is
+ * the expected release; otherwise `@electron/get` falls back to the published
+ * `SHASUMS256.txt`, which still validates the download.
+ */
+function readChecksums() {
+  const file = path.join(ELECTRON_DIR, 'checksums.json');
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf-8'));
+  } catch (error) {
+    warn(`cannot read ${file} (${error.message}); validating against SHASUMS256.txt instead.`);
+    return undefined;
+  }
+}
+
 function getPlatformPath(platform) {
   switch (platform) {
-    case 'mas':
-    case 'darwin':
-      return 'Electron.app/Contents/MacOS/Electron';
     case 'freebsd':
     case 'openbsd':
     case 'linux':
       return 'electron';
     case 'win32':
       return 'electron.exe';
+    case 'darwin':
+    case 'mas':
+      throw new Error(
+        `macOS is no longer a supported platform for the desktop shell (ADR-0038), so the ` +
+          `Electron binary cannot be provisioned on '${platform}'. A macOS host that only ` +
+          `needs the JavaScript toolchain can set ELECTRON_SKIP_BINARY_DOWNLOAD=1 to skip ` +
+          `binary provisioning; the root postinstall honours that variable.`
+      );
     default:
       throw new Error(`Electron builds are not available on platform: ${platform}`);
   }
@@ -51,12 +123,12 @@ function getPlatformPath(platform) {
 
 /**
  * Extracts the archive into `distDir` using whichever extractor is available
- * on the host. Electron's own extractor (`extract-zip` -> `yauzl@2`) is
- * unusable on Node >=26, so we prefer OS tooling and fall back across
- * platforms:
- *   - `unzip`      : Linux CI/images (and Git Bash on Windows)
- *   - `bsdtar`     : bundled with Windows 10+ and macOS (`tar -xf` handles zip)
- *   - `tar`        : last-resort alias for bsdtar/libarchive
+ * on the host. Electron's own install script is not used here (older releases
+ * ship an extractor that misbehaves on newer Node versions), so we prefer OS
+ * tooling and fall back across platforms:
+ *   - `unzip`  : Linux CI/images (and Git Bash on Windows)
+ *   - `bsdtar` : bundled with Windows 10+ (`tar -xf` handles zip)
+ *   - `tar`    : last-resort alias for bsdtar/libarchive
  * A missing extractor is a hard failure (never a silent success).
  */
 function extractArchive(zipPath, distDir) {
@@ -87,11 +159,13 @@ function extractArchive(zipPath, distDir) {
 
 /**
  * Mirrors Electron's install.js `isInstalled()`: a cheap, side-effect free
- * check used to keep this provisioner idempotent and fast on re-runs.
+ * check used to keep this provisioner idempotent and fast on re-runs. The
+ * version compared is the EXPECTED one, so a stale `dist/` is never accepted
+ * just because it matches the stale package's self-declared version.
  */
-function isInstalled({ version, platformPath, electronBinary, versionFile, pathFile }) {
+function isInstalled({ expectedVersion, platformPath, electronBinary, versionFile, pathFile }) {
   try {
-    if (fs.readFileSync(versionFile, 'utf-8').trim().replace(/^v/, '') !== version) {
+    if (fs.readFileSync(versionFile, 'utf-8').trim().replace(/^v/, '') !== expectedVersion) {
       return false;
     }
     if (fs.readFileSync(pathFile, 'utf-8') !== platformPath) {
@@ -102,6 +176,25 @@ function isInstalled({ version, platformPath, electronBinary, versionFile, pathF
   }
 
   return fs.existsSync(electronBinary);
+}
+
+/**
+ * Loads `@electron/get` with a dynamic `import()`: it is ESM-only, and this
+ * script is CommonJS. Resolving through Electron's own install location keeps
+ * working if npm nests the dependency instead of hoisting it.
+ */
+async function loadDownloadArtifact() {
+  try {
+    const getEntry = require.resolve('@electron/get', { paths: [ELECTRON_DIR] });
+    const electronGet = await import(pathToFileURL(getEntry).href);
+    const downloadArtifact = electronGet.downloadArtifact;
+    if (typeof downloadArtifact !== 'function') {
+      throw new Error('the module does not export downloadArtifact()');
+    }
+    return downloadArtifact;
+  } catch (error) {
+    fail(`Cannot load @electron/get: ${error.message}`);
+  }
 }
 
 async function main() {
@@ -115,10 +208,9 @@ async function main() {
     fail(`Electron package not found at ${ELECTRON_DIR}. Run npm install first.`);
   }
 
-  // eslint-disable-next-line global-require
-  const { version } = require(path.join(ELECTRON_DIR, 'package.json'));
-  // eslint-disable-next-line global-require
-  const checksums = require(path.join(ELECTRON_DIR, 'checksums.json'));
+  const expectedVersion = readExpectedVersion();
+  const installedVersion = readInstalledVersion();
+  const packageIsStale = installedVersion !== expectedVersion;
 
   const platform = process.env.npm_config_platform || process.platform;
   const arch = process.env.npm_config_arch || process.arch;
@@ -129,27 +221,35 @@ async function main() {
   const versionFile = path.join(distDir, 'version');
   const pathFile = path.join(ELECTRON_DIR, 'path.txt');
 
-  if (isInstalled({ version, platformPath, electronBinary, versionFile, pathFile })) {
-    console.log(`[provision-electron] Electron ${version} already provisioned; nothing to do.`);
+  // Warn BEFORE the idempotence check: once a stale tree has been repaired, the
+  // early return would otherwise swallow this warning on every later run and a
+  // stale package would be silently accepted.
+  if (packageIsStale) {
+    warn(
+      `node_modules/electron is Electron ${installedVersion}, but this project requires ` +
+        `Electron ${expectedVersion}. Run 'npm ci' to replace the stale package (the ` +
+        `provisioned binary is repaired independently).`
+    );
+  }
+
+  if (isInstalled({ expectedVersion, platformPath, electronBinary, versionFile, pathFile })) {
+    console.log(
+      `[provision-electron] Electron ${expectedVersion} already provisioned; nothing to do.`
+    );
     return;
   }
 
-  let downloadArtifact;
-  try {
-    // Resolve @electron/get through Electron's own install location, not the
-    // hoisted root: npm hoisting is an implementation detail and Electron may
-    // nest the dependency in a future release.
-    const getEntry = require.resolve('@electron/get', { paths: [ELECTRON_DIR] });
-    ({ downloadArtifact } = require(getEntry));
-  } catch (error) {
-    fail(`Cannot load @electron/get: ${error.message}`);
-  }
+  const downloadArtifact = await loadDownloadArtifact();
+  // Stale packages carry checksums for THEIR release: using them would fail a
+  // checksum mismatch, so let @electron/get validate against the published
+  // SHASUMS256.txt instead.
+  const checksums = packageIsStale ? undefined : readChecksums();
 
   let zipPath;
   try {
     // Resolves the cached, checksum-verified archive. No network when cached.
     zipPath = await downloadArtifact({
-      version,
+      version: expectedVersion,
       artifactName: 'electron',
       cacheRoot: process.env.electron_config_cache,
       checksums,
@@ -157,7 +257,7 @@ async function main() {
       arch,
     });
   } catch (error) {
-    fail(`Failed to resolve the Electron archive: ${error.message}`);
+    fail(`Failed to resolve the Electron ${expectedVersion} archive: ${error.message}`);
   }
 
   console.log(`[provision-electron] Using cached archive: ${zipPath}`);
@@ -175,9 +275,10 @@ async function main() {
   // before declaring success or writing path.txt.
   try {
     const extracted = fs.readFileSync(versionFile, 'utf-8').trim().replace(/^v/, '');
-    if (extracted !== version) {
+    if (extracted !== expectedVersion) {
       fail(
-        `Extraction incomplete: ${versionFile} reports "${extracted}", expected "${version}".`
+        `Extraction incomplete: ${versionFile} reports "${extracted}", ` +
+          `expected "${expectedVersion}".`
       );
     }
   } catch (error) {
@@ -207,7 +308,18 @@ async function main() {
     fail(`Cannot write ${pathFile}: ${error.message}`);
   }
 
-  console.log(`[provision-electron] Electron ${version} provisioned at ${electronBinary}.`);
+  console.log(
+    `[provision-electron] Electron ${expectedVersion} provisioned at ${electronBinary}.`
+  );
+
+  if (packageIsStale) {
+    // The provisioning itself succeeded, so this is not a failed install. The
+    // package directory, however, still describes the old release.
+    warn(
+      `the node_modules/electron package still declares Electron ${installedVersion} while ` +
+        `the provisioned binary is ${expectedVersion}. Run 'npm ci' to replace the package.`
+    );
+  }
 }
 
 main().catch((error) => {

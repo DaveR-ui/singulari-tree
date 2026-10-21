@@ -49,12 +49,6 @@ win:
     - nsis
     - portable
 
-mac:
-  target:
-    - dmg
-    - zip
-  category: public.app-category.developer-tools
-
 # Asset names for the two Windows targets. electron-builder v25 reads these
 # per-target options from the TOP level (`config.nsis` / `config.portable`);
 # `win.nsis` / `win.portable` are NOT valid schema keys and are rejected.

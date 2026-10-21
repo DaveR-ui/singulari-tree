@@ -8,7 +8,7 @@ Runtime DB is **not committed** — it lives in the platform data directory:
 
 | OS | Path |
 |----|------|
-| macOS | `~/Library/Application Support/singularitree/cache.db` |
+| macOS | `~/Library/Application Support/singularitree/cache.db` (core-only: the product no longer ships a macOS app) |
 | Windows | `%APPDATA%\singularitree\cache.db` |
 | Linux | `~/.local/share/singularitree/cache.db` |
 

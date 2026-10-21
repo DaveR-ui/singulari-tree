@@ -8,7 +8,7 @@ aliases:
 - Desktop Shell slice
 related:
 - slices-index
-version: 1.1.0
+version: 1.2.1
 status: active
 ---
 
@@ -51,6 +51,6 @@ Electron shell that hosts the desktop application: main process, preload, typed 
 
 ## Known gaps & accepted debt
 
-- M3 landed: `singularitree://` scheme registration behind the single-instance lock, macOS `open-url` plus Windows/Linux argv / `second-instance` handling, and the normalized `deeplink:open` IPC event forwarded to the renderer (the shell never runs Git) — [[adr-025-deep-links-and-clipboard-clone]].
+- M3 landed: `singularitree://` scheme registration behind the single-instance lock, Windows/Linux argv / `second-instance` handling, and the normalized `deeplink:open` IPC event forwarded to the renderer (the shell never runs Git) — [[adr-025-deep-links-and-clipboard-clone]]; the macOS `open-url` path was removed with macOS support — [[adr-0038-drop-macos-support-windows-and-linux-only]].
 - e2e backed by mocks.
-- Packaging (`electron-builder`) not yet configured.
+- Packaging (`electron-builder`) is configured for Windows `nsis` + `portable` and Linux `AppImage` + `deb`, all **UNSIGNED**; the **Windows pair is published** through GitHub Releases by the `v<version>` tag pipeline, while the Linux targets are configured but **not published** — [[adr-0037-windows-release-and-distribution]], [[adr-0038-drop-macos-support-windows-and-linux-only]].

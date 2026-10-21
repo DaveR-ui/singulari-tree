@@ -263,15 +263,7 @@ async function bootstrap(): Promise<void> {
   }
 
   app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') app.quit();
-  });
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0 && mainWindow) {
-      mainWindow = createMainWindow();
-      // A fresh renderer must re-ack before queued links are delivered.
-      attachDeepLinkRenderer(mainWindow);
-    }
+    app.quit();
   });
 
   app.on('before-quit', () => {
@@ -290,13 +282,6 @@ if (!gotSingleInstanceLock) {
   app.on('second-instance', (_event, argv) => {
     const raw = extractDeepLinkFromArgv(argv);
     if (raw) queueDeepLink(raw);
-    focusMainWindow();
-  });
-
-  // macOS delivers deep links via `open-url` (also before `whenReady`).
-  app.on('open-url', (event, url) => {
-    event.preventDefault();
-    queueDeepLink(url);
     focusMainWindow();
   });
 
