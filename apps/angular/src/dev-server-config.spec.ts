@@ -28,9 +28,20 @@ interface ServeOptions {
   readonly prebundle?: boolean | PrebundleOptions;
 }
 
+/** Non-string global-style entry (`inject: false` style bundles). */
+interface StyleEntry {
+  readonly input: string;
+  readonly bundleName?: string;
+  readonly inject?: boolean;
+}
+
+interface BuildOptions {
+  readonly styles?: readonly (string | StyleEntry)[];
+}
+
 interface ArchitectTarget {
   readonly builder?: string;
-  readonly options?: ServeOptions;
+  readonly options?: ServeOptions & BuildOptions;
 }
 
 interface AngularWorkspaceConfig {
@@ -113,5 +124,44 @@ describe('dev-server configuration', () => {
         '("outside of Vite serving allow list"). Fix: add `prebundle.exclude: ["monaco-editor"]` to the ' +
         'serve target in apps/angular/angular.json (or install monaco-editor inside apps/angular).',
     ).toBe(true);
+  });
+});
+
+/**
+ * Regression guard for the Monaco diff panes rendering unstyled.
+ *
+ * `@angular/build` 22 ignores esbuild's `cssBundle` association and only collects
+ * CSS whose output has an `entryPoint`, so Monaco's `import '*.css'` side bundles
+ * are emitted as orphan `chunk-*.css` files that `index.html` never links. The
+ * editor then computes `position: static` / `overflow: visible` and its panes
+ * bleed into each other.
+ *
+ * The fix is a second global-style entry with `inject: false` and a stable
+ * `bundleName: "monaco"`: the builder emits `monaco.css` outside the initial
+ * bundler context (excluded from `index.html` and the initial budget), and the
+ * diff viewer's lazy loader links it before `createDiffEditor`. The entry must
+ * stay non-injected; promoting it to an initial style would breach the 600 kB
+ * warning budget.
+ */
+describe('Monaco CSS asset configuration', () => {
+  it('emits Monaco CSS as a single non-injected, stable-named global style', () => {
+    const configPath = findWorkspaceConfigPath();
+    const config = readWorkspaceConfig(configPath);
+
+    const styles: readonly (string | StyleEntry)[] =
+      config.projects?.['singularitree-angular']?.architect?.['build']?.options?.styles ?? [];
+    const monacoEntries = styles.filter(
+      (style): style is StyleEntry => typeof style === 'object' && style.bundleName === 'monaco',
+    );
+
+    expect(monacoEntries).toHaveLength(1);
+    const [monaco] = monacoEntries;
+    expect(monaco.inject).toBe(false);
+    expect(monaco.input.endsWith('monaco-editor/min/vs/editor/editor.main.css')).toBe(true);
+
+    // Only the app stylesheet may be injected into index.html: the Monaco sheet is
+    // a lazy, stable-named asset and must never become part of the initial bundle.
+    const injected = styles.filter((style) => typeof style === 'string' || style.inject !== false);
+    expect(injected).toEqual(['src/styles.scss']);
   });
 });

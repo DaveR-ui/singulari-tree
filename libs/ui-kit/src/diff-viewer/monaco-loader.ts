@@ -1,4 +1,5 @@
 import * as monaco from 'monaco-editor';
+import { ensureMonacoCss } from './monaco-css';
 import {
   SINGULARITREE_DARK,
   SINGULARITREE_LIGHT,
@@ -40,5 +41,15 @@ function getWorker(_workerId: string, label: string): Worker {
 // `monaco.editor.setTheme` never references an unregistered theme name.
 monaco.editor.defineTheme(SINGULARITREE_DARK, singularitreeDarkTheme());
 monaco.editor.defineTheme(SINGULARITREE_LIGHT, singularitreeLightTheme());
+
+/**
+ * Loaded lazily by the diff viewer. Monaco's stylesheet comes from the
+ * non-injected `monaco.css` built from `angular.json`, so it must be linked
+ * before the editor is created — otherwise the diff panes mount unstyled.
+ */
+export async function loadMonaco(): Promise<typeof monaco> {
+  await ensureMonacoCss();
+  return monaco;
+}
 
 export default monaco;

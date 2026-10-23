@@ -486,5 +486,40 @@ test.describe('SingulariTree Electron smoke: open repo → graph → stage → c
       const monacoCount = await monacoDiff.count();
       expect(fallbackVisible || monacoCount > 0).toBe(true);
     }).toPass({ timeout: 30_000 });
+
+    // (k) Monaco's stylesheet is delivered lazily (non-injected `monaco.css`, not
+    // linked by index.html): the loader must have appended it before the editor
+    // mounted, otherwise the diff panes render with `position: static` /
+    // `overflow: visible` and bleed into each other. Assert the real editor
+    // mounted (not just the fallback) and that the applied CSS is the Monaco one.
+    await expect(async () => {
+      const count = await monacoDiff.count();
+      expect(count).toBeGreaterThan(0);
+      expect(await monacoDiff.first().isVisible()).toBe(true);
+    }).toPass({ timeout: 30_000 });
+
+    const monacoCssState = await window.evaluate(() => {
+      const stylesheet = document.querySelector<HTMLLinkElement>('link[data-st-monaco-css]');
+      const editors = Array.from(document.querySelectorAll<HTMLElement>('.monaco-editor'))
+        .map((element) => ({ element, rect: element.getBoundingClientRect() }))
+        .filter(({ rect }) => rect.width > 100)
+        .sort((a, b) => b.rect.width - a.rect.width);
+      const largest = editors[0];
+      const guard = largest?.element.querySelector<HTMLElement>('.overflow-guard') ?? null;
+      return {
+        href: stylesheet?.href ?? null,
+        editorCount: editors.length,
+        position: largest ? getComputedStyle(largest.element).position : null,
+        guardOverflow: guard ? getComputedStyle(guard).overflow : null,
+        height: largest?.rect.height ?? 0,
+      };
+    });
+
+    expect(monacoCssState.href).not.toBeNull();
+    expect(monacoCssState.href).toMatch(/monaco\.css$/);
+    expect(monacoCssState.editorCount).toBeGreaterThan(0);
+    expect(monacoCssState.position).toBe('relative');
+    expect(monacoCssState.guardOverflow).toBe('hidden');
+    expect(monacoCssState.height).toBeGreaterThan(100);
   });
 });

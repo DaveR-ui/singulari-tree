@@ -1,5 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import type { Repository } from '@contracts/domain';
+import { GraphSessionStore } from './graph-session.store';
 import { RepoState } from './repo-state.service';
 
 /**
@@ -37,13 +38,27 @@ export const WORKSPACES_STORAGE_KEY = 'st:workspaceTabs';
  * The list, order and active tab persist to localStorage (UI-state only, never
  * Git or core domain state). `RepoState` is a constructor parameter (defaulting
  * to DI) so the store is unit-testable without TestBed.
+ *
+ * Closing (or reconciling away) a tab also forgets that repo's graph session
+ * selection/padlock: the session is session-scoped UI state and must not
+ * outlive the tab it belongs to.
  */
 @Injectable({ providedIn: 'root' })
 export class WorkspacesStore {
   private readonly repoState: RepoState;
+  /**
+   * Root in-memory graph session, captured once at construction. Optional so
+   * plain `new WorkspacesStore(fakeRepoState)` unit tests keep working without
+   * a DI context (see {@link safeInjectGraphSession}).
+   */
+  private readonly graphSession: GraphSessionStore | null;
 
-  constructor(repoState: RepoState = inject(RepoState)) {
+  constructor(
+    repoState: RepoState = inject(RepoState),
+    graphSession: GraphSessionStore | null = safeInjectGraphSession(),
+  ) {
     this.repoState = repoState;
+    this.graphSession = graphSession;
   }
 
   private readonly tabsState = signal<RepoTab[]>([]);
@@ -80,7 +95,13 @@ export class WorkspacesStore {
    */
   reconcile(repos: readonly Repository[]): void {
     const byId = new Map(repos.map((repo) => [repo.id, repo]));
-    const tabs = this.tabsState()
+    const previous = this.tabsState();
+    // A tab dropped by the filter is dead: discard its graph session too, so a
+    // closed repo never leaves an orphan selection/padlock in memory.
+    for (const tab of previous) {
+      if (!byId.has(tab.repoId)) this.graphSession?.forget(tab.repoId);
+    }
+    const tabs = previous
       .filter((tab) => byId.has(tab.repoId))
       .map((tab) => {
         const repo = byId.get(tab.repoId);
@@ -173,6 +194,10 @@ export class WorkspacesStore {
     const index = tabs.findIndex((tab) => tab.repoId === repoId);
     if (index === -1) return;
 
+    // The tab exists, so its session is now dead: discard it (no-op when the
+    // repo never saved any selection/lock).
+    this.graphSession?.forget(repoId);
+
     const next = tabs.filter((tab) => tab.repoId !== repoId);
     this.tabsState.set(next);
 
@@ -231,6 +256,21 @@ export class WorkspacesStore {
     } catch {
       return null;
     }
+  }
+}
+
+/**
+ * Read the root `GraphSessionStore` when one exists, else `null`.
+ *
+ * The store is also constructed directly (`new WorkspacesStore(repoState)`) in
+ * unit tests with no DI context, where a bare `inject()` would throw NG0203;
+ * forgetting a closed tab's session then simply degrades to a no-op.
+ */
+function safeInjectGraphSession(): GraphSessionStore | null {
+  try {
+    return inject(GraphSessionStore, { optional: true });
+  } catch {
+    return null;
   }
 }
 

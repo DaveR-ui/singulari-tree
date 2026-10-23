@@ -307,6 +307,46 @@ describe('RepoPage hydration', () => {
     expect(focus.pending()).toBeNull();
   });
 
+  it("does not consume a superseded repo's pending focus after another repo wins the open", async () => {
+    const { repoState, graphStore } = await setup(null);
+    const focus = TestBed.inject(CommitFocusService);
+
+    // Defer REPO_A's open so it is still in flight when REPO_B wins the switch.
+    // REPO_B keeps the real (stub) behavior and points the graph at itself.
+    const deferredA: Array<(repo: Repository) => void> = [];
+    graphStore.openRepository.mockImplementation((fsPath: string) => {
+      if (fsPath === REPO_A.fsPath) {
+        return new Promise<Repository>((resolve) => deferredA.push(resolve));
+      }
+      const repo = ALL_REPOS.find((r) => r.fsPath === fsPath) ?? REPO_B;
+      graphStore.repoId.set(repo.id);
+      return Promise.resolve(repo);
+    });
+    graphStore.focusCommit.mockClear();
+
+    repoState.setActive(REPO_A);
+    TestBed.tick();
+    expect(graphStore.openRepository).toHaveBeenCalledWith(REPO_A.fsPath);
+    // Nothing is latched while A's open stays unresolved.
+    expect(graphStore.repoId()).toBeNull();
+
+    focus.request(REPO_A.id, 'stale-oid');
+    TestBed.tick();
+
+    repoState.setActive(REPO_B);
+    TestBed.tick();
+    await vi.waitFor(() => expect(graphStore.repoId()).toBe(REPO_B.id));
+
+    // A's superseded open resolves last: it installed nothing, so its pending
+    // deep-link focus must stay queued instead of being selected under B.
+    for (const resolve of deferredA) resolve(REPO_A);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(graphStore.focusCommit).not.toHaveBeenCalledWith('stale-oid');
+    expect(focus.pending()).toEqual({ repoId: REPO_A.id, oid: 'stale-oid' });
+  });
+
   // -- re-homed graph refresh triggers (ADR-0030) --------------------------
 
   it('reloads the graph window when the working tree changes externally', async () => {

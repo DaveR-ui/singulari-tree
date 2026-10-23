@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Commit, Lane, Repository } from '@contracts/domain';
 import type { GetCommitsResponse } from '@contracts/gitcore';
+import { GraphSessionStore } from '@core/services/graph-session.store';
 import { IpcBridge } from '@core/services/ipc-bridge.service';
 import { LiveRegionService } from '@singularitree/ui-kit';
 import { COMMIT_FOCUS_MAX_LOADS, GRAPH_WINDOW_SIZE, GraphStore, WIP_OID } from './graph.store';
@@ -14,6 +15,25 @@ const REPO: Repository = {
   createdAt: '2026-01-01T00:00:00Z',
   lastOpenedAt: '2026-01-01T00:00:00Z',
 };
+
+const REPO_TWO: Repository = {
+  ...REPO,
+  id: 'repo-2',
+  fsPath: '/tmp/repo-2',
+  commonDir: '/tmp/repo-2/.git',
+  name: 'repo-2',
+};
+
+/** Bridge that opens `REPO`/`REPO_TWO` by path and lists both as recents. */
+function makeTwoRepoBridge(getCommits: Handler): IpcBridge {
+  return makeBridge({
+    getCommits,
+    openRepository: (req) =>
+      Promise.resolve((req as { fsPath: string }).fsPath === REPO.fsPath ? REPO : REPO_TWO),
+    listRepositories: () => Promise.resolve({ repositories: [REPO, REPO_TWO] }),
+    watch: () => Promise.resolve({}),
+  });
+}
 
 function makeCommit(index: number, refs: Commit['refs'] = []): Commit {
   const hex = index.toString(16).padStart(40, '0');
@@ -1183,5 +1203,173 @@ describe('GraphStore', () => {
     expect(liveRegion.message()).toBe(
       'Commit selection is locked. Release the lock to select another commit.',
     );
+  });
+
+  // -- graph session persistence (root in-memory session store) ------------
+
+  describe('graph session persistence', () => {
+    it('restores the selection when switching back to a repo tab', async () => {
+      const session = new GraphSessionStore();
+      store = new GraphStore(
+        makeTwoRepoBridge(() => Promise.resolve(makePage(3))),
+        session,
+      );
+
+      await store.openRepository(REPO.fsPath);
+      const oid = makeCommit(1).oid?.hex as string;
+      store.select(oid);
+
+      // Switching to another tab blanks the live signals for that repo...
+      await store.openRepository(REPO_TWO.fsPath);
+      expect(store.selectedOid()).toBeNull();
+
+      // ...but switching back restores repo-1's own selection.
+      await store.openRepository(REPO.fsPath);
+      expect(store.selectedOid()).toBe(oid);
+    });
+
+    it('restores the lock (and cached commit) when the locked row left the window', async () => {
+      const session = new GraphSessionStore();
+      let repoOneOpens = 0;
+      const getCommits = vi.fn((req: unknown) => {
+        const { repoId } = req as { repoId: string };
+        if (repoId !== REPO.id) return Promise.resolve(makePage(2, 20, 2));
+        repoOneOpens++;
+        // The first open contains the locked commit; the reopen after the tab
+        // switch returns a window that no longer contains it.
+        return Promise.resolve(repoOneOpens === 1 ? makePage(3) : makePage(2, 10, 2));
+      });
+      store = new GraphStore(makeTwoRepoBridge(getCommits), session);
+
+      await store.openRepository(REPO.fsPath);
+      const lockedOid = makeCommit(1).oid?.hex as string;
+      store.select(lockedOid);
+      store.lock();
+
+      await store.openRepository(REPO_TWO.fsPath);
+      await store.openRepository(REPO.fsPath);
+
+      // The reloaded window does not contain the pinned commit...
+      expect(store.rows().some((row) => row.commit.oid?.hex === lockedOid)).toBe(false);
+      // ...yet the padlock and its cached commit are restored.
+      expect(store.lockedOid()).toBe(lockedOid);
+      expect(store.lockedCommit()?.oid?.hex).toBe(lockedOid);
+      expect(store.selectedOid()).toBe(lockedOid);
+
+      // A foreign selection is refused exactly like before the tab switch.
+      store.select(makeCommit(2).oid?.hex as string);
+      expect(store.selectedOid()).toBe(lockedOid);
+      expect(store.lockedOid()).toBe(lockedOid);
+    });
+
+    it('keeps each repo tab selection isolated', async () => {
+      const session = new GraphSessionStore();
+      store = new GraphStore(
+        makeTwoRepoBridge(() => Promise.resolve(makePage(3))),
+        session,
+      );
+
+      await store.openRepository(REPO.fsPath);
+      const repoOneOid = makeCommit(1).oid?.hex as string;
+      store.select(repoOneOid);
+
+      await store.openRepository(REPO_TWO.fsPath);
+      // repo-2 has no saved session, so repo-1's selection is never shared.
+      expect(store.selectedOid()).toBeNull();
+      expect(session.read(REPO_TWO.id)).toBeNull();
+
+      const repoTwoOid = makeCommit(2).oid?.hex as string;
+      store.select(repoTwoOid);
+
+      await store.openRepository(REPO.fsPath);
+      expect(store.selectedOid()).toBe(repoOneOid);
+
+      await store.openRepository(REPO_TWO.fsPath);
+      expect(store.selectedOid()).toBe(repoTwoOid);
+    });
+
+    it('persists unlock and release (and a cleared selection) to the saved session', async () => {
+      const session = new GraphSessionStore();
+      store = new GraphStore(
+        makeTwoRepoBridge(() => Promise.resolve(makePage(3))),
+        session,
+      );
+
+      await store.openRepository(REPO.fsPath);
+      const oid = makeCommit(1).oid?.hex as string;
+      store.select(oid);
+      store.lock();
+
+      expect(session.read(REPO.id)).toEqual({
+        selectedOid: oid,
+        lockedOid: oid,
+        lockedCommit: expect.objectContaining({ oid: { hex: oid, kind: 'SHA1' } }),
+      });
+
+      // Unlock keeps the selection in the saved state but clears the pin.
+      store.unlock();
+      expect(session.read(REPO.id)).toEqual({
+        selectedOid: oid,
+        lockedOid: null,
+        lockedCommit: null,
+      });
+
+      // Release clears both.
+      store.lock();
+      store.release();
+      expect(session.read(REPO.id)).toEqual({
+        selectedOid: null,
+        lockedOid: null,
+        lockedCommit: null,
+      });
+
+      // An ordinary clear-to-null selection is persisted too.
+      store.select(oid);
+      store.select(null);
+      expect(session.read(REPO.id)?.selectedOid).toBeNull();
+    });
+
+    it('does not erase the saved session when an open fails', async () => {
+      const session = new GraphSessionStore();
+      let call = 0;
+      const getCommits = vi.fn(() => Promise.resolve(makePage(3)));
+      const openRepository = vi.fn(() => {
+        call++;
+        return call === 2
+          ? Promise.reject({ code: 'GIT_FAILED', message: 'boom' })
+          : Promise.resolve(REPO);
+      });
+      store = new GraphStore(
+        makeBridge({
+          getCommits,
+          openRepository,
+          listRepositories: () => Promise.resolve({ repositories: [REPO] }),
+          watch: () => Promise.resolve({}),
+        }),
+        session,
+      );
+
+      await store.openRepository(REPO.fsPath);
+      const oid = makeCommit(1).oid?.hex as string;
+      store.select(oid);
+      store.lock();
+
+      await expect(store.openRepository('/tmp/other')).resolves.toBeNull();
+
+      // The live signals are cleared by the failure...
+      expect(store.repoId()).toBeNull();
+      expect(store.selectedOid()).toBeNull();
+      expect(store.lockedOid()).toBeNull();
+      // ...but the repo's saved session survives for a later successful open.
+      expect(session.read(REPO.id)).toEqual({
+        selectedOid: oid,
+        lockedOid: oid,
+        lockedCommit: expect.objectContaining({ oid: { hex: oid, kind: 'SHA1' } }),
+      });
+
+      await store.openRepository(REPO.fsPath);
+      expect(store.selectedOid()).toBe(oid);
+      expect(store.lockedOid()).toBe(oid);
+    });
   });
 });
