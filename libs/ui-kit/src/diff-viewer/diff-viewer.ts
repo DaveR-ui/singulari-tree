@@ -105,7 +105,7 @@ export const MONACO_ENVIRONMENT_AVAILABLE = new InjectionToken<() => boolean>(
  */
 export const MONACO_LOADER = new InjectionToken<MonacoLoader>('MONACO_LOADER', {
   providedIn: 'root',
-  factory: () => () => import('./monaco-loader').then((module) => module.default),
+  factory: () => () => import('./monaco-loader').then((module) => module.loadMonaco()),
 });
 
 /**
