@@ -1,6 +1,7 @@
 import { signal } from '@angular/core';
 import type { Repository } from '@contracts/domain';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { GraphSessionStore } from './graph-session.store';
 import type { RepoState } from './repo-state.service';
 import { WORKSPACES_STORAGE_KEY, WorkspacesStore } from './workspaces.store';
 
@@ -56,9 +57,18 @@ function makeRepoState(repos: Repository[] = []) {
 
 type StubRepoState = ReturnType<typeof makeRepoState>;
 
-function makeStore(repoState: StubRepoState = makeRepoState()): WorkspacesStore {
-  return new WorkspacesStore(repoState as unknown as RepoState);
+function makeStore(
+  repoState: StubRepoState = makeRepoState(),
+  graphSession?: GraphSessionStore,
+): WorkspacesStore {
+  return new WorkspacesStore(repoState as unknown as RepoState, graphSession);
 }
+
+const SESSION_STATE = {
+  selectedOid: 'a'.repeat(40),
+  lockedOid: 'a'.repeat(40),
+  lockedCommit: null,
+};
 
 describe('WorkspacesStore', () => {
   beforeEach(() => {
@@ -338,6 +348,46 @@ describe('WorkspacesStore', () => {
     expect(store.activeTabId()).toBeNull();
     expect(repoState.clearActive).toHaveBeenCalledTimes(1);
     expect(repoState.activeId()).toBeNull();
+  });
+
+  it('forgets a repo graph session when its tab is closed', () => {
+    const session = new GraphSessionStore();
+    const store = makeStore(makeRepoState([makeRepo('a'), makeRepo('b')]), session);
+    store.openTab(makeRepo('a'));
+    store.openTab(makeRepo('b'));
+    session.write('a', SESSION_STATE);
+    session.write('b', SESSION_STATE);
+
+    store.closeTab('a');
+
+    expect(session.read('a')).toBeNull();
+    // A surviving tab keeps its own session.
+    expect(session.read('b')).toBe(SESSION_STATE);
+  });
+
+  it('does not forget a session when closing an unknown tab', () => {
+    const session = new GraphSessionStore();
+    const store = makeStore(makeRepoState(), session);
+    store.openTab(makeRepo('a'));
+    session.write('a', SESSION_STATE);
+
+    store.closeTab('missing');
+
+    expect(session.read('a')).toBe(SESSION_STATE);
+  });
+
+  it('forgets the sessions of tabs dropped by reconcile and keeps survivors', () => {
+    const session = new GraphSessionStore();
+    const store = makeStore(makeRepoState(), session);
+    store.openTab(makeRepo('a'));
+    store.openTab(makeRepo('gone'));
+    session.write('a', SESSION_STATE);
+    session.write('gone', SESSION_STATE);
+
+    store.reconcile([makeRepo('a')]);
+
+    expect(session.read('gone')).toBeNull();
+    expect(session.read('a')).toBe(SESSION_STATE);
   });
 
   it('survives localStorage being unavailable', () => {

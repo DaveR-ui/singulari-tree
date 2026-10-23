@@ -241,6 +241,10 @@ export class RepoPage {
       }
 
       void this.graphStore.openRepository(active.fsPath).then(() => {
+        // A superseded open installs nothing (openSeq). Never consume a stale
+        // repo's deep-link focus then: `select()` would persist its oid under the
+        // repo that actually won the switch.
+        if (this.graphStore.repoId() !== active.id) return;
         const oid = this.commitFocus.consume(active.id);
         if (oid) void this.graphStore.focusCommit(oid);
       });

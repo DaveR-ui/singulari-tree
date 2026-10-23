@@ -1,6 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import type { Commit, CommitStats, Lane, Repository } from '@contracts/domain';
 import type { GetCommitsRequest, GetCommitsResponse, ResetRequest } from '@contracts/gitcore';
+import { GraphSessionStore } from '@core/services/graph-session.store';
 import { IpcBridge, toAppError, type AppError } from '@core/services/ipc-bridge.service';
 import { LiveRegionService } from '@singularitree/ui-kit';
 import type { CommitRow } from '../repo-models';
@@ -47,11 +48,33 @@ function safeInjectLiveRegion(): LiveRegionService | null {
 }
 
 /**
+ * Read the root `GraphSessionStore` when one exists, else `null`.
+ *
+ * Mirrors {@link safeInjectLiveRegion}: the store is also constructed directly
+ * (`new GraphStore(bridge)`) in unit tests with no DI context, where a bare
+ * `inject()` would throw NG0203. Persistence is a best-effort side channel —
+ * outside a real app the graph simply behaves as it did before the session
+ * store existed (open blanks the selection/lock, mutators do not save).
+ */
+function safeInjectGraphSession(): GraphSessionStore | null {
+  try {
+    return inject(GraphSessionStore, { optional: true });
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Signal store for the commit graph (service-design.md §2.2/§3).
  *
  * Owns the windowed `getCommits` pagination (window 200 + prefetch 100) and the
  * parallel `commits`/`lanes` arrays from the Go core. The bridge is a constructor
  * parameter (defaulting to DI) so the store can be unit-tested without TestBed.
+ *
+ * Selection/lock state is route-scoped but hydrated from the root in-memory
+ * `GraphSessionStore`: route destruction (leaving `/repo`) recreates this store,
+ * and opening another repo tab re-installs the same instance, so each repo's
+ * selection/padlock is restored from the root session instead of being blanked.
  */
 @Injectable()
 export class GraphStore {
@@ -61,10 +84,20 @@ export class GraphStore {
    * (see {@link safeInjectLiveRegion}); `null` in plain unit tests.
    */
   private readonly liveRegion: LiveRegionService | null;
+  /**
+   * Root-scoped, in-memory session state for selection/lock, captured once at
+   * construction (see {@link safeInjectGraphSession}); `null` in plain unit
+   * tests, where the store degrades to the original non-persisting behaviour.
+   */
+  private readonly graphSession: GraphSessionStore | null;
 
-  constructor(bridge: IpcBridge = inject(IpcBridge)) {
+  constructor(
+    bridge: IpcBridge = inject(IpcBridge),
+    graphSession: GraphSessionStore | null = safeInjectGraphSession(),
+  ) {
     this.bridge = bridge;
     this.liveRegion = safeInjectLiveRegion();
+    this.graphSession = graphSession;
   }
 
   readonly windowSize = GRAPH_WINDOW_SIZE;
@@ -118,7 +151,8 @@ export class GraphStore {
    * click until released. It lives here — on the route-scoped store shared by
    * both screens — because the File-status screen follows this selection (and
    * the pinned commit-detail pane reads {@link lockedCommit}) through effects
-   * on the same instance.
+   * on the same instance. Route destruction/recreation rehydrates it from the
+   * root `GraphSessionStore` in {@link openRepository}.
    */
   readonly lockedOid = signal<string | null>(null);
   /**
@@ -207,6 +241,12 @@ export class GraphStore {
    * (the user switched tabs before it resolved) installs nothing and never
    * starts a watch for the wrong repo.
    *
+   * A successful open restores the target repo's selection and padlock from the
+   * root session store (each repo tab has its own saved state); with no saved
+   * entry this is the original null/empty state. A failed open clears only the
+   * live signals — the saved session for that repo is deliberately kept, so a
+   * later successful open can still restore it.
+   *
    * Returns the opened repository, or null when it was superseded or failed.
    */
   async openRepository(fsPath: string): Promise<Repository | null> {
@@ -220,12 +260,10 @@ export class GraphStore {
       if (seq !== this.openSeq) return null;
       this.offline.set(false);
       this.repoId.set(repo.id);
-      this.selectedOid.set(null);
-      // A different repository invalidates the lock: the pinned commit belonged
-      // to the previous repo's DAG, so it must not survive the switch. Cleared
-      // through the internal reset (not `release()`) because the selection was
-      // already blanked above and `release()` would only repeat that write.
-      this.resetLock();
+      // Restore this repo's own saved selection/padlock (or the null/empty state
+      // when it has none). Never write back here: opening is not a user-driven
+      // selection change and must not overwrite another tab's saved state.
+      this.restoreSession(repo.id);
       this.filter.set('');
       // A different repository invalidates the remembered graph position: both
       // the offset and any pending restore are scoped to the old repo.
@@ -454,6 +492,7 @@ export class GraphStore {
       return;
     }
     this.selectedOid.set(oid);
+    this.persistSession();
   }
 
   /**
@@ -472,6 +511,7 @@ export class GraphStore {
     if (!row) return;
     this.lockedOid.set(oid);
     this.lockedCommit.set(row.commit);
+    this.persistSession();
   }
 
   /**
@@ -483,6 +523,7 @@ export class GraphStore {
    */
   unlock(): void {
     this.resetLock();
+    this.persistSession();
   }
 
   /**
@@ -496,12 +537,46 @@ export class GraphStore {
   release(): void {
     this.resetLock();
     this.selectedOid.set(null);
+    this.persistSession();
   }
 
-  /** Clear both lock signals without touching the selection. */
+  /**
+   * Clear both lock signals without touching the selection.
+   *
+   * Deliberately non-persisting: `openRepository`'s failure path uses it to
+   * clear only the live signals, and a failed open must never erase a repo's
+   * saved session.
+   */
   private resetLock(): void {
     this.lockedOid.set(null);
     this.lockedCommit.set(null);
+  }
+
+  /**
+   * Hydrate the selection/lock signals from the root session store for
+   * `repoId`. No saved entry (or no session store in plain unit tests) yields
+   * the original null/empty state.
+   */
+  private restoreSession(repoId: string): void {
+    const saved = this.graphSession?.read(repoId);
+    this.selectedOid.set(saved?.selectedOid ?? null);
+    this.lockedOid.set(saved?.lockedOid ?? null);
+    this.lockedCommit.set(saved?.lockedCommit ?? null);
+  }
+
+  /**
+   * Save the current selection/lock for the open repo. Called only from the
+   * user-driven mutators (`select`/`lock`/`unlock`/`release`); a no-op when no
+   * repo is open or the session store is absent.
+   */
+  private persistSession(): void {
+    const repoId = this.repoId();
+    if (!repoId || !this.graphSession) return;
+    this.graphSession.write(repoId, {
+      selectedOid: this.selectedOid(),
+      lockedOid: this.lockedOid(),
+      lockedCommit: this.lockedCommit(),
+    });
   }
 
   /** Announce a refused selection change through the shared live region. */
