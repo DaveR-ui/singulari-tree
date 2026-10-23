@@ -67,7 +67,7 @@ function readExpectedVersion() {
   if (!/^\d+\.\d+\.\d+([-+].*)?$/.test(expected)) {
     fail(
       `devDependencies.electron must resolve to an exact version; got "${spec}". ` +
-        `Pin it (for example "41.10.6") so the binary can be provisioned.`
+        `Pin it (for example "42.11.9") so the binary can be provisioned.`
     );
   }
 
